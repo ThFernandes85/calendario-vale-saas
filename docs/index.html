@@ -451,6 +451,15 @@ aside.collapsed .nav-badge { top: 2px; right: 2px; }
         </div>
 
         <div class="profile-box">
+            <span class="client-title">Site Ativo</span>
+            <select id="site-select"></select>
+            <div id="site-admin-add" style="display:none; margin-top:10px;">
+                <input type="text" id="new-site-name" placeholder="Nome do novo site" style="width:100%; background-color:#1c2533; color:var(--text-primary); border:1px solid var(--border-color); border-radius:6px; padding:8px; font-size:12px;">
+                <button class="btn-secondary" id="btn-add-site" style="width:100%; margin-top:6px; padding:8px; font-size:11.5px;">+ Novo Site</button>
+            </div>
+        </div>
+
+        <div class="profile-box">
             <span class="client-title">Usuário Logado</span>
             <div id="logged-user-name">—</div>
             <div id="logged-user-role">—</div>
@@ -794,23 +803,28 @@ aside.collapsed .nav-badge { top: 2px; right: 2px; }
 'use strict';
 
 /* =========================================================
-   BASE DE DADOS DE EQUIPAMENTOS (94 ativos / 5 áreas)
+   BASE DE DADOS DE EQUIPAMENTOS — POR SITE
+   (Mutuca é o site seed original com os 94 ativos / 5 áreas;
+   novos sites começam vazios e são povoados pelo Admin Master)
    ========================================================= */
-const DATABASE = {
+const MUTUCA_SEED_DATABASE = {
     TOD: ['40AL02', '40EM01', '40MG02', '40SL01', '40TC02', '40TC03', '40TC04', '40TC05', 'CARREGAMENTO'],
     TCLD: ['27TC15', '27TC15A', '27TC16B', '27TC16A', '33AL03', '33TC17', '27MG01', '27MG02', '27MG03', '27MG04', '33TC18', '33TC19', '33TC20', 'GROTA ZERO', '33SL02', '40SL01', '40MG01', '27TC16'],
     USINA: ['21AL02', '21AL03', '21TC03', '22BR02', '22BR03', '22BR04', '22PE01', '22PE02', '22PE02A', '22PE02B', '22TC04', '22TC05', '22TC08', '23CE01A', '23CE01B', '23CE01C', '23PE04A', '23PE04B', '23PE04C', '24BP01A', '24BP01B', '24BP01C', '25BP01A', '25BP01B', '25BP01C', '25BV01A', '25BV01B', '25BV01C', '26EX01', '27EM01', '27TC06', '27TC07', '27TC09', '27TC10', '27TC11', '27TC12', '27TC13', '27TC14', 'FV01A', 'FV01B', 'FV01C', 'FV01D', '27TC08'],
     SBR: ['12AL01', '12BR01', '12DV01', '12DV02', '12PE02A', '12PE02B', '12TC01A', '12TC02', '12TC08', '12TC10A', '12TC10B', '12TC11A', '12TC11B', '12TC9A', '12TC9B', '12TC01'],
     ITMS: ['65EM01', '65TC01', '65TC02', '65TC03', '65TC04A', '65TC05', '65TC06', '65TC07']
 };
-const AREA_LABEL = { TOD: 'TOD', TCLD: 'TCLD', USINA: 'USINA', SBR: 'SBR', ITMS: 'ITM-S' };
+const MUTUCA_SEED_AREA_LABEL = { TOD: 'TOD', TCLD: 'TCLD', USINA: 'USINA', SBR: 'SBR', ITMS: 'ITM-S' };
+
+const DATABASE = {};
+const AREA_LABEL = {};
 
 function getAllEquip() {
     const list = [];
     Object.keys(DATABASE).forEach(area => DATABASE[area].forEach(tag => list.push({ tag, area })));
     return list;
 }
-const ALL_EQUIP = getAllEquip();
+const ALL_EQUIP = [];
 function areaOf(tag) { const e = ALL_EQUIP.find(x => x.tag === tag); return e ? e.area : null; }
 
 /* =========================================================
@@ -832,8 +846,8 @@ function initialsOf(name) {
 }
 
 const state = {
-    profileKey: null, currentUser: null, users: [],
-    currentArea: 'TOD', agendaTag: ALL_EQUIP[0].tag, weekStart: getSunday(todayStr()),
+    profileKey: null, currentUser: null, users: [], currentSite: 'MUTUCA',
+    currentArea: 'ALL', agendaTag: null, weekStart: getSunday(todayStr()),
     bookings: [], auditLog: [], reportFilter: { from: null, to: null, username: null },
     heatmapFilter: { from: null, to: null, equip: null }
 };
@@ -883,16 +897,78 @@ const LS_USERS = 'vale_saas_users_v1';
 const LS_SESSION = 'vale_saas_session_v1';
 const LS_SIDEBAR = 'vale_saas_sidebar_collapsed_v1';
 
+/* Chave de storage isolada por site — cada site tem seu próprio conjunto
+   de agendamentos, auditoria, áreas e equipamentos. */
+function siteKey(base) { return `${base}__${state.currentSite}`; }
+
 function persist() {
-    localStorage.setItem(LS_BOOKINGS, JSON.stringify(state.bookings));
-    localStorage.setItem(LS_AUDIT, JSON.stringify(state.auditLog));
+    localStorage.setItem(siteKey(LS_BOOKINGS), JSON.stringify(state.bookings));
+    localStorage.setItem(siteKey(LS_AUDIT), JSON.stringify(state.auditLog));
 }
 function loadPersisted() {
-    const b = localStorage.getItem(LS_BOOKINGS);
-    const a = localStorage.getItem(LS_AUDIT);
-    if (b) state.bookings = JSON.parse(b);
-    if (a) state.auditLog = JSON.parse(a);
+    const b = localStorage.getItem(siteKey(LS_BOOKINGS));
+    const a = localStorage.getItem(siteKey(LS_AUDIT));
+    state.bookings = b ? JSON.parse(b) : [];
+    state.auditLog = a ? JSON.parse(a) : [];
 }
+
+/* =========================================================
+   SITES (múltiplas unidades operacionais: Mutuca, etc.)
+   ========================================================= */
+const LS_SITES = 'vale_saas_sites_v1';
+const LS_ACTIVE_SITE = 'vale_saas_active_site_v1';
+let SITES = {};
+
+function loadSites() {
+    const s = localStorage.getItem(LS_SITES);
+    SITES = s ? JSON.parse(s) : { MUTUCA: 'Mutuca' };
+    if (!SITES.MUTUCA) SITES.MUTUCA = 'Mutuca';
+    persistSites();
+}
+function persistSites() { localStorage.setItem(LS_SITES, JSON.stringify(SITES)); }
+
+function renderSiteSelect() {
+    const sel = document.getElementById('site-select');
+    if (!sel) return;
+    sel.innerHTML = Object.keys(SITES).map(k => `<option value="${k}" ${k === state.currentSite ? 'selected' : ''}>${escapeHtml(SITES[k])}</option>`).join('');
+    document.getElementById('site-admin-add').style.display = state.profileKey === 'ADMIN' ? 'block' : 'none';
+}
+
+function switchSite(newSiteKey) {
+    if (!SITES[newSiteKey] || newSiteKey === state.currentSite) return;
+    state.currentSite = newSiteKey;
+    localStorage.setItem(LS_ACTIVE_SITE, newSiteKey);
+    loadSiteDatabase();
+    loadPersisted();
+    seedIfEmpty();
+    state.currentArea = 'ALL';
+    state.agendaTag = ALL_EQUIP.length ? ALL_EQUIP[0].tag : null;
+    state.reportFilter = { from: null, to: null, username: null };
+    state.heatmapFilter = { from: null, to: null, equip: null };
+    renderSiteSelect();
+    onProfileChanged();
+    switchView('dashboard');
+    updateUpcomingBadge();
+    toast(`Site alterado para "${SITES[newSiteKey]}".`);
+}
+document.getElementById('site-select').addEventListener('change', e => switchSite(e.target.value));
+
+function addSite(name) {
+    if (state.profileKey !== 'ADMIN') { showAccessDenied('Apenas o Admin Master pode criar novos sites.'); return; }
+    const trimmed = name.trim();
+    const key = trimmed.toUpperCase().replace(/[^A-Z0-9_]/g, '_').replace(/_+/g, '_');
+    if (!trimmed || !key) { toast('Informe um nome válido para o site.', 'error'); return; }
+    if (SITES[key]) { toast('Já existe um site com esse nome.', 'error'); return; }
+    SITES[key] = trimmed;
+    persistSites();
+    renderSiteSelect();
+    toast(`Site "${trimmed}" criado. Selecione-o para cadastrar áreas e equipamentos.`);
+}
+document.getElementById('btn-add-site').addEventListener('click', () => {
+    const input = document.getElementById('new-site-name');
+    addSite(input.value);
+    input.value = '';
+});
 
 function persistUsers() { localStorage.setItem(LS_USERS, JSON.stringify(state.users)); }
 function loadUsers() {
@@ -930,7 +1006,8 @@ function addAuditEntry({ tag, acao, justificativa, dataHora, om, agendamentoData
    SEED DE DADOS DEMO (primeira execução)
    ========================================================= */
 function seedIfEmpty() {
-    if (localStorage.getItem(LS_BOOKINGS) !== null) return;
+    if (localStorage.getItem(siteKey(LS_BOOKINGS)) !== null) return;
+    if (state.currentSite !== 'MUTUCA') { persist(); return; } // sites novos começam vazios
     const h = nowHour();
     const capMin = m => Math.min(m, 23 * 60 + 59);
     const today = todayStr();
@@ -1250,6 +1327,7 @@ function onProfileChanged() {
         <div style="margin-top:6px;"><span class="perm-tag ${p.canExport ? 'perm-yes' : 'perm-no'}">${p.canExport ? 'Exporta Relatórios' : 'Sem Exportação'}</span></div>
     `;
     document.querySelector('[data-view="usuarios"]').style.display = state.profileKey === 'ADMIN' ? 'flex' : 'none';
+    renderSiteSelect();
     renderAssetMgmtPanel();
     renderAgendaEquipSelect();
     renderAtivos(); renderWeekGrid(); renderAudit(); renderDashboard();
@@ -1345,13 +1423,18 @@ const WEEKDAY_NAMES = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sext
 
 function renderWeekGrid() {
     const tag = state.agendaTag;
+    const grid = document.getElementById('week-grid');
+    if (!tag) {
+        document.getElementById('agenda-title').textContent = `Agenda — ${SITES[state.currentSite] || state.currentSite}`;
+        grid.innerHTML = `<div style="grid-column:1/-1; padding:40px 20px; text-align:center; color:var(--text-muted);">Nenhum equipamento cadastrado neste site ainda. Peça ao Admin Master para cadastrar áreas e equipamentos em "Ativos &amp; Áreas".</div>`;
+        return;
+    }
     const dates = getWeekDates(state.weekStart);
     const today = todayStr();
     document.getElementById('agenda-title').textContent =
         `Agenda de ${tag} — ${AREA_LABEL[areaOf(tag)]} — Semana de ${formatDateBR(dates[0])} a ${formatDateBR(dates[6])}`;
     document.getElementById('week-jump-date').value = state.weekStart;
 
-    const grid = document.getElementById('week-grid');
     grid.innerHTML = '';
 
     const corner = document.createElement('div');
@@ -1898,8 +1981,8 @@ const LS_CUSTOM_EQUIP = 'vale_saas_custom_equip_v1';
 const LS_EQUIP_AREA_OVERRIDE = 'vale_saas_equip_area_override_v1';
 
 function loadCustomAssets() {
-    const areas = JSON.parse(localStorage.getItem(LS_CUSTOM_AREAS) || '{}');
-    const equip = JSON.parse(localStorage.getItem(LS_CUSTOM_EQUIP) || '{}');
+    const areas = JSON.parse(localStorage.getItem(siteKey(LS_CUSTOM_AREAS)) || '{}');
+    const equip = JSON.parse(localStorage.getItem(siteKey(LS_CUSTOM_EQUIP)) || '{}');
     Object.keys(areas).forEach(k => {
         if (!AREA_LABEL[k]) AREA_LABEL[k] = areas[k];
         if (!DATABASE[k]) DATABASE[k] = [];
@@ -1913,7 +1996,7 @@ function loadCustomAssets() {
     applyEquipAreaOverrides();
 }
 function applyEquipAreaOverrides() {
-    const overrides = JSON.parse(localStorage.getItem(LS_EQUIP_AREA_OVERRIDE) || '{}');
+    const overrides = JSON.parse(localStorage.getItem(siteKey(LS_EQUIP_AREA_OVERRIDE)) || '{}');
     Object.keys(overrides).forEach(tag => {
         const newArea = overrides[tag];
         const item = ALL_EQUIP.find(e => e.tag === tag);
@@ -1924,20 +2007,33 @@ function applyEquipAreaOverrides() {
     });
 }
 function persistCustomArea(key, label) {
-    const areas = JSON.parse(localStorage.getItem(LS_CUSTOM_AREAS) || '{}');
+    const areas = JSON.parse(localStorage.getItem(siteKey(LS_CUSTOM_AREAS)) || '{}');
     areas[key] = label;
-    localStorage.setItem(LS_CUSTOM_AREAS, JSON.stringify(areas));
+    localStorage.setItem(siteKey(LS_CUSTOM_AREAS), JSON.stringify(areas));
 }
 function persistCustomEquip(areaKey, tag) {
-    const equip = JSON.parse(localStorage.getItem(LS_CUSTOM_EQUIP) || '{}');
+    const equip = JSON.parse(localStorage.getItem(siteKey(LS_CUSTOM_EQUIP)) || '{}');
     if (!equip[areaKey]) equip[areaKey] = [];
     equip[areaKey].push(tag);
-    localStorage.setItem(LS_CUSTOM_EQUIP, JSON.stringify(equip));
+    localStorage.setItem(siteKey(LS_CUSTOM_EQUIP), JSON.stringify(equip));
 }
 function persistEquipAreaOverride(tag, area) {
-    const overrides = JSON.parse(localStorage.getItem(LS_EQUIP_AREA_OVERRIDE) || '{}');
+    const overrides = JSON.parse(localStorage.getItem(siteKey(LS_EQUIP_AREA_OVERRIDE)) || '{}');
     overrides[tag] = area;
-    localStorage.setItem(LS_EQUIP_AREA_OVERRIDE, JSON.stringify(overrides));
+    localStorage.setItem(siteKey(LS_EQUIP_AREA_OVERRIDE), JSON.stringify(overrides));
+}
+
+/* Limpa e recarrega DATABASE/AREA_LABEL/ALL_EQUIP para o site ativo. */
+function loadSiteDatabase() {
+    Object.keys(DATABASE).forEach(k => delete DATABASE[k]);
+    Object.keys(AREA_LABEL).forEach(k => delete AREA_LABEL[k]);
+    ALL_EQUIP.length = 0;
+    if (state.currentSite === 'MUTUCA') {
+        Object.keys(MUTUCA_SEED_DATABASE).forEach(k => { DATABASE[k] = [...MUTUCA_SEED_DATABASE[k]]; });
+        Object.assign(AREA_LABEL, MUTUCA_SEED_AREA_LABEL);
+    }
+    ALL_EQUIP.push(...getAllEquip());
+    loadCustomAssets();
 }
 
 function renderAssetMgmtPanel() {
@@ -2010,12 +2106,16 @@ document.getElementById('btn-add-equip').addEventListener('click', () => {
 /* =========================================================
    INICIALIZAÇÃO
    ========================================================= */
-loadCustomAssets();
+loadSites();
+state.currentSite = localStorage.getItem(LS_ACTIVE_SITE) || 'MUTUCA';
+if (!SITES[state.currentSite]) state.currentSite = 'MUTUCA';
+loadSiteDatabase();
 loadPersisted();
 seedIfEmpty();
-if (localStorage.getItem(LS_BOOKINGS) === null) persist();
+state.agendaTag = ALL_EQUIP.length ? ALL_EQUIP[0].tag : null;
 loadUsers();
 seedUsersIfEmpty();
+renderSiteSelect();
 renderAssetMgmtPanel();
 applySidebarCollapse(localStorage.getItem(LS_SIDEBAR) === '1');
 
