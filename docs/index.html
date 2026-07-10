@@ -331,6 +331,28 @@ table.heatmap-table tr:hover td { filter: brightness(1.15); }
 .login-hint b { color: var(--text-secondary); }
 #btn-guest-login { width: 100%; margin-top: 12px; padding: 10px; }
 
+/* --- MENU DE SITE (dropdown interativo) --- */
+.site-switch-btn {
+    width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 8px;
+    background-color: #1c2533; color: var(--text-primary); border: 1px solid var(--border-color);
+    border-radius: 6px; padding: 9px 10px; font-size: 12.5px; font-weight: 700; cursor: pointer; text-align: left;
+}
+.site-switch-btn:hover { border-color: #fff; }
+.site-switch-btn svg { flex-shrink: 0; opacity: 0.7; transition: transform 0.15s; }
+.site-switch-btn.open svg { transform: rotate(180deg); }
+.site-switch-btn span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.site-dropdown { margin-top: 8px; background-color: #0f1621; border: 1px solid var(--border-color); border-radius: 8px; padding: 6px; max-height: 240px; overflow-y: auto; }
+.site-dropdown-item {
+    display: flex; align-items: center; justify-content: space-between; width: 100%;
+    background: none; border: none; color: var(--text-secondary); padding: 9px 10px; border-radius: 6px;
+    font-size: 12.5px; text-align: left; cursor: pointer; transition: all 0.12s;
+}
+.site-dropdown-item:hover { background-color: var(--bg-hover); color: var(--text-primary); }
+.site-dropdown-item.active { background-color: rgba(37,99,235,0.18); color: #7ea6ff; font-weight: 700; }
+.site-dropdown-item .check { opacity: 0; font-size: 12px; }
+.site-dropdown-item.active .check { opacity: 1; }
+.site-dropdown-empty { padding: 10px; font-size: 11.5px; color: var(--text-muted); text-align: center; }
+
 /* --- BADGE DE AGENDAMENTO PRÓXIMO --- */
 .nav-item { position: relative; }
 .nav-badge {
@@ -450,12 +472,15 @@ aside.collapsed .nav-badge { top: 2px; right: 2px; }
             <div class="vale-logo"><span class="vale-v">V</span><span class="vale-a">A</span>LE</div>
         </div>
 
-        <div class="profile-box">
+        <div class="profile-box" id="site-box">
             <span class="client-title">Site Ativo</span>
-            <select id="site-select"></select>
-            <div id="site-admin-add" style="display:none; margin-top:10px;">
-                <input type="text" id="new-site-name" placeholder="Nome do novo site" style="width:100%; background-color:#1c2533; color:var(--text-primary); border:1px solid var(--border-color); border-radius:6px; padding:8px; font-size:12px;">
-                <button class="btn-secondary" id="btn-add-site" style="width:100%; margin-top:6px; padding:8px; font-size:11.5px;">+ Novo Site</button>
+            <button type="button" id="site-switch-btn" class="site-switch-btn">
+                <span id="site-switch-label">—</span>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
+            </button>
+            <div class="site-dropdown" id="site-dropdown" style="display:none;">
+                <div id="site-dropdown-list"></div>
+                <button type="button" class="btn-secondary" id="btn-open-add-site" style="display:none; width:100%; margin-top:8px; padding:8px; font-size:11.5px;">+ Criar Novo Site</button>
             </div>
         </div>
 
@@ -782,7 +807,7 @@ aside.collapsed .nav-badge { top: 2px; right: 2px; }
                 <table class="audit-table">
                     <thead>
                         <tr>
-                            <th>Nome</th><th>Usuário</th><th>Perfil</th><th>Exporta Relatórios</th><th>Status</th><th>Ações</th>
+                            <th>Nome</th><th>Usuário</th><th>Perfil</th><th>Sites com Acesso</th><th>Exporta Relatórios</th><th>Status</th><th>Ações</th>
                         </tr>
                     </thead>
                     <tbody id="users-tbody"></tbody>
@@ -927,15 +952,54 @@ function loadSites() {
 }
 function persistSites() { localStorage.setItem(LS_SITES, JSON.stringify(SITES)); }
 
-function renderSiteSelect() {
-    const sel = document.getElementById('site-select');
-    if (!sel) return;
-    sel.innerHTML = Object.keys(SITES).map(k => `<option value="${k}" ${k === state.currentSite ? 'selected' : ''}>${escapeHtml(SITES[k])}</option>`).join('');
-    document.getElementById('site-admin-add').style.display = state.profileKey === 'ADMIN' ? 'block' : 'none';
+function accessibleSites() {
+    if (!state.currentUser) return Object.keys(SITES);
+    if (state.currentUser.role === 'ADMIN' || state.currentUser.role === 'VISITANTE') return Object.keys(SITES);
+    return Object.keys(SITES).filter(k => (state.currentUser.sites || []).includes(k));
 }
+
+function renderSiteSelect() {
+    const label = document.getElementById('site-switch-label');
+    if (!label) return;
+    label.textContent = SITES[state.currentSite] || state.currentSite;
+    const accessible = accessibleSites();
+    const list = document.getElementById('site-dropdown-list');
+    list.innerHTML = accessible.length ? accessible.map(k => `
+        <button type="button" class="site-dropdown-item${k === state.currentSite ? ' active' : ''}" data-site="${k}">
+            <span>${escapeHtml(SITES[k])}</span><span class="check">&#10003;</span>
+        </button>
+    `).join('') : `<div class="site-dropdown-empty">Nenhum site liberado para o seu usuário.</div>`;
+    list.querySelectorAll('.site-dropdown-item').forEach(btn => btn.addEventListener('click', () => {
+        switchSite(btn.dataset.site);
+        closeSiteDropdown();
+    }));
+    document.getElementById('btn-open-add-site').style.display = state.profileKey === 'ADMIN' ? 'block' : 'none';
+}
+
+function openSiteDropdown() {
+    document.getElementById('site-dropdown').style.display = 'block';
+    document.getElementById('site-switch-btn').classList.add('open');
+}
+function closeSiteDropdown() {
+    document.getElementById('site-dropdown').style.display = 'none';
+    document.getElementById('site-switch-btn').classList.remove('open');
+}
+document.getElementById('site-switch-btn').addEventListener('click', e => {
+    e.stopPropagation();
+    document.getElementById('site-dropdown').style.display === 'block' ? closeSiteDropdown() : openSiteDropdown();
+});
+document.addEventListener('click', e => {
+    const box = document.getElementById('site-box');
+    if (box && !box.contains(e.target)) closeSiteDropdown();
+});
+document.getElementById('btn-open-add-site').addEventListener('click', () => {
+    closeSiteDropdown();
+    openAddSiteModal();
+});
 
 function switchSite(newSiteKey) {
     if (!SITES[newSiteKey] || newSiteKey === state.currentSite) return;
+    if (!accessibleSites().includes(newSiteKey)) { showAccessDenied('Você não tem acesso a este site.'); return; }
     state.currentSite = newSiteKey;
     localStorage.setItem(LS_ACTIVE_SITE, newSiteKey);
     loadSiteDatabase();
@@ -951,7 +1015,21 @@ function switchSite(newSiteKey) {
     updateUpcomingBadge();
     toast(`Site alterado para "${SITES[newSiteKey]}".`);
 }
-document.getElementById('site-select').addEventListener('change', e => switchSite(e.target.value));
+
+function openAddSiteModal() {
+    if (state.profileKey !== 'ADMIN') { showAccessDenied('Apenas o Admin Master pode criar novos sites.'); return; }
+    openModal(`
+        <div class="modal-header"><h3>Criar Novo Site</h3><button class="modal-close" onclick="closeModal()">&times;</button></div>
+        <div class="modal-body">
+            <div class="m-field"><label>Nome do Site</label><input type="text" id="new-site-name" placeholder="Ex: Fábrica, Água Limpa..."></div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn-secondary" onclick="closeModal()">Cancelar</button>
+            <button class="btn-primary" onclick="confirmAddSite()">Criar Site</button>
+        </div>
+    `);
+}
+function confirmAddSite() { addSite(document.getElementById('new-site-name').value); }
 
 function addSite(name) {
     if (state.profileKey !== 'ADMIN') { showAccessDenied('Apenas o Admin Master pode criar novos sites.'); return; }
@@ -962,13 +1040,9 @@ function addSite(name) {
     SITES[key] = trimmed;
     persistSites();
     renderSiteSelect();
+    closeModal();
     toast(`Site "${trimmed}" criado. Selecione-o para cadastrar áreas e equipamentos.`);
 }
-document.getElementById('btn-add-site').addEventListener('click', () => {
-    const input = document.getElementById('new-site-name');
-    addSite(input.value);
-    input.value = '';
-});
 
 function persistUsers() { localStorage.setItem(LS_USERS, JSON.stringify(state.users)); }
 function loadUsers() {
@@ -978,11 +1052,11 @@ function loadUsers() {
 function seedUsersIfEmpty() {
     if (localStorage.getItem(LS_USERS) !== null) return;
     state.users = [
-        { id: 'u_admin', name: 'Thiago Fernandes', username: 'thiago.fernandes', password: 'admin123', role: 'ADMIN', canExport: true, active: true },
-        { id: 'u_pcm1', name: 'Carlos Lima', username: 'carlos.lima', password: 'pcm123', role: 'PCM', canExport: true, active: true },
-        { id: 'u_pco1', name: 'Ana Pereira', username: 'ana.pereira', password: 'pco123', role: 'PCO', canExport: true, active: true },
-        { id: 'u_eng1', name: 'Fernanda Ribeiro', username: 'fernanda.ribeiro', password: 'eng123', role: 'ENG_CONF', canExport: false, active: true },
-        { id: 'u_eng2', name: 'Roberto Alves', username: 'roberto.alves', password: 'est123', role: 'ENG_EST', canExport: false, active: true }
+        { id: 'u_admin', name: 'Thiago Fernandes', username: 'thiago.fernandes', password: 'admin123', role: 'ADMIN', canExport: true, active: true, sites: [] },
+        { id: 'u_pcm1', name: 'Carlos Lima', username: 'carlos.lima', password: 'pcm123', role: 'PCM', canExport: true, active: true, sites: ['MUTUCA'] },
+        { id: 'u_pco1', name: 'Ana Pereira', username: 'ana.pereira', password: 'pco123', role: 'PCO', canExport: true, active: true, sites: ['MUTUCA'] },
+        { id: 'u_eng1', name: 'Fernanda Ribeiro', username: 'fernanda.ribeiro', password: 'eng123', role: 'ENG_CONF', canExport: false, active: true, sites: ['MUTUCA'] },
+        { id: 'u_eng2', name: 'Roberto Alves', username: 'roberto.alves', password: 'est123', role: 'ENG_EST', canExport: false, active: true, sites: ['MUTUCA'] }
     ];
     persistUsers();
 }
@@ -1233,10 +1307,33 @@ function confirmCancelBooking(id) {
    LOGIN / LOGOUT
    ========================================================= */
 let refreshInterval = null;
+function ensureAccessibleSite() {
+    const accessible = accessibleSites();
+    if (accessible.includes(state.currentSite)) return;
+    const fallback = accessible[0];
+    if (fallback) {
+        state.currentSite = fallback;
+        localStorage.setItem(LS_ACTIVE_SITE, fallback);
+        loadSiteDatabase();
+        loadPersisted();
+        seedIfEmpty();
+    } else {
+        // usuário sem nenhum site liberado: não deixa dados de outro site visíveis
+        Object.keys(DATABASE).forEach(k => delete DATABASE[k]);
+        Object.keys(AREA_LABEL).forEach(k => delete AREA_LABEL[k]);
+        ALL_EQUIP.length = 0;
+        state.bookings = [];
+        state.auditLog = [];
+    }
+    state.currentArea = 'ALL';
+    state.agendaTag = ALL_EQUIP.length ? ALL_EQUIP[0].tag : null;
+}
+
 function loginAs(user, options) {
     const logEvent = !options || options.logEvent !== false;
     state.currentUser = user;
     state.profileKey = user.role;
+    ensureAccessibleSite();
     localStorage.setItem(LS_SESSION, user.id);
     document.getElementById('login-screen').style.display = 'none';
     document.querySelector('aside').style.display = 'flex';
@@ -1833,6 +1930,7 @@ function renderUsersView() {
             <td>${escapeHtml(u.name)}</td>
             <td>${escapeHtml(u.username)}</td>
             <td>${ROLE_META[u.role].label}</td>
+            <td>${u.role === 'ADMIN' ? '<span class="perm-tag perm-yes">Todos</span>' : ((u.sites || []).length ? (u.sites || []).map(k => `<span class="perm-tag perm-yes">${escapeHtml(SITES[k] || k)}</span>`).join('') : '<span class="perm-tag perm-no">Nenhum</span>')}</td>
             <td>${u.role === 'ADMIN' ? '<span class="perm-tag perm-yes">Sempre</span>' : `<span class="perm-tag ${u.canExport ? 'perm-yes' : 'perm-no'}">${u.canExport ? 'Sim' : 'Não'}</span>`}</td>
             <td>${u.active ? '<span class="perm-tag perm-yes">Ativo</span>' : '<span class="perm-tag perm-no">Inativo</span>'}</td>
             <td style="display:flex; gap:6px; white-space:nowrap; flex-wrap:wrap;">
@@ -1861,6 +1959,12 @@ function openUserModal(id) {
             <div class="m-field" id="um-export-wrap">
                 <label class="m-checkbox"><input type="checkbox" id="um-export" style="width:auto;" ${editing ? (editing.canExport ? 'checked' : '') : 'checked'}> Permitir exportação de relatórios (Excel/CSV) e filtro por período</label>
             </div>
+            <div class="m-field" id="um-sites-wrap">
+                <label>Sites com Acesso</label>
+                <div style="display:flex; flex-direction:column; gap:6px; margin-top:4px;">
+                    ${Object.keys(SITES).map(k => `<label class="m-checkbox"><input type="checkbox" class="um-site-cb" value="${k}" style="width:auto;" ${editing ? ((editing.sites || []).includes(k) ? 'checked' : '') : (k === state.currentSite ? 'checked' : '')}> ${escapeHtml(SITES[k])}</label>`).join('')}
+                </div>
+            </div>
             <div class="m-field"><label class="m-checkbox"><input type="checkbox" id="um-active" style="width:auto;" ${(!editing || editing.active) ? 'checked' : ''}> Conta ativa</label></div>
         </div>
         <div class="modal-footer">
@@ -1869,9 +1973,13 @@ function openUserModal(id) {
         </div>
     `);
     const roleSelect = document.getElementById('um-role');
-    const toggleExportVisibility = () => { document.getElementById('um-export-wrap').style.display = roleSelect.value === 'ADMIN' ? 'none' : 'block'; };
-    roleSelect.addEventListener('change', toggleExportVisibility);
-    toggleExportVisibility();
+    const toggleAdminOnlyFields = () => {
+        const isAdminRole = roleSelect.value === 'ADMIN';
+        document.getElementById('um-export-wrap').style.display = isAdminRole ? 'none' : 'block';
+        document.getElementById('um-sites-wrap').style.display = isAdminRole ? 'none' : 'block';
+    };
+    roleSelect.addEventListener('change', toggleAdminOnlyFields);
+    toggleAdminOnlyFields();
 }
 
 function saveUser(id) {
@@ -1881,19 +1989,24 @@ function saveUser(id) {
     const role = document.getElementById('um-role').value;
     const canExport = document.getElementById('um-export').checked;
     const active = document.getElementById('um-active').checked;
+    const sites = [...document.querySelectorAll('.um-site-cb:checked')].map(cb => cb.value);
 
     if (!name || !username) { toast('Preencha nome e usuário.', 'error'); return; }
     if (!id && password.length < 4) { toast('Defina uma senha com ao menos 4 caracteres.', 'error'); return; }
     const dup = state.users.find(u => u.username === username && u.id !== id);
     if (dup) { toast('Já existe um usuário com esse login.', 'error'); return; }
+    if (role !== 'ADMIN' && sites.length === 0) { toast('Selecione ao menos um site para este usuário (ou ele não conseguirá acessar nada).', 'warn'); }
 
     if (id) {
         const u = state.users.find(x => x.id === id);
-        u.name = name; u.username = username; u.role = role; u.canExport = role === 'ADMIN' ? true : canExport; u.active = active;
+        u.name = name; u.username = username; u.role = role; u.canExport = role === 'ADMIN' ? true : canExport; u.active = active; u.sites = sites;
         if (password) u.password = password;
-        if (state.currentUser && state.currentUser.id === u.id) { state.currentUser = u; state.profileKey = u.role; }
+        if (state.currentUser && state.currentUser.id === u.id) {
+            state.currentUser = u; state.profileKey = u.role;
+            ensureAccessibleSite();
+        }
     } else {
-        state.users.push({ id: 'u_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), name, username, password, role, canExport: role === 'ADMIN' ? true : canExport, active });
+        state.users.push({ id: 'u_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), name, username, password, role, canExport: role === 'ADMIN' ? true : canExport, active, sites });
     }
     persistUsers();
     closeModal();
