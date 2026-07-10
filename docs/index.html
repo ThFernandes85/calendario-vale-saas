@@ -332,26 +332,37 @@ table.heatmap-table tr:hover td { filter: brightness(1.15); }
 #btn-guest-login { width: 100%; margin-top: 12px; padding: 10px; }
 
 /* --- MENU DE SITE (dropdown interativo) --- */
+#site-box { position: relative; }
 .site-switch-btn {
     width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 8px;
     background-color: #1c2533; color: var(--text-primary); border: 1px solid var(--border-color);
-    border-radius: 6px; padding: 9px 10px; font-size: 12.5px; font-weight: 700; cursor: pointer; text-align: left;
+    border-radius: 8px; padding: 10px 12px; font-size: 13px; font-weight: 700; cursor: pointer; text-align: left;
+    transition: all 0.15s;
 }
-.site-switch-btn:hover { border-color: #fff; }
-.site-switch-btn svg { flex-shrink: 0; opacity: 0.7; transition: transform 0.15s; }
+.site-switch-btn:hover { border-color: var(--color-admin); background-color: #212c3d; box-shadow: 0 0 0 3px rgba(37,99,235,0.15); }
+.site-switch-btn.open { border-color: var(--color-admin); box-shadow: 0 0 0 3px rgba(37,99,235,0.15); }
+.site-switch-btn svg { flex-shrink: 0; opacity: 0.7; transition: transform 0.2s; }
 .site-switch-btn.open svg { transform: rotate(180deg); }
 .site-switch-btn span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.site-dropdown { margin-top: 8px; background-color: #0f1621; border: 1px solid var(--border-color); border-radius: 8px; padding: 6px; max-height: 240px; overflow-y: auto; }
+.site-dropdown {
+    position: absolute; top: calc(100% + 8px); left: 0; right: 0; z-index: 60;
+    background-color: #0f1621; border: 1px solid var(--border-color); border-radius: 10px;
+    padding: 6px; max-height: 260px; overflow-y: auto; box-shadow: 0 16px 36px rgba(0,0,0,0.55);
+    opacity: 0; transform: translateY(-8px) scale(0.98); pointer-events: none;
+    transition: opacity 0.15s ease, transform 0.15s ease;
+}
+.site-dropdown.open { opacity: 1; transform: translateY(0) scale(1); pointer-events: auto; }
 .site-dropdown-item {
     display: flex; align-items: center; justify-content: space-between; width: 100%;
-    background: none; border: none; color: var(--text-secondary); padding: 9px 10px; border-radius: 6px;
+    background: none; border: none; color: var(--text-secondary); padding: 10px 12px; border-radius: 6px;
     font-size: 12.5px; text-align: left; cursor: pointer; transition: all 0.12s;
 }
-.site-dropdown-item:hover { background-color: var(--bg-hover); color: var(--text-primary); }
+.site-dropdown-item:hover { background-color: var(--bg-hover); color: var(--text-primary); transform: translateX(2px); }
 .site-dropdown-item.active { background-color: rgba(37,99,235,0.18); color: #7ea6ff; font-weight: 700; }
 .site-dropdown-item .check { opacity: 0; font-size: 12px; }
 .site-dropdown-item.active .check { opacity: 1; }
 .site-dropdown-empty { padding: 10px; font-size: 11.5px; color: var(--text-muted); text-align: center; }
+.site-dropdown-divider { border-top: 1px dashed var(--border-color); margin: 6px 4px; }
 
 /* --- BADGE DE AGENDAMENTO PRÓXIMO --- */
 .nav-item { position: relative; }
@@ -478,9 +489,10 @@ aside.collapsed .nav-badge { top: 2px; right: 2px; }
                 <span id="site-switch-label">—</span>
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
             </button>
-            <div class="site-dropdown" id="site-dropdown" style="display:none;">
+            <div class="site-dropdown" id="site-dropdown">
                 <div id="site-dropdown-list"></div>
-                <button type="button" class="btn-secondary" id="btn-open-add-site" style="display:none; width:100%; margin-top:8px; padding:8px; font-size:11.5px;">+ Criar Novo Site</button>
+                <div class="site-dropdown-divider" id="site-dropdown-divider" style="display:none;"></div>
+                <button type="button" class="btn-secondary" id="btn-open-add-site" style="display:none; width:100%; padding:8px; font-size:11.5px;">+ Criar Novo Site</button>
             </div>
         </div>
 
@@ -973,20 +985,22 @@ function renderSiteSelect() {
         switchSite(btn.dataset.site);
         closeSiteDropdown();
     }));
-    document.getElementById('btn-open-add-site').style.display = state.profileKey === 'ADMIN' ? 'block' : 'none';
+    const isAdmin = state.profileKey === 'ADMIN';
+    document.getElementById('btn-open-add-site').style.display = isAdmin ? 'block' : 'none';
+    document.getElementById('site-dropdown-divider').style.display = isAdmin ? 'block' : 'none';
 }
 
 function openSiteDropdown() {
-    document.getElementById('site-dropdown').style.display = 'block';
+    document.getElementById('site-dropdown').classList.add('open');
     document.getElementById('site-switch-btn').classList.add('open');
 }
 function closeSiteDropdown() {
-    document.getElementById('site-dropdown').style.display = 'none';
+    document.getElementById('site-dropdown').classList.remove('open');
     document.getElementById('site-switch-btn').classList.remove('open');
 }
 document.getElementById('site-switch-btn').addEventListener('click', e => {
     e.stopPropagation();
-    document.getElementById('site-dropdown').style.display === 'block' ? closeSiteDropdown() : openSiteDropdown();
+    document.getElementById('site-dropdown').classList.contains('open') ? closeSiteDropdown() : openSiteDropdown();
 });
 document.addEventListener('click', e => {
     const box = document.getElementById('site-box');
