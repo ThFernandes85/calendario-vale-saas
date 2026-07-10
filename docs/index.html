@@ -373,11 +373,23 @@ table.heatmap-table tr:hover td { filter: brightness(1.15); }
 }
 aside.collapsed .nav-badge { top: 2px; right: 2px; }
 
+.print-report-banner { display: none; }
+
 @media print {
-    aside, header, .filter-section, .agenda-toolbar, .audit-toolbar button, #btn-heatmap-print, #toast-container { display: none !important; }
+    aside, header, .filter-section, .agenda-toolbar, .audit-toolbar button, #btn-heatmap-print, #btn-print-full-report, #toast-container { display: none !important; }
     body, main { overflow: visible !important; height: auto !important; }
     .content-container { display: flex !important; padding: 0; }
     .content-container:not(.view-active) { display: none !important; }
+    /* tabelas com rolagem não podem ser cortadas na impressão */
+    .audit-table-wrap, .heatmap-table-wrap, .week-grid-wrap { max-height: none !important; overflow: visible !important; }
+
+    body.print-report-mode .print-report-banner { display: block !important; font-size: 18px; font-weight: 800; border-bottom: 2px solid #000; padding-bottom: 10px; margin-bottom: 18px; }
+    body.print-report-mode .print-report-banner small { display: block; font-size: 11px; font-weight: 400; color: #444; margin-top: 4px; }
+    body.print-report-mode #view-dashboard,
+    body.print-report-mode #view-relatorios,
+    body.print-report-mode #view-mapacalor { display: flex !important; }
+    body.print-report-mode #view-dashboard,
+    body.print-report-mode #view-relatorios { break-after: page; }
 }
 </style>
 </head>
@@ -541,6 +553,7 @@ aside.collapsed .nav-badge { top: 2px; right: 2px; }
 
 <!-- ÁREA DE CONTEÚDO PRINCIPAL -->
 <main style="display:none;">
+    <div class="print-report-banner" id="print-report-banner"></div>
     <header>
         <div>
             <div id="header-title">Dashboard Geral</div>
@@ -720,6 +733,9 @@ aside.collapsed .nav-badge { top: 2px; right: 2px; }
                     <button class="today-btn" id="btn-apply-filter">Aplicar Filtro</button>
                     <button id="btn-clear-filter">Limpar</button>
                 </div>
+            </div>
+            <div style="margin-top:14px; padding-top:14px; border-top:1px dashed var(--border-color);">
+                <button class="btn-primary" id="btn-print-full-report" style="width:100%;">Imprimir Relatório Completo (PDF) — Dashboard + Gráficos + Auditoria + Mapa de Calor</button>
             </div>
         </div>
 
@@ -1829,6 +1845,39 @@ function exportAuditExcel() {
     XLSX.writeFile(wb, `auditoria_vale_${todayStr()}.xlsx`);
     toast('Relatório exportado em Excel (.xlsx) com sucesso, com abas por área.');
 }
+
+const PRINT_REPORT_VIEWS = ['view-dashboard', 'view-relatorios', 'view-mapacalor'];
+function printFullReport() {
+    if (!canExportReports()) { showAccessDenied('Perfil sem privilégios para extrair relatórios de auditoria.'); return; }
+    const previousView = document.querySelector('.content-container.view-active').id.replace('view-', '');
+
+    // Mostra as 3 seções juntas na tela (não só via CSS de impressão) para os
+    // gráficos Chart.js medirem o canvas corretamente antes de desenhar.
+    PRINT_REPORT_VIEWS.forEach(id => document.getElementById(id).classList.add('view-active'));
+
+    renderDashboard();
+    renderReportUserFilter();
+    renderCharts();
+    renderHeatmap();
+
+    const periodTxt = (state.reportFilter.from || state.reportFilter.to)
+        ? `Período: ${state.reportFilter.from ? formatDateBR(state.reportFilter.from) : '...'} a ${state.reportFilter.to ? formatDateBR(state.reportFilter.to) : '...'}`
+        : 'Período: todo o histórico';
+    document.getElementById('print-report-banner').innerHTML = `
+        Relatório Completo — ${escapeHtml(SITES[state.currentSite] || state.currentSite)}
+        <small>${escapeHtml(periodTxt)} — Gerado em ${new Date().toLocaleString('pt-BR')} por ${escapeHtml(activeProfile().user)} (${state.profileKey})</small>
+    `;
+    document.body.classList.add('print-report-mode');
+
+    setTimeout(() => window.print(), 80);
+    window.addEventListener('afterprint', function restoreAfterPrint() {
+        window.removeEventListener('afterprint', restoreAfterPrint);
+        PRINT_REPORT_VIEWS.forEach(id => document.getElementById(id).classList.remove('view-active'));
+        document.body.classList.remove('print-report-mode');
+        switchView(previousView);
+    });
+}
+document.getElementById('btn-print-full-report').addEventListener('click', printFullReport);
 
 /* =========================================================
    MAPA DE CALOR
