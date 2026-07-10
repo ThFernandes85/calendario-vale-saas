@@ -8,6 +8,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <style>
 :root {
     --bg-main: #0c1017;
@@ -463,19 +464,13 @@ aside.collapsed .nav-badge { top: 2px; right: 2px; }
             <div class="login-sub">Monitoramento e Agendamento de Ativos. Informe suas credenciais para acessar o sistema.</div>
         </div>
         <form id="login-form">
-            <div class="m-field"><label>Usuário</label><input type="text" id="login-user" autocomplete="username" placeholder="ex: thiago.fernandes"></div>
+            <div class="m-field"><label>E-mail</label><input type="email" id="login-user" autocomplete="username" placeholder="seu.nome@empresa.com"></div>
             <div class="m-field"><label>Senha</label><input type="password" id="login-pass" autocomplete="current-password" placeholder="••••••••"></div>
             <div class="login-error" id="login-error" style="display:none;"></div>
-            <button type="submit" class="btn-primary" style="width:100%; padding:11px;">Entrar</button>
+            <button type="submit" class="btn-primary" id="btn-login-submit" style="width:100%; padding:11px;">Entrar</button>
         </form>
         <button type="button" class="btn-secondary" id="btn-guest-login">Entrar como Visitante (Somente Leitura)</button>
-        <div class="login-hint" style="display:none;">
-            <b>Contas de demonstração</b> (protótipo — dados salvos apenas neste navegador):<br>
-            Admin Master: <b>thiago.fernandes</b> / admin123<br>
-            PCM: <b>carlos.lima</b> / pcm123 &nbsp;|&nbsp; PCO: <b>ana.pereira</b> / pco123<br>
-            Eng. Confiabilidade: <b>fernanda.ribeiro</b> / eng123<br>
-            Eng. Estrutural: <b>roberto.alves</b> / est123
-        </div>
+        <div class="login-hint" style="display:none;"></div>
     </div>
 </div>
 
@@ -856,6 +851,13 @@ aside.collapsed .nav-badge { top: 2px; right: 2px; }
 'use strict';
 
 /* =========================================================
+   SUPABASE (backend real: autenticação + banco compartilhado)
+   ========================================================= */
+const SUPABASE_URL = 'https://ybgszlflvzxepywbjkyo.supabase.co';
+const SUPABASE_ANON_KEY = 'sb_publishable_1BkojVOvIfxqgfKLL3HD7A_Vhn3jYcv';
+const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+/* =========================================================
    BASE DE DADOS DE EQUIPAMENTOS — POR SITE
    (Mutuca é o site seed original com os 94 ativos / 5 áreas;
    novos sites começam vazios e são povoados pelo Admin Master)
@@ -892,7 +894,6 @@ const ROLE_META = {
     VISITANTE: { label: 'Visitante (Somente Leitura)', canBook: [], readOnly: true }
 };
 const TYPE_STATUS = { 'Manutenção Preventiva': 'manutencao', 'Manutenção Corretiva': 'manutencao', 'Limpeza': 'limpeza', 'Limpeza Lokaminas': 'limpeza' };
-const GUEST_USER = { id: 'guest', name: 'Visitante', username: 'guest', role: 'VISITANTE', canExport: false, active: true };
 
 function initialsOf(name) {
     return name.trim().split(/\s+/).map(p => p[0]).slice(0, 2).join('').toUpperCase();
@@ -946,8 +947,6 @@ function escapeHtml(str) {
    ========================================================= */
 const LS_BOOKINGS = 'vale_saas_bookings_v1';
 const LS_AUDIT = 'vale_saas_auditlog_v1';
-const LS_USERS = 'vale_saas_users_v1';
-const LS_SESSION = 'vale_saas_session_v1';
 const LS_SIDEBAR = 'vale_saas_sidebar_collapsed_v1';
 
 /* Chave de storage isolada por site — cada site tem seu próprio conjunto
@@ -1074,21 +1073,28 @@ function addSite(name) {
     toast(`Site "${trimmed}" criado. Selecione-o para cadastrar áreas e equipamentos.`);
 }
 
-function persistUsers() { localStorage.setItem(LS_USERS, JSON.stringify(state.users)); }
-function loadUsers() {
-    const u = localStorage.getItem(LS_USERS);
-    if (u) state.users = JSON.parse(u);
+async function fetchUserProfile(authUser) {
+    if (authUser.is_anonymous) {
+        return { id: authUser.id, name: 'Visitante', username: 'visitante', role: 'VISITANTE', canExport: false, active: true, sites: [] };
+    }
+    const { data: profile, error } = await sb.from('profiles').select('id, name, email, role, can_export, active').eq('id', authUser.id).single();
+    if (error || !profile) return null;
+    const { data: siteLinks } = await sb.from('profile_sites').select('site_key').eq('profile_id', authUser.id);
+    return {
+        id: profile.id, name: profile.name, username: profile.email, role: profile.role,
+        canExport: profile.can_export, active: profile.active,
+        sites: (siteLinks || []).map(s => s.site_key)
+    };
 }
-function seedUsersIfEmpty() {
-    if (localStorage.getItem(LS_USERS) !== null) return;
-    state.users = [
-        { id: 'u_admin', name: 'Thiago Fernandes', username: 'thiago.fernandes', password: 'admin123', role: 'ADMIN', canExport: true, active: true, sites: [] },
-        { id: 'u_pcm1', name: 'Carlos Lima', username: 'carlos.lima', password: 'pcm123', role: 'PCM', canExport: true, active: true, sites: ['MUTUCA'] },
-        { id: 'u_pco1', name: 'Ana Pereira', username: 'ana.pereira', password: 'pco123', role: 'PCO', canExport: true, active: true, sites: ['MUTUCA'] },
-        { id: 'u_eng1', name: 'Fernanda Ribeiro', username: 'fernanda.ribeiro', password: 'eng123', role: 'ENG_CONF', canExport: false, active: true, sites: ['MUTUCA'] },
-        { id: 'u_eng2', name: 'Roberto Alves', username: 'roberto.alves', password: 'est123', role: 'ENG_EST', canExport: false, active: true, sites: ['MUTUCA'] }
-    ];
-    persistUsers();
+async function loadProfiles() {
+    const { data: profiles, error } = await sb.from('profiles').select('id, name, email, role, can_export, active');
+    if (error) { toast('Erro ao carregar usuários: ' + error.message, 'error'); state.users = []; return; }
+    const { data: siteLinks } = await sb.from('profile_sites').select('profile_id, site_key');
+    state.users = (profiles || []).map(p => ({
+        id: p.id, name: p.name, username: p.email, role: p.role,
+        canExport: p.can_export, active: p.active,
+        sites: (siteLinks || []).filter(s => s.profile_id === p.id).map(s => s.site_key)
+    }));
 }
 
 function addAuditEntry({ tag, acao, justificativa, dataHora, om, agendamentoData, agendamentoHorario }) {
@@ -1359,12 +1365,11 @@ function ensureAccessibleSite() {
     state.agendaTag = ALL_EQUIP.length ? ALL_EQUIP[0].tag : null;
 }
 
-function loginAs(user, options) {
+async function loginAs(user, options) {
     const logEvent = !options || options.logEvent !== false;
     state.currentUser = user;
     state.profileKey = user.role;
     ensureAccessibleSite();
-    localStorage.setItem(LS_SESSION, user.id);
     document.getElementById('login-screen').style.display = 'none';
     document.querySelector('aside').style.display = 'flex';
     document.querySelector('main').style.display = 'flex';
@@ -1382,13 +1387,13 @@ function loginAs(user, options) {
         if (document.getElementById('view-calendario').classList.contains('view-active')) renderWeekGrid();
     }, 60000);
 }
-function logout() {
+async function logout() {
     if (state.currentUser) {
         addAuditEntry({ tag: '—', acao: 'Logout', justificativa: 'Sessão encerrada pelo usuário.' });
         persist();
     }
     if (refreshInterval) { clearInterval(refreshInterval); refreshInterval = null; }
-    localStorage.removeItem(LS_SESSION);
+    await sb.auth.signOut();
     state.currentUser = null;
     state.profileKey = null;
     document.getElementById('login-form').reset();
@@ -1398,19 +1403,35 @@ function logout() {
     document.querySelector('main').style.display = 'none';
 }
 document.getElementById('btn-logout').addEventListener('click', logout);
-document.getElementById('login-form').addEventListener('submit', e => {
+document.getElementById('login-form').addEventListener('submit', async e => {
     e.preventDefault();
-    const username = document.getElementById('login-user').value.trim().toLowerCase();
+    const email = document.getElementById('login-user').value.trim().toLowerCase();
     const password = document.getElementById('login-pass').value;
     const errEl = document.getElementById('login-error');
-    const user = state.users.find(u => u.username.toLowerCase() === username && u.password === password && u.active);
-    if (!user) { errEl.textContent = 'Usuário ou senha inválidos, ou conta inativa.'; errEl.style.display = 'block'; return; }
+    const submitBtn = document.getElementById('btn-login-submit');
     errEl.style.display = 'none';
-    loginAs(user);
+    submitBtn.disabled = true; submitBtn.textContent = 'Entrando...';
+    const { data, error } = await sb.auth.signInWithPassword({ email, password });
+    if (error || !data.user) {
+        submitBtn.disabled = false; submitBtn.textContent = 'Entrar';
+        errEl.textContent = 'E-mail ou senha inválidos.'; errEl.style.display = 'block';
+        return;
+    }
+    const profile = await fetchUserProfile(data.user);
+    submitBtn.disabled = false; submitBtn.textContent = 'Entrar';
+    if (!profile || !profile.active) {
+        await sb.auth.signOut();
+        errEl.textContent = !profile ? 'Este e-mail não tem um perfil cadastrado no sistema. Peça ao Admin Master para vincular sua conta.' : 'Conta desativada. Fale com o Admin Master.';
+        errEl.style.display = 'block';
+        return;
+    }
+    loginAs(profile);
 });
-document.getElementById('btn-guest-login').addEventListener('click', () => {
+document.getElementById('btn-guest-login').addEventListener('click', async () => {
     document.getElementById('login-error').style.display = 'none';
-    loginAs(GUEST_USER);
+    const { data, error } = await sb.auth.signInAnonymously();
+    if (error) { toast('Não foi possível entrar como visitante: ' + error.message, 'error'); return; }
+    loginAs({ id: data.user.id, name: 'Visitante', username: 'visitante', role: 'VISITANTE', canExport: false, active: true, sites: [] });
 });
 
 /* =========================================================
@@ -1480,7 +1501,7 @@ function switchView(view) {
     applySidebarCollapse(view === 'calendario');
     if (view === 'relatorios') { renderReportUserFilter(); renderCharts(); }
     if (view === 'dashboard') renderDashboard();
-    if (view === 'usuarios') renderUsersView();
+    if (view === 'usuarios') loadProfiles().then(renderUsersView);
     if (view === 'calendario') renderWeekGrid();
     if (view === 'mapacalor') renderHeatmap();
 }
@@ -2013,9 +2034,9 @@ function openUserModal(id) {
     openModal(`
         <div class="modal-header"><h3>${editing ? 'Editar Usuário' : 'Novo Usuário'}</h3><button class="modal-close" onclick="closeModal()">&times;</button></div>
         <div class="modal-body">
+            ${!editing ? `<div class="login-hint" style="display:block; margin-top:0;">Como o login agora é um backend real, criar um usuário tem 2 passos: preencha os dados aqui, depois eu peço o UUID gerado ao criar a conta no painel do Supabase (Authentication → Users → Add user).</div>` : ''}
             <div class="m-field"><label>Nome Completo</label><input type="text" id="um-name" value="${editing ? escapeHtml(editing.name) : ''}"></div>
-            <div class="m-field"><label>Usuário (login)</label><input type="text" id="um-username" value="${editing ? escapeHtml(editing.username) : ''}"></div>
-            <div class="m-field"><label>Senha ${editing ? '(deixe em branco para manter a atual)' : ''}</label><input type="password" id="um-password"></div>
+            <div class="m-field"><label>E-mail ${editing ? '' : '(precisa ser o mesmo usado ao criar a conta no Supabase)'}</label><input type="email" id="um-username" value="${editing ? escapeHtml(editing.username) : ''}" ${editing ? 'disabled' : ''}></div>
             <div class="m-field"><label>Perfil</label>
                 <select id="um-role">${roles.map(r => `<option value="${r}" ${editing && editing.role === r ? 'selected' : ''}>${ROLE_META[r].label}</option>`).join('')}</select>
             </div>
@@ -2032,7 +2053,7 @@ function openUserModal(id) {
         </div>
         <div class="modal-footer">
             <button class="btn-secondary" onclick="closeModal()">Cancelar</button>
-            <button class="btn-primary" onclick="saveUser(${editing ? `'${editing.id}'` : 'null'})">Salvar</button>
+            <button class="btn-primary" onclick="saveUser(${editing ? `'${editing.id}'` : 'null'})">${editing ? 'Salvar' : 'Continuar'}</button>
         </div>
     `);
     const roleSelect = document.getElementById('um-role');
@@ -2045,37 +2066,74 @@ function openUserModal(id) {
     toggleAdminOnlyFields();
 }
 
-function saveUser(id) {
+async function saveUser(id) {
     const name = document.getElementById('um-name').value.trim();
-    const username = document.getElementById('um-username').value.trim().toLowerCase();
-    const password = document.getElementById('um-password').value;
+    const email = document.getElementById('um-username').value.trim().toLowerCase();
     const role = document.getElementById('um-role').value;
     const canExport = document.getElementById('um-export').checked;
     const active = document.getElementById('um-active').checked;
     const sites = [...document.querySelectorAll('.um-site-cb:checked')].map(cb => cb.value);
 
-    if (!name || !username) { toast('Preencha nome e usuário.', 'error'); return; }
-    if (!id && password.length < 4) { toast('Defina uma senha com ao menos 4 caracteres.', 'error'); return; }
-    const dup = state.users.find(u => u.username === username && u.id !== id);
-    if (dup) { toast('Já existe um usuário com esse login.', 'error'); return; }
+    if (!name || !email) { toast('Preencha nome e e-mail.', 'error'); return; }
     if (role !== 'ADMIN' && sites.length === 0) { toast('Selecione ao menos um site para este usuário (ou ele não conseguirá acessar nada).', 'warn'); }
 
     if (id) {
-        const u = state.users.find(x => x.id === id);
-        u.name = name; u.username = username; u.role = role; u.canExport = role === 'ADMIN' ? true : canExport; u.active = active; u.sites = sites;
-        if (password) u.password = password;
-        if (state.currentUser && state.currentUser.id === u.id) {
-            state.currentUser = u; state.profileKey = u.role;
-            ensureAccessibleSite();
+        const { error } = await sb.from('profiles').update({
+            name, role, can_export: role === 'ADMIN' ? true : canExport, active
+        }).eq('id', id);
+        if (error) { toast('Erro ao salvar: ' + error.message, 'error'); return; }
+        await sb.from('profile_sites').delete().eq('profile_id', id);
+        if (sites.length) {
+            await sb.from('profile_sites').insert(sites.map(site_key => ({ profile_id: id, site_key })));
         }
+        closeModal();
+        toast('Usuário salvo com sucesso.');
+        if (state.currentUser && state.currentUser.id === id) {
+            state.currentUser = await fetchUserProfile({ id, is_anonymous: false });
+            state.profileKey = state.currentUser.role;
+            ensureAccessibleSite();
+            onProfileChanged();
+        }
+        loadProfiles().then(renderUsersView);
     } else {
-        state.users.push({ id: 'u_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), name, username, password, role, canExport: role === 'ADMIN' ? true : canExport, active, sites });
+        openLinkUuidModal({ name, email, role, canExport: role === 'ADMIN' ? true : canExport, active, sites });
     }
-    persistUsers();
+}
+
+function openLinkUuidModal(pending) {
+    openModal(`
+        <div class="modal-header"><h3>Vincular Conta — ${escapeHtml(pending.name)}</h3><button class="modal-close" onclick="closeModal()">&times;</button></div>
+        <div class="modal-body">
+            <div class="access-denied-text">
+                Agora, no painel do Supabase: <b>Authentication → Users → Add user</b>, crie a conta com o e-mail
+                <b>${escapeHtml(pending.email)}</b> e uma senha temporária (avise a pessoa por fora do sistema, ou peça
+                para ela usar "Esqueci minha senha" na tela de login). Copie o <b>UUID</b> gerado e cole abaixo.
+            </div>
+            <div class="m-field" style="margin-top:14px;"><label>UUID do usuário</label><input type="text" id="link-uuid" placeholder="ex: 3fa85f64-5717-4562-b3fc-2c963f66afa6"></div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn-secondary" onclick="closeModal()">Cancelar</button>
+            <button class="btn-primary" onclick="confirmLinkUuid()">Vincular Perfil</button>
+        </div>
+    `);
+    window.__pendingNewProfile = pending;
+}
+async function confirmLinkUuid() {
+    const uuid = document.getElementById('link-uuid').value.trim();
+    const pending = window.__pendingNewProfile;
+    if (!uuid || !pending) { toast('Informe o UUID copiado do Supabase.', 'error'); return; }
+    const { error: profErr } = await sb.from('profiles').insert({
+        id: uuid, name: pending.name, email: pending.email, role: pending.role,
+        can_export: pending.canExport, active: pending.active
+    });
+    if (profErr) { toast('Erro ao vincular perfil: ' + profErr.message, 'error'); return; }
+    if (pending.sites.length) {
+        await sb.from('profile_sites').insert(pending.sites.map(site_key => ({ profile_id: uuid, site_key })));
+    }
+    window.__pendingNewProfile = null;
     closeModal();
-    toast('Usuário salvo com sucesso.');
-    renderUsersView();
-    if (id && state.currentUser && state.currentUser.id === id) onProfileChanged();
+    toast(`Usuário ${pending.name} vinculado com sucesso.`);
+    loadProfiles().then(renderUsersView);
 }
 
 function openResetPasswordModal(id) {
@@ -2084,67 +2142,49 @@ function openResetPasswordModal(id) {
     openModal(`
         <div class="modal-header"><h3>Redefinir Senha — ${escapeHtml(u.name)}</h3><button class="modal-close" onclick="closeModal()">&times;</button></div>
         <div class="modal-body">
-            <div class="m-field"><label>Nova Senha</label><input type="password" id="rp-password" placeholder="Mínimo 4 caracteres"></div>
-            <div class="m-field"><label>Confirmar Nova Senha</label><input type="password" id="rp-password2"></div>
+            <div class="access-denied-text">Vamos enviar um e-mail para <b>${escapeHtml(u.username)}</b> com um link para a pessoa definir uma nova senha. O Admin Master não digita a senha por ela — isso é mais seguro.</div>
         </div>
         <div class="modal-footer">
             <button class="btn-secondary" onclick="closeModal()">Cancelar</button>
-            <button class="btn-primary" onclick="confirmResetPassword('${u.id}')">Redefinir</button>
+            <button class="btn-primary" onclick="confirmResetPassword('${u.id}')">Enviar E-mail de Redefinição</button>
         </div>
     `);
 }
-function confirmResetPassword(id) {
+async function confirmResetPassword(id) {
     const u = state.users.find(x => x.id === id);
     if (!u) return;
-    const p1 = document.getElementById('rp-password').value;
-    const p2 = document.getElementById('rp-password2').value;
-    if (p1.length < 4) { toast('A nova senha deve ter ao menos 4 caracteres.', 'error'); return; }
-    if (p1 !== p2) { toast('As senhas não conferem.', 'error'); return; }
-    u.password = p1;
-    persistUsers();
-    addAuditEntry({ tag: '—', acao: 'Redefinição de Senha', justificativa: `Senha redefinida pelo Admin Master para o usuário ${u.name} (${u.username}).` });
+    const { error } = await sb.auth.resetPasswordForEmail(u.username);
+    if (error) { toast('Erro ao enviar e-mail: ' + error.message, 'error'); return; }
+    addAuditEntry({ tag: '—', acao: 'Redefinição de Senha', justificativa: `E-mail de redefinição de senha enviado pelo Admin Master para ${u.name} (${u.username}).` });
     persist();
     closeModal();
-    toast(`Senha de ${u.name} redefinida com sucesso.`);
+    toast(`E-mail de redefinição enviado para ${u.name}.`);
 }
 
 function openDeleteUserModal(id) {
     const u = state.users.find(x => x.id === id);
     if (!u) return;
     if (state.currentUser && u.id === state.currentUser.id) { toast('Você não pode excluir sua própria conta enquanto estiver logado.', 'error'); return; }
-    if (u.role === 'ADMIN' && state.users.filter(x => x.role === 'ADMIN').length <= 1) { toast('Não é possível excluir o último Admin Master cadastrado.', 'error'); return; }
     openModal(`
         <div class="modal-header"><h3>Excluir Usuário</h3><button class="modal-close" onclick="closeModal()">&times;</button></div>
         <div class="modal-body">
-            <div class="access-denied-icon">&#128465;</div>
-            <div class="access-denied-text">Tem certeza que deseja excluir permanentemente o usuário <b>${escapeHtml(u.name)}</b> (${escapeHtml(u.username)})? Essa ação não pode ser desfeita. O histórico de auditoria já registrado será mantido.</div>
+            <div class="access-denied-icon">&#9888;</div>
+            <div class="access-denied-text">Exclusão permanente ainda requer uma configuração adicional no backend (em andamento). Por enquanto, use <b>Desativar</b> na lista de usuários — bloqueia o login e o acesso da pessoa imediatamente, com a mesma segurança.</div>
         </div>
         <div class="modal-footer">
-            <button class="btn-secondary" onclick="closeModal()">Cancelar</button>
-            <button class="btn-danger" onclick="confirmDeleteUser('${u.id}')">Excluir Permanentemente</button>
+            <button class="btn-primary" onclick="closeModal()">Entendi</button>
         </div>
     `);
 }
-function confirmDeleteUser(id) {
-    const idx = state.users.findIndex(x => x.id === id);
-    if (idx === -1) return;
-    const u = state.users[idx];
-    state.users.splice(idx, 1);
-    persistUsers();
-    addAuditEntry({ tag: '—', acao: 'Exclusão de Usuário', justificativa: `Conta de ${u.name} (${u.username}) excluída pelo Admin Master.` });
-    persist();
-    closeModal();
-    toast(`Usuário ${u.name} excluído com sucesso.`, 'warn');
-    renderUsersView();
-}
 
-function toggleUserActive(id) {
+async function toggleUserActive(id) {
     const u = state.users.find(x => x.id === id);
     if (!u) return;
     if (state.currentUser && u.id === state.currentUser.id) { toast('Você não pode desativar sua própria conta enquanto estiver logado.', 'error'); return; }
     if (u.active && u.role === 'ADMIN' && state.users.filter(x => x.role === 'ADMIN' && x.active).length <= 1) { toast('Não é possível desativar o último Admin Master ativo.', 'error'); return; }
+    const { error } = await sb.from('profiles').update({ active: !u.active }).eq('id', id);
+    if (error) { toast('Erro ao atualizar: ' + error.message, 'error'); return; }
     u.active = !u.active;
-    persistUsers();
     toast(u.active ? 'Usuário reativado.' : 'Usuário desativado.', u.active ? 'success' : 'warn');
     renderUsersView();
 }
@@ -2282,22 +2322,31 @@ document.getElementById('btn-add-equip').addEventListener('click', () => {
 /* =========================================================
    INICIALIZAÇÃO
    ========================================================= */
-loadSites();
-state.currentSite = localStorage.getItem(LS_ACTIVE_SITE) || 'MUTUCA';
-if (!SITES[state.currentSite]) state.currentSite = 'MUTUCA';
-loadSiteDatabase();
-loadPersisted();
-seedIfEmpty();
-state.agendaTag = ALL_EQUIP.length ? ALL_EQUIP[0].tag : null;
-loadUsers();
-seedUsersIfEmpty();
-renderSiteSelect();
-renderAssetMgmtPanel();
-applySidebarCollapse(localStorage.getItem(LS_SIDEBAR) === '1');
+(async () => {
+    loadSites();
+    state.currentSite = localStorage.getItem(LS_ACTIVE_SITE) || 'MUTUCA';
+    if (!SITES[state.currentSite]) state.currentSite = 'MUTUCA';
+    loadSiteDatabase();
+    loadPersisted();
+    seedIfEmpty();
+    state.agendaTag = ALL_EQUIP.length ? ALL_EQUIP[0].tag : null;
+    renderSiteSelect();
+    renderAssetMgmtPanel();
+    applySidebarCollapse(localStorage.getItem(LS_SIDEBAR) === '1');
 
-const sessionUserId = localStorage.getItem(LS_SESSION);
-const sessionUser = sessionUserId === 'guest' ? GUEST_USER : state.users.find(u => u.id === sessionUserId && u.active);
-if (sessionUser) { loginAs(sessionUser, { logEvent: false }); } else { document.getElementById('login-user').focus(); }
+    const { data: { session } } = await sb.auth.getSession();
+    if (session && session.user) {
+        const profile = await fetchUserProfile(session.user);
+        if (profile && profile.active) {
+            loginAs(profile, { logEvent: false });
+        } else {
+            await sb.auth.signOut();
+            document.getElementById('login-user').focus();
+        }
+    } else {
+        document.getElementById('login-user').focus();
+    }
+})();
 </script>
 </body>
 </html>
