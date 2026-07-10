@@ -1,0 +1,2027 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SaaS VALE - Monitoramento e Agendamento de Ativos</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<style>
+:root {
+    --bg-main: #0c1017;
+    --bg-sidebar: #131924;
+    --bg-card: #18202c;
+    --bg-card-header: #202b3c;
+    --bg-hover: #1c2533;
+    --border-color: #2b394e;
+    --text-primary: #ffffff;
+    --text-secondary: #8a99ad;
+    --text-muted: #5b6b82;
+
+    --color-admin: #2563eb;
+    --color-limpeza: #2563eb;
+    --color-manutencao: #f59e0b;
+    --color-operacao: #10b981;
+    --color-critico: #ef4444;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; }
+
+html, body { height: 100%; }
+
+body {
+    background-color: var(--bg-main);
+    color: var(--text-primary);
+    display: flex;
+    height: 100vh;
+    overflow: hidden;
+}
+
+/* --- SIDEBAR --- */
+aside {
+    width: 280px;
+    background-color: var(--bg-sidebar);
+    border-right: 1px solid var(--border-color);
+    display: flex;
+    flex-direction: column;
+    padding: 24px;
+    justify-content: space-between;
+    flex-shrink: 0;
+    transition: width 0.2s ease;
+    overflow-x: hidden;
+}
+aside.collapsed { width: 76px; padding: 24px 12px; }
+
+.sidebar-topbar { display: flex; justify-content: flex-end; margin-bottom: 14px; }
+aside.collapsed .sidebar-topbar { justify-content: center; }
+#btn-toggle-sidebar { background: none; border: 1px solid var(--border-color); color: var(--text-secondary); width: 30px; height: 30px; border-radius: 6px; cursor: pointer; font-size: 14px; flex-shrink: 0; }
+#btn-toggle-sidebar:hover { border-color: #fff; color: #fff; }
+
+.saas-brand { display: flex; align-items: center; gap: 10px; font-size: 16px; font-weight: bold; color: var(--text-primary); margin-bottom: 20px; white-space: nowrap; }
+.saas-icon { width: 28px; height: 28px; flex-shrink: 0; }
+.saas-icon img { width: 100%; height: 100%; display: block; }
+
+.client-box { background: rgba(255, 255, 255, 0.02); border: 1px solid var(--border-color); border-radius: 8px; padding: 15px; text-align: center; margin-bottom: 20px; }
+.client-title { font-size: 10px; text-transform: uppercase; color: var(--text-secondary); letter-spacing: 1.5px; margin-bottom: 10px; display: block; }
+.vale-logo { font-size: 24px; font-weight: 900; letter-spacing: 1px; display: flex; align-items: center; justify-content: center; gap: 4px; }
+.vale-v { color: #007c5a; }
+.vale-a { color: #f39200; }
+
+/* --- USUÁRIO LOGADO (RBAC) --- */
+.profile-box { background: rgba(255,255,255,0.02); border: 1px solid var(--border-color); border-radius: 8px; padding: 14px; margin-bottom: 20px; }
+.profile-box .client-title { margin-bottom: 8px; }
+#logged-user-name { font-weight: 700; font-size: 14px; }
+#logged-user-role { font-size: 11.5px; color: var(--text-secondary); margin-bottom: 8px; }
+.profile-perms { margin-top: 10px; font-size: 10.5px; line-height: 1.6; color: var(--text-secondary); }
+.profile-perms b { color: var(--text-primary); }
+.perm-tag { display: inline-block; padding: 1px 6px; border-radius: 4px; font-size: 9.5px; font-weight: 700; margin-right: 4px; margin-top: 4px; text-transform: uppercase; letter-spacing: 0.4px; }
+.perm-yes { background: rgba(16,185,129,0.15); color: var(--color-operacao); border: 1px solid rgba(16,185,129,0.4); }
+.perm-no { background: rgba(239,68,68,0.12); color: var(--color-critico); border: 1px solid rgba(239,68,68,0.35); }
+#btn-logout { width: 100%; margin-top: 12px; padding: 8px 10px; font-size: 11.5px; }
+
+.nav-links { display: flex; flex-direction: column; gap: 4px; }
+.nav-item {
+    color: var(--text-secondary);
+    padding: 12px 14px;
+    text-decoration: none;
+    border-radius: 6px;
+    font-size: 14px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    transition: all 0.15s;
+    cursor: pointer;
+    border: none;
+    background: none;
+    width: 100%;
+    text-align: left;
+    white-space: nowrap;
+}
+.nav-item svg { flex-shrink: 0; opacity: 0.85; }
+.nav-item:hover { background-color: var(--bg-hover); color: var(--text-primary); }
+.nav-item.active { background-color: var(--border-color); color: var(--text-primary); font-weight: 600; }
+.nav-item.active svg { opacity: 1; }
+
+.sidebar-footer { border-top: 1px solid var(--border-color); padding-top: 18px; font-size: 11px; color: var(--text-secondary); line-height: 1.5; white-space: nowrap; }
+.sidebar-footer strong { color: #ffffff; display: block; margin-top: 4px; font-size: 12px; }
+
+/* --- SIDEBAR RECOLHIDA --- */
+aside.collapsed .saas-brand span, aside.collapsed .client-box, aside.collapsed .profile-box, aside.collapsed .sidebar-footer, aside.collapsed .nav-label { display: none; }
+aside.collapsed .nav-item { justify-content: center; padding: 12px 8px; }
+aside.collapsed .saas-brand { justify-content: center; margin-bottom: 12px; }
+
+/* --- MAIN AREA --- */
+main { flex: 1; display: flex; flex-direction: column; overflow-y: auto; min-width: 0; }
+
+header {
+    background-color: var(--bg-sidebar);
+    border-bottom: 1px solid var(--border-color);
+    padding: 16px 32px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-shrink: 0;
+}
+#header-title { font-weight: bold; font-size: 18px; letter-spacing: 0.3px; }
+#header-subtitle { font-size: 12px; color: var(--text-secondary); margin-top: 2px; }
+
+.user-meta { display: flex; align-items: center; gap: 12px; }
+.user-avatar { width: 36px; height: 36px; background-color: var(--border-color); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 14px; border: 2px solid #4b5563; flex-shrink: 0; }
+
+.content-container { padding: 32px; display: none; flex-direction: column; gap: 24px; }
+.content-container.view-active { display: flex; }
+
+/* --- FILTROS POR ÁREA --- */
+.filter-section, .card-section { background-color: var(--bg-card); border: 1px solid var(--border-color); border-radius: 12px; padding: 20px; }
+.filter-title { font-size: 13px; text-transform: uppercase; color: var(--text-secondary); margin-bottom: 12px; font-weight: 600; letter-spacing: 0.5px; }
+.filter-btn-group { display: flex; gap: 10px; flex-wrap: wrap; }
+
+.btn-area-filter {
+    background-color: #1c2533; border: 1px solid var(--border-color); color: var(--text-primary);
+    padding: 10px 20px; border-radius: 8px; font-size: 14px; font-weight: bold; cursor: pointer;
+    transition: all 0.2s; display: flex; align-items: center; gap: 8px;
+}
+.btn-area-filter:hover { border-color: #ffffff; }
+.btn-area-filter.active { background-color: var(--color-admin); border-color: var(--color-admin); color: #ffffff; box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3); }
+.btn-area-filter span { font-size: 11px; background: rgba(0, 0, 0, 0.3); padding: 2px 6px; border-radius: 4px; color: #ffffff; font-weight: normal; }
+
+/* --- CONTAINER DE EQUIPAMENTOS --- */
+.equip-grid-section { background-color: var(--bg-card); border: 1px solid var(--border-color); border-radius: 12px; padding: 24px; }
+.section-header-box { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; border-bottom: 1px solid var(--border-color); padding-bottom: 12px; flex-wrap: wrap; gap: 10px; }
+.box-title { font-size: 16px; font-weight: 700; }
+.grid-equipamentos { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 12px; }
+
+.equip-card {
+    background-color: rgba(255, 255, 255, 0.02); border: 1px solid var(--border-color); border-radius: 8px;
+    padding: 14px; text-align: center; font-family: monospace; font-size: 14px; font-weight: bold; color: #e5e7eb;
+    transition: all 0.2s; display: flex; flex-direction: column; justify-content: space-between; height: 85px; cursor: pointer;
+}
+.equip-card:hover { border-color: #ffffff; background-color: rgba(255, 255, 255, 0.05); transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.2); }
+
+.status-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-right: 6px; flex-shrink: 0; }
+.st-livre { background-color: var(--color-operacao); }
+.st-manutencao { background-color: var(--color-manutencao); }
+.st-limpeza { background-color: var(--color-limpeza); }
+.st-critico { background-color: var(--color-critico); }
+
+.equip-meta { display: flex; align-items: center; justify-content: center; font-size: 11px; color: var(--text-secondary); font-family: sans-serif; }
+.equip-tag { font-size: 15px; letter-spacing: 0.5px; color: #ffffff; margin: 4px 0; }
+
+/* --- DASHBOARD GERAL (KPIs) --- */
+.kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 18px; }
+.kpi-card { background-color: var(--bg-card); border: 1px solid var(--border-color); border-radius: 12px; padding: 20px; position: relative; overflow: hidden; }
+.kpi-card::before { content:''; position:absolute; left:0; top:0; bottom:0; width:4px; background: var(--accent, var(--color-admin)); }
+.kpi-label { font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-secondary); font-weight: 600; margin-bottom: 10px; }
+.kpi-value { font-size: 34px; font-weight: 800; }
+.kpi-sub { font-size: 11.5px; color: var(--text-muted); margin-top: 6px; }
+
+.charts-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+@media (max-width: 1150px) { .charts-grid { grid-template-columns: 1fr; } }
+.chart-box { background-color: var(--bg-card); border: 1px solid var(--border-color); border-radius: 12px; padding: 20px; height: 320px; display:flex; flex-direction:column; }
+.chart-box canvas { flex: 1; max-height: 260px; }
+.chart-box h3 { font-size: 14px; margin-bottom: 12px; font-weight: 700; }
+
+/* --- CALENDÁRIO / AGENDA --- */
+.agenda-toolbar { display: flex; align-items: flex-end; gap: 16px; flex-wrap: wrap; }
+.agenda-field { display: flex; flex-direction: column; gap: 6px; }
+.agenda-field label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-secondary); font-weight: 600; }
+.agenda-field select, .agenda-field input[type="date"] {
+    background-color: #1c2533; color: var(--text-primary); border: 1px solid var(--border-color);
+    border-radius: 6px; padding: 9px 10px; font-size: 13.5px; min-width: 180px;
+}
+.day-nav { display: flex; gap: 6px; }
+.day-nav button {
+    background-color: #1c2533; border: 1px solid var(--border-color); color: var(--text-primary);
+    padding: 9px 14px; border-radius: 6px; cursor: pointer; font-size: 14px; font-weight: bold;
+}
+.day-nav button:hover { border-color: #fff; }
+.day-nav .today-btn { font-size: 12px; padding: 9px 12px; }
+
+.agenda-legend { display: flex; gap: 16px; flex-wrap: wrap; font-size: 12px; color: var(--text-secondary); align-items: center; }
+.agenda-legend .lg-item { display:flex; align-items:center; gap: 6px; }
+
+.agenda-list { display: flex; flex-direction: column; gap: 6px; max-height: 640px; overflow-y: auto; padding-right: 4px; }
+
+/* --- GRADE SEMANAL (SEG-SEX) --- */
+.week-grid-wrap { max-height: 660px; overflow: auto; border: 1px solid var(--border-color); border-radius: 10px; }
+.week-grid { display: grid; grid-template-columns: 84px repeat(7, minmax(128px, 1fr)); min-width: 1080px; }
+.wg-corner, .wg-head { background-color: var(--bg-card-header); padding: 10px 8px; text-align: center; position: sticky; top: 0; z-index: 2; border-bottom: 1px solid var(--border-color); }
+.wg-corner { z-index: 3; left: 0; }
+.wg-head { border-left: 1px solid var(--border-color); }
+.wg-head .day-name { font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-secondary); }
+.wg-head .day-date { font-size: 15px; font-weight: 800; margin-top: 2px; }
+.wg-head.today { background-color: rgba(37,99,235,0.22); }
+.wg-shift-label { grid-column: 1 / -1; font-size: 10.5px; text-transform: uppercase; letter-spacing: 1px; color: var(--text-muted); font-weight: 700; padding: 7px 10px 3px; background-color: rgba(255,255,255,0.02); border-top: 1px dashed var(--border-color); }
+.wg-hour-label { font-family: monospace; font-size: 11px; color: var(--text-secondary); display: flex; align-items: center; justify-content: center; padding: 6px; border-top: 1px solid var(--border-color); background-color: var(--bg-card-header); position: sticky; left: 0; z-index: 1; }
+.wg-slot { min-height: 50px; padding: 6px 8px; border-top: 1px solid var(--border-color); border-left: 1px solid var(--border-color); cursor: pointer; display: flex; flex-direction: column; justify-content: center; gap: 3px; transition: background 0.15s; }
+.wg-slot:hover { background-color: rgba(255,255,255,0.05); }
+.wg-slot.wg-livre.wg-past { opacity: 0.5; }
+.wg-slot .wg-badge { font-size: 9px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.4px; padding: 2px 7px; border-radius: 10px; width: fit-content; }
+.wg-slot .wg-time { font-family: monospace; font-size: 9.5px; color: var(--text-muted); }
+.wg-slot .wg-just { font-size: 10.5px; color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.slot-row {
+    display: flex; align-items: center; gap: 14px; padding: 11px 14px; border-radius: 8px;
+    border: 1px solid var(--border-color); background: rgba(255,255,255,0.015); cursor: pointer; transition: all 0.15s;
+}
+.slot-row:hover { border-color: #fff; background: rgba(255,255,255,0.04); }
+.slot-hour { font-family: monospace; font-size: 13px; color: var(--text-secondary); width: 92px; flex-shrink: 0; }
+.slot-badge { font-size: 10.5px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px; padding: 3px 9px; border-radius: 20px; flex-shrink: 0; }
+.badge-livre { background: rgba(16,185,129,0.15); color: var(--color-operacao); border: 1px solid rgba(16,185,129,0.4); }
+.badge-manutencao { background: rgba(245,158,11,0.15); color: var(--color-manutencao); border: 1px solid rgba(245,158,11,0.4); }
+.badge-limpeza { background: rgba(37,99,235,0.18); color: #7ea6ff; border: 1px solid rgba(37,99,235,0.45); }
+.badge-critico { background: rgba(239,68,68,0.18); color: #ff8080; border: 1px solid rgba(239,68,68,0.45); }
+.slot-desc { flex: 1; font-size: 13px; color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.slot-desc.muted { color: var(--text-muted); font-style: italic; }
+.slot-operator { font-size: 11px; color: var(--text-muted); flex-shrink: 0; max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* --- AUDITORIA / RELATÓRIOS --- */
+.audit-toolbar { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; }
+.btn-primary { background-color: var(--color-admin); color: #fff; border: none; padding: 10px 18px; border-radius: 7px; font-weight: 700; font-size: 13px; cursor: pointer; transition: filter 0.15s; }
+.btn-primary:hover { filter: brightness(1.15); }
+.btn-secondary { background-color: #1c2533; color: var(--text-primary); border: 1px solid var(--border-color); padding: 10px 18px; border-radius: 7px; font-weight: 700; font-size: 13px; cursor: pointer; }
+.btn-secondary:hover { border-color: #fff; }
+.btn-danger { background-color: rgba(239,68,68,0.15); color: #ff8080; border: 1px solid rgba(239,68,68,0.45); padding: 9px 16px; border-radius: 7px; font-weight: 700; font-size: 12.5px; cursor: pointer; }
+.btn-danger:hover { background-color: rgba(239,68,68,0.28); }
+
+.audit-table-wrap { overflow-x: auto; border: 1px solid var(--border-color); border-radius: 10px; }
+table.audit-table { width: 100%; border-collapse: collapse; font-size: 12.5px; min-width: 1200px; }
+table.audit-table th { background-color: var(--bg-card-header); color: var(--text-secondary); text-align: left; padding: 10px 14px; text-transform: uppercase; font-size: 10.5px; letter-spacing: 0.4px; position: sticky; top: 0; }
+table.audit-table td { padding: 10px 14px; border-top: 1px solid var(--border-color); vertical-align: top; }
+table.audit-table tr:hover td { background-color: rgba(255,255,255,0.02); }
+.tag-chip { font-family: monospace; font-weight: bold; background: rgba(255,255,255,0.05); padding: 2px 8px; border-radius: 5px; }
+.locked-panel { text-align:center; padding: 50px 20px; color: var(--text-secondary); }
+.locked-panel .lock-icon { font-size: 32px; margin-bottom: 12px; opacity: 0.6; }
+
+/* --- MAPA DE CALOR --- */
+.heatmap-table-wrap { overflow: auto; max-height: 560px; border: 1px solid var(--border-color); border-radius: 10px; }
+table.heatmap-table { width: 100%; border-collapse: collapse; font-size: 12.5px; min-width: 720px; }
+table.heatmap-table th { background-color: var(--bg-card-header); color: var(--text-secondary); text-align: center; padding: 10px 12px; text-transform: uppercase; font-size: 10px; letter-spacing: 0.4px; position: sticky; top: 0; z-index: 1; }
+table.heatmap-table th:first-child, table.heatmap-table td:first-child { text-align: left; position: sticky; left: 0; background-color: var(--bg-card); z-index: 1; }
+table.heatmap-table th:first-child { background-color: var(--bg-card-header); z-index: 2; }
+table.heatmap-table td { padding: 10px 12px; border-top: 1px solid var(--border-color); text-align: center; font-weight: 700; }
+table.heatmap-table td.hm-empty { color: var(--text-muted); font-weight: 400; }
+table.heatmap-table td.hm-total { background-color: rgba(255,255,255,0.03); }
+table.heatmap-table tr:hover td { filter: brightness(1.15); }
+
+/* --- MODAL --- */
+.modal-overlay {
+    position: fixed; inset: 0; background: rgba(5,8,13,0.7); display: none; align-items: center; justify-content: center;
+    z-index: 1000; backdrop-filter: blur(2px);
+}
+.modal-overlay.open { display: flex; }
+.modal-box { background-color: var(--bg-card); border: 1px solid var(--border-color); border-radius: 14px; width: 440px; max-width: 92vw; max-height: 88vh; overflow-y: auto; box-shadow: 0 20px 60px rgba(0,0,0,0.5); }
+.modal-header { padding: 18px 22px; border-bottom: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: center; }
+.modal-header h3 { font-size: 15.5px; }
+.modal-close { background: none; border: none; color: var(--text-secondary); font-size: 20px; cursor: pointer; line-height: 1; }
+.modal-close:hover { color: #fff; }
+.modal-body { padding: 20px 22px; display: flex; flex-direction: column; gap: 14px; }
+.modal-footer { padding: 16px 22px; border-top: 1px solid var(--border-color); display: flex; justify-content: flex-end; gap: 10px; }
+.m-field label { display: block; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-secondary); font-weight: 600; margin-bottom: 6px; }
+.m-field select, .m-field textarea, .m-field input {
+    width: 100%; background-color: #1c2533; color: var(--text-primary); border: 1px solid var(--border-color);
+    border-radius: 6px; padding: 9px 10px; font-size: 13.5px; resize: vertical; font-family: inherit;
+}
+.m-checkbox { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-secondary); }
+.m-info-row { display: flex; justify-content: space-between; font-size: 12.5px; padding: 6px 0; border-bottom: 1px dashed var(--border-color); }
+.m-info-row b { color: var(--text-primary); }
+.access-denied-icon { font-size: 40px; text-align: center; margin-bottom: 6px; }
+.access-denied-text { text-align: center; color: var(--text-secondary); font-size: 13.5px; line-height: 1.5; }
+
+/* --- TOASTS --- */
+#toast-container { position: fixed; bottom: 24px; right: 24px; display: flex; flex-direction: column; gap: 10px; z-index: 2000; }
+.toast {
+    min-width: 260px; max-width: 340px; background-color: #1c2533; border: 1px solid var(--border-color); border-left: 4px solid var(--color-operacao);
+    border-radius: 8px; padding: 13px 16px; font-size: 13px; box-shadow: 0 8px 24px rgba(0,0,0,0.35);
+    animation: toastIn 0.25s ease-out;
+}
+.toast.error { border-left-color: var(--color-critico); }
+.toast.warn { border-left-color: var(--color-manutencao); }
+@keyframes toastIn { from { opacity: 0; transform: translateX(30px); } to { opacity: 1; transform: translateX(0); } }
+
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-thumb { background: var(--border-color); border-radius: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+
+/* --- LOGIN --- */
+#login-screen {
+    position: fixed; inset: 0; z-index: 3000; padding: 20px; overflow: hidden;
+    display: flex; align-items: center; justify-content: center;
+    background: linear-gradient(180deg, #0c1119 0%, #0a0e15 55%, #090c12 100%);
+    font-family: 'Inter', 'Segoe UI', system-ui, sans-serif;
+}
+@keyframes belt-move { from { background-position: 0 0; } to { background-position: -80px 0; } }
+@keyframes truck-bounce { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-3px); } }
+.login-scene-layer { position: absolute; pointer-events: none; }
+.login-truck { animation: truck-bounce 6s ease-in-out infinite; }
+.login-belt-surface { animation: belt-move 3.2s linear infinite; }
+@media (max-width: 900px) {
+    .login-mountains, .login-conveyor, .login-truck { display: none; }
+}
+.login-card { position: relative; z-index: 1; background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 16px; padding: 36px 34px; width: 380px; max-width: 100%; box-shadow: 0 24px 60px rgba(0,0,0,0.5); }
+.login-brand { display: flex; flex-direction: column; align-items: center; gap: 10px; margin-bottom: 22px; }
+.login-brand img { width: 52px; height: 52px; }
+.login-title { font-size: 19px; font-weight: 800; }
+.login-sub { font-size: 12.5px; color: var(--text-secondary); text-align: center; margin-top: 4px; }
+#login-form { display: flex; flex-direction: column; gap: 14px; margin-top: 18px; }
+.login-error { background: rgba(239,68,68,0.12); border: 1px solid rgba(239,68,68,0.4); color: #ff8080; font-size: 12.5px; padding: 9px 12px; border-radius: 7px; }
+.login-hint { margin-top: 18px; font-size: 10.5px; color: var(--text-muted); line-height: 1.7; border-top: 1px dashed var(--border-color); padding-top: 12px; }
+.login-hint b { color: var(--text-secondary); }
+#btn-guest-login { width: 100%; margin-top: 12px; padding: 10px; }
+
+/* --- BADGE DE AGENDAMENTO PRÓXIMO --- */
+.nav-item { position: relative; }
+.nav-badge {
+    position: absolute; top: 6px; right: 10px; background: var(--color-manutencao); color: #1a1200;
+    font-size: 9.5px; font-weight: 800; min-width: 16px; height: 16px; border-radius: 8px; display: none;
+    align-items: center; justify-content: center; padding: 0 4px;
+}
+aside.collapsed .nav-badge { top: 2px; right: 2px; }
+
+@media print {
+    aside, header, .filter-section, .agenda-toolbar, .audit-toolbar button, #btn-heatmap-print, #toast-container { display: none !important; }
+    body, main { overflow: visible !important; height: auto !important; }
+    .content-container { display: flex !important; padding: 0; }
+    .content-container:not(.view-active) { display: none !important; }
+}
+</style>
+</head>
+<body>
+
+<!-- TELA DE LOGIN -->
+<div id="login-screen">
+    <!-- CENA DE FUNDO: brilho de céu -->
+    <div class="login-scene-layer" style="top:-200px; left:50%; width:1400px; height:900px; transform:translateX(-50%); background:radial-gradient(circle, rgba(37,99,235,.10) 0%, rgba(15,118,110,.06) 45%, transparent 70%);"></div>
+
+    <!-- ESTRELAS / POEIRA -->
+    <div class="login-scene-layer" style="inset:0; background-image:
+        radial-gradient(1.5px 1.5px at 12% 18%, rgba(255,255,255,.25), transparent),
+        radial-gradient(1px 1px at 34% 9%, rgba(255,255,255,.18), transparent),
+        radial-gradient(1.5px 1.5px at 68% 14%, rgba(255,255,255,.2), transparent),
+        radial-gradient(1px 1px at 82% 22%, rgba(255,255,255,.15), transparent),
+        radial-gradient(1.5px 1.5px at 92% 8%, rgba(255,255,255,.2), transparent),
+        radial-gradient(1px 1px at 5% 30%, rgba(255,255,255,.12), transparent);"></div>
+
+    <!-- MONTANHAS AO FUNDO -->
+    <svg class="login-scene-layer login-mountains" width="100%" height="420" viewBox="0 0 1920 420" style="bottom:0; left:0;" preserveAspectRatio="none">
+        <polygon points="0,420 0,300 180,220 380,290 560,190 760,270 980,180 1200,260 1420,200 1650,280 1920,230 1920,420" fill="#131a24"></polygon>
+        <polygon points="0,420 0,350 220,300 480,340 720,280 960,330 1220,290 1480,340 1720,300 1920,330 1920,420" fill="#0f151f"></polygon>
+    </svg>
+
+    <!-- CHÃO -->
+    <div class="login-scene-layer" style="bottom:0; left:0; width:100%; height:170px; background:linear-gradient(180deg, #171f2a 0%, #0d1219 100%); border-top:1px solid rgba(255,255,255,.03);"></div>
+
+    <!-- ESTRUTURA DA CORREIA TRANSPORTADORA (lado direito) -->
+    <div class="login-scene-layer login-conveyor" style="bottom:150px; right:60px; width:640px; height:320px;">
+        <div style="position:absolute; bottom:0; left:40px; width:10px; height:180px; background:linear-gradient(180deg,#2a3646,#161e28); transform:skewX(-8deg);"></div>
+        <div style="position:absolute; bottom:0; left:230px; width:9px; height:130px; background:linear-gradient(180deg,#2a3646,#161e28); transform:skewX(-8deg);"></div>
+        <div style="position:absolute; bottom:0; left:420px; width:8px; height:90px; background:linear-gradient(180deg,#2a3646,#161e28); transform:skewX(-8deg);"></div>
+        <div style="position:absolute; bottom:0; left:590px; width:7px; height:55px; background:linear-gradient(180deg,#2a3646,#161e28); transform:skewX(-8deg);"></div>
+        <div style="position:absolute; bottom:20px; left:30px; width:220px; height:5px; background:#222c38; transform:rotate(-24deg); transform-origin:left center;"></div>
+        <div style="position:absolute; bottom:70px; left:230px; width:200px; height:4px; background:#222c38; transform:rotate(-19deg); transform-origin:left center;"></div>
+        <div style="position:absolute; bottom:170px; left:20px; width:600px; height:26px; background:linear-gradient(180deg,#324256,#1b232f); border-radius:5px; transform:rotate(-13deg); transform-origin:left center; box-shadow:0 4px 10px rgba(0,0,0,.4);"></div>
+        <div class="login-belt-surface" style="position:absolute; bottom:176px; left:24px; width:590px; height:8px; border-radius:3px; background: repeating-linear-gradient(90deg, #45566c 0 40px, #384658 40px 80px); background-size:80px 100%; transform:rotate(-13deg); transform-origin:left center; opacity:.75;"></div>
+        <div style="position:absolute; bottom:236px; left:0px; width:56px; height:56px; border-radius:10px; background:linear-gradient(135deg,#2f3d50,#161e28); box-shadow:0 4px 10px rgba(0,0,0,.4);"></div>
+        <div style="position:absolute; bottom:250px; left:70px; font-family:'Inter',sans-serif; font-size:12px; font-weight:700; letter-spacing:.06em; color:#4a5c72;">33TC20</div>
+    </div>
+
+    <!-- CAMINHÃO FORA DE ESTRADA (lado esquerdo) -->
+    <div class="login-scene-layer login-truck" style="bottom:120px; left:110px; width:420px; height:230px;">
+        <svg width="420" height="230" viewBox="0 0 420 230">
+            <path d="M40 60 L300 40 L340 70 L340 130 L40 130 Z" fill="#1c2836"></path>
+            <path d="M40 60 L300 40 L300 55 L55 75 Z" fill="#26374a"></path>
+            <path d="M40 90 L40 130 L10 130 L10 105 L25 90 Z" fill="#141c26"></path>
+            <rect x="14" y="96" width="20" height="14" rx="2" fill="#3a5a78" opacity="0.85"></rect>
+            <rect x="20" y="128" width="330" height="16" rx="3" fill="#111820"></rect>
+            <circle cx="95" cy="168" r="42" fill="#0c1116"></circle>
+            <circle cx="95" cy="168" r="26" fill="#1b2530"></circle>
+            <circle cx="95" cy="168" r="9" fill="#333f4c"></circle>
+            <circle cx="270" cy="168" r="42" fill="#0c1116"></circle>
+            <circle cx="270" cy="168" r="26" fill="#1b2530"></circle>
+            <circle cx="270" cy="168" r="9" fill="#333f4c"></circle>
+            <circle cx="325" cy="168" r="34" fill="#0c1116"></circle>
+            <circle cx="325" cy="168" r="21" fill="#1b2530"></circle>
+            <circle cx="325" cy="168" r="7" fill="#333f4c"></circle>
+            <circle cx="20" cy="86" r="4" fill="#f59e0b" opacity="0.9"></circle>
+        </svg>
+    </div>
+
+    <!-- NEBLINA EM PRIMEIRO PLANO -->
+    <div class="login-scene-layer" style="bottom:0; left:0; width:100%; height:220px; background:linear-gradient(180deg, transparent 0%, rgba(9,12,18,.55) 70%, rgba(9,12,18,.85) 100%);"></div>
+
+    <div class="login-card">
+        <div class="login-brand">
+            <img src="assets/logo-icone.svg" alt="logo">
+            <div class="login-title">SaaS VALE</div>
+            <div class="login-sub">Monitoramento e Agendamento de Ativos. Informe suas credenciais para acessar o sistema.</div>
+        </div>
+        <form id="login-form">
+            <div class="m-field"><label>Usuário</label><input type="text" id="login-user" autocomplete="username" placeholder="ex: thiago.fernandes"></div>
+            <div class="m-field"><label>Senha</label><input type="password" id="login-pass" autocomplete="current-password" placeholder="••••••••"></div>
+            <div class="login-error" id="login-error" style="display:none;"></div>
+            <button type="submit" class="btn-primary" style="width:100%; padding:11px;">Entrar</button>
+        </form>
+        <button type="button" class="btn-secondary" id="btn-guest-login">Entrar como Visitante (Somente Leitura)</button>
+        <div class="login-hint" style="display:none;">
+            <b>Contas de demonstração</b> (protótipo — dados salvos apenas neste navegador):<br>
+            Admin Master: <b>thiago.fernandes</b> / admin123<br>
+            PCM: <b>carlos.lima</b> / pcm123 &nbsp;|&nbsp; PCO: <b>ana.pereira</b> / pco123<br>
+            Eng. Confiabilidade: <b>fernanda.ribeiro</b> / eng123<br>
+            Eng. Estrutural: <b>roberto.alves</b> / est123
+        </div>
+    </div>
+</div>
+
+<!-- SIDEBAR ESQUERDA -->
+<aside style="display:none;">
+    <div>
+        <div class="sidebar-topbar">
+            <button id="btn-toggle-sidebar" title="Recolher/expandir menu">&#9776;</button>
+        </div>
+        <div class="saas-brand">
+            <div class="saas-icon"><img src="assets/logo-icone.svg" alt="logo"></div>
+            <span>GENERIC SaaS</span>
+        </div>
+
+        <div class="client-box">
+            <span class="client-title">Cliente Integrado</span>
+            <div class="vale-logo"><span class="vale-v">V</span><span class="vale-a">A</span>LE</div>
+        </div>
+
+        <div class="profile-box">
+            <span class="client-title">Usuário Logado</span>
+            <div id="logged-user-name">—</div>
+            <div id="logged-user-role">—</div>
+            <div class="profile-perms" id="profile-perms"></div>
+            <button class="btn-secondary" id="btn-logout">Sair</button>
+        </div>
+
+        <nav class="nav-links">
+            <button class="nav-item active" data-view="dashboard" title="Dashboard Geral">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/></svg>
+                <span class="nav-label">Dashboard Geral</span>
+            </button>
+            <button class="nav-item" data-view="ativos" title="Ativos &amp; Áreas">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>
+                <span class="nav-label">Ativos &amp; Áreas</span>
+            </button>
+            <button class="nav-item" data-view="calendario" title="Calendário de Processos">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+                <span class="nav-label">Calendário de Processos</span>
+                <span class="nav-badge" id="nav-badge-calendario"></span>
+            </button>
+            <button class="nav-item" data-view="relatorios" title="Relatórios &amp; Auditoria">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><rect x="7" y="12" width="3" height="6"/><rect x="13" y="8" width="3" height="10"/><rect x="19" y="5" width="0" height="13"/><path d="M19 5v13"/></svg>
+                <span class="nav-label">Relatórios &amp; Auditoria</span>
+            </button>
+            <button class="nav-item" data-view="mapacalor" title="Mapa de Calor">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="5" height="5" rx="1"/><rect x="9.5" y="3" width="5" height="5" rx="1"/><rect x="16" y="3" width="5" height="5" rx="1"/><rect x="3" y="9.5" width="5" height="5" rx="1"/><rect x="9.5" y="9.5" width="5" height="5" rx="1"/><rect x="16" y="9.5" width="5" height="5" rx="1"/><rect x="3" y="16" width="5" height="5" rx="1"/><rect x="9.5" y="16" width="5" height="5" rx="1"/><rect x="16" y="16" width="5" height="5" rx="1"/></svg>
+                <span class="nav-label">Mapa de Calor</span>
+            </button>
+            <button class="nav-item" data-view="usuarios" title="Usuários &amp; Acessos" style="display:none;">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                <span class="nav-label">Usuários &amp; Acessos</span>
+            </button>
+        </nav>
+    </div>
+
+    <div class="sidebar-footer">
+        SISTEMA SAAS&nbsp;&nbsp;VALE.<br>
+        <strong>Criado por Thiago Fernandes</strong>
+    </div>
+</aside>
+
+<!-- ÁREA DE CONTEÚDO PRINCIPAL -->
+<main style="display:none;">
+    <header>
+        <div>
+            <div id="header-title">Dashboard Geral</div>
+            <div id="header-subtitle">Visão executiva dos ativos do complexo</div>
+        </div>
+        <div class="user-meta">
+            <div style="text-align: right; font-size: 13px;">
+                <div style="font-weight: 600;" id="user-name">Thiago Fernandes</div>
+                <div style="color: var(--text-secondary); font-size: 11px;" id="user-role">Administrador Master</div>
+            </div>
+            <div class="user-avatar" id="user-avatar">TF</div>
+        </div>
+    </header>
+
+    <!-- VIEW: DASHBOARD GERAL -->
+    <div class="content-container view-active" id="view-dashboard">
+        <div>
+            <h2 style="font-size: 22px; margin-bottom: 6px; font-weight: 600;">Visão Executiva do Complexo</h2>
+            <p style="color: var(--text-secondary); font-size: 14px;">Indicadores em tempo real de disponibilidade operacional dos 94 ativos monitorados.</p>
+        </div>
+
+        <div class="kpi-grid">
+            <div class="kpi-card" style="--accent: var(--color-admin);">
+                <div class="kpi-label">Total de Ativos</div>
+                <div class="kpi-value" id="kpi-total">0</div>
+                <div class="kpi-sub">Distribuídos em 5 áreas operacionais</div>
+            </div>
+            <div class="kpi-card" style="--accent: var(--color-operacao);">
+                <div class="kpi-label">Equipamentos Livres</div>
+                <div class="kpi-value" id="kpi-livres">0</div>
+                <div class="kpi-sub">Disponíveis neste momento</div>
+            </div>
+            <div class="kpi-card" style="--accent: var(--color-manutencao);">
+                <div class="kpi-label">Em Manutenção</div>
+                <div class="kpi-value" id="kpi-manutencao">0</div>
+                <div class="kpi-sub">Bloqueios ativos da PCM</div>
+            </div>
+            <div class="kpi-card" style="--accent: var(--color-limpeza);">
+                <div class="kpi-label">Em Limpeza</div>
+                <div class="kpi-value" id="kpi-limpeza">0</div>
+                <div class="kpi-sub">Bloqueios ativos da PCO</div>
+            </div>
+        </div>
+
+        <div class="charts-grid">
+            <div class="chart-box">
+                <h3>Distribuição de Status Atual</h3>
+                <canvas id="chart-status"></canvas>
+            </div>
+            <div class="chart-box">
+                <h3>Últimas Ações Registradas</h3>
+                <div class="agenda-list" id="dashboard-recent" style="max-height: 260px;"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- VIEW: ATIVOS & ÁREAS -->
+    <div class="content-container" id="view-ativos">
+        <div>
+            <h2 style="font-size: 22px; margin-bottom: 6px; font-weight: 600;">Gerenciamento de Equipamentos Industriais</h2>
+            <p style="color: var(--text-secondary); font-size: 14px;">Selecione uma área operacional abaixo para filtrar e organizar os ativos de forma agrupada. Clique em um ativo para ver/editar sua agenda.</p>
+        </div>
+
+        <div class="filter-section">
+            <div class="filter-title">Filtrar por Área Ativa</div>
+            <div class="filter-btn-group" id="area-filter-group"></div>
+        </div>
+
+        <div class="card-section" id="admin-asset-mgmt" style="display:none;">
+            <div class="filter-title">Gerenciar Ativos (Admin Master)</div>
+            <div class="agenda-toolbar">
+                <div class="agenda-field">
+                    <label>Novo Código de Área</label>
+                    <input type="text" id="new-area-code" placeholder="ex: NOVA1" style="min-width:140px;">
+                </div>
+                <div class="agenda-field">
+                    <label>Nome de Exibição</label>
+                    <input type="text" id="new-area-label" placeholder="ex: Nova Área" style="min-width:160px;">
+                </div>
+                <button class="btn-primary" id="btn-add-area" style="align-self:flex-end;">+ Adicionar Área</button>
+            </div>
+            <div style="height:14px;"></div>
+            <div class="agenda-toolbar">
+                <div class="agenda-field">
+                    <label>Área de Destino</label>
+                    <select id="new-equip-area"></select>
+                </div>
+                <div class="agenda-field">
+                    <label>Tag do Equipamento</label>
+                    <input type="text" id="new-equip-tag" placeholder="ex: 99TC01" style="min-width:160px;">
+                </div>
+                <button class="btn-primary" id="btn-add-equip" style="align-self:flex-end;">+ Adicionar Equipamento</button>
+            </div>
+            <div style="height:14px;"></div>
+            <div class="agenda-toolbar">
+                <div class="agenda-field">
+                    <label>Equipamento a Mover</label>
+                    <select id="move-equip-tag" style="min-width:200px;"></select>
+                </div>
+                <div class="agenda-field">
+                    <label>Nova Área</label>
+                    <select id="move-equip-area" style="min-width:160px;"></select>
+                </div>
+                <button class="btn-primary" id="btn-move-equip" style="align-self:flex-end;">Mover Equipamento</button>
+            </div>
+        </div>
+
+        <div class="equip-grid-section">
+            <div class="section-header-box">
+                <div class="box-title" id="grid-title">Equipamentos da Área: TOD</div>
+                <div class="agenda-legend">
+                    <div class="lg-item"><span class="status-dot st-livre"></span>Livre</div>
+                    <div class="lg-item"><span class="status-dot st-manutencao"></span>Manutenção</div>
+                    <div class="lg-item"><span class="status-dot st-limpeza"></span>Limpeza</div>
+                    <div class="lg-item"><span class="status-dot st-critico"></span>Crítico</div>
+                </div>
+            </div>
+            <div class="grid-equipamentos" id="container-equipamentos"></div>
+        </div>
+    </div>
+
+    <!-- VIEW: CALENDÁRIO DE PROCESSOS -->
+    <div class="content-container" id="view-calendario">
+        <div>
+            <h2 style="font-size: 22px; margin-bottom: 6px; font-weight: 600;">Calendário de Processos</h2>
+            <p style="color: var(--text-secondary); font-size: 14px;">Agenda semanal completa (domingo a sábado) por equipamento, com datas reais. Clique em um horário livre para agendar, em um ocupado para ver detalhes, e navegue entre semanas para consultar histórico ou agendamentos futuros.</p>
+        </div>
+
+        <div class="card-section">
+            <div class="agenda-toolbar">
+                <div class="agenda-field">
+                    <label>Equipamento</label>
+                    <select id="agenda-equip"></select>
+                </div>
+                <div class="agenda-field">
+                    <label>Ir para semana de</label>
+                    <input type="date" id="week-jump-date">
+                </div>
+                <div class="day-nav">
+                    <button id="btn-prev-week" title="Semana anterior">&#8592;</button>
+                    <button class="today-btn" id="btn-this-week">Semana Atual</button>
+                    <button id="btn-next-week" title="Próxima semana">&#8594;</button>
+                </div>
+                <div class="agenda-legend" style="margin-left:auto;">
+                    <div class="lg-item"><span class="status-dot st-livre"></span>Livre</div>
+                    <div class="lg-item"><span class="status-dot st-manutencao"></span>Manutenção</div>
+                    <div class="lg-item"><span class="status-dot st-limpeza"></span>Limpeza</div>
+                    <div class="lg-item"><span class="status-dot st-critico"></span>Emergencial</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="equip-grid-section">
+            <div class="section-header-box">
+                <div class="box-title" id="agenda-title">Agenda</div>
+            </div>
+            <div class="week-grid-wrap"><div class="week-grid" id="week-grid"></div></div>
+        </div>
+    </div>
+
+    <!-- VIEW: RELATÓRIOS & AUDITORIA -->
+    <div class="content-container" id="view-relatorios">
+        <div>
+            <h2 style="font-size: 22px; margin-bottom: 6px; font-weight: 600;">Relatórios Operacionais e Auditoria</h2>
+            <p style="color: var(--text-secondary); font-size: 14px;">Indicadores de indisponibilidade e trilha de auditoria completa dos agendamentos.</p>
+        </div>
+
+        <div class="card-section">
+            <div class="agenda-toolbar">
+                <div class="agenda-field"><label>Período — De</label><input type="date" id="report-from"></div>
+                <div class="agenda-field"><label>Período — Até</label><input type="date" id="report-to"></div>
+                <div class="agenda-field" id="report-user-wrap" style="display:none;">
+                    <label>Usuário (Admin Master)</label>
+                    <select id="report-user"><option value="">Todos os Usuários</option></select>
+                </div>
+                <div class="day-nav">
+                    <button class="today-btn" id="btn-apply-filter">Aplicar Filtro</button>
+                    <button id="btn-clear-filter">Limpar</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="charts-grid">
+            <div class="chart-box">
+                <h3>Top 5 Equipamentos - Maior Taxa de Indisponibilidade</h3>
+                <canvas id="chart-top5"></canvas>
+            </div>
+            <div class="chart-box">
+                <h3>Volume de Intervenções por Área</h3>
+                <canvas id="chart-area"></canvas>
+            </div>
+        </div>
+
+        <div class="card-section" id="audit-section">
+            <div class="audit-toolbar">
+                <div class="filter-title" style="margin-bottom:0;">Log de Auditoria de Ativos</div>
+                <div style="display:flex; gap:10px;">
+                    <button class="btn-secondary" id="btn-print-audit">Imprimir Relatório</button>
+                    <button class="btn-primary" id="btn-export-audit">Exportar Excel (.xlsx)</button>
+                </div>
+            </div>
+            <div style="height:16px;"></div>
+            <div class="audit-table-wrap">
+                <table class="audit-table">
+                    <thead>
+                        <tr>
+                            <th>Data/Horário</th><th>Tag</th><th>Área</th><th>Ação</th><th>Justificativa</th><th>Operador Responsável</th>
+                        </tr>
+                    </thead>
+                    <tbody id="audit-tbody"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- VIEW: MAPA DE CALOR -->
+    <div class="content-container" id="view-mapacalor">
+        <div>
+            <h2 style="font-size: 22px; margin-bottom: 6px; font-weight: 600;">Mapa de Calor de Intervenções</h2>
+            <p style="color: var(--text-secondary); font-size: 14px;">Indicadores de manutenção e limpeza por equipamento em um período. Filtre por data e/ou equipamento específico.</p>
+        </div>
+
+        <div class="card-section">
+            <div class="agenda-toolbar">
+                <div class="agenda-field"><label>Período — De</label><input type="date" id="heatmap-from"></div>
+                <div class="agenda-field"><label>Período — Até</label><input type="date" id="heatmap-to"></div>
+                <div class="agenda-field">
+                    <label>Equipamento</label>
+                    <select id="heatmap-equip" style="min-width:200px;"><option value="">Todos os Equipamentos</option></select>
+                </div>
+                <div class="day-nav">
+                    <button class="today-btn" id="btn-heatmap-apply">Aplicar Filtro</button>
+                    <button id="btn-heatmap-clear">Limpar</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="kpi-grid">
+            <div class="kpi-card" style="--accent: var(--color-manutencao);">
+                <div class="kpi-label">Equipamento com Mais Manutenções</div>
+                <div class="kpi-value" id="heatmap-kpi-manut" style="font-size:22px;">—</div>
+                <div class="kpi-sub" id="heatmap-kpi-manut-sub">Nenhum dado no período</div>
+            </div>
+            <div class="kpi-card" style="--accent: var(--color-limpeza);">
+                <div class="kpi-label">Equipamento com Mais Limpezas</div>
+                <div class="kpi-value" id="heatmap-kpi-limpeza" style="font-size:22px;">—</div>
+                <div class="kpi-sub" id="heatmap-kpi-limpeza-sub">Nenhum dado no período</div>
+            </div>
+        </div>
+
+        <div class="equip-grid-section">
+            <div class="section-header-box">
+                <div class="box-title">Intervenções por Equipamento e Tipo</div>
+                <button class="btn-secondary" id="btn-heatmap-print">Imprimir</button>
+            </div>
+            <div class="heatmap-table-wrap">
+                <table class="heatmap-table" id="heatmap-table"></table>
+            </div>
+        </div>
+    </div>
+
+    <!-- VIEW: USUÁRIOS & ACESSOS (somente Admin Master) -->
+    <div class="content-container" id="view-usuarios">
+        <div>
+            <h2 style="font-size: 22px; margin-bottom: 6px; font-weight: 600;">Usuários &amp; Acessos</h2>
+            <p style="color: var(--text-secondary); font-size: 14px;">Crie e gerencie contas de PCM, PCO e Engenharia. Apenas o Admin Master pode gerenciar usuários e permissões de exportação.</p>
+        </div>
+
+        <div class="card-section">
+            <div class="audit-toolbar">
+                <div class="filter-title" style="margin-bottom:0;">Contas Cadastradas</div>
+                <button class="btn-primary" id="btn-new-user">+ Novo Usuário</button>
+            </div>
+            <div style="height:16px;"></div>
+            <div class="audit-table-wrap">
+                <table class="audit-table">
+                    <thead>
+                        <tr>
+                            <th>Nome</th><th>Usuário</th><th>Perfil</th><th>Exporta Relatórios</th><th>Status</th><th>Ações</th>
+                        </tr>
+                    </thead>
+                    <tbody id="users-tbody"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</main>
+
+<!-- MODAL GENÉRICO -->
+<div class="modal-overlay" id="modal-overlay">
+    <div class="modal-box" id="modal-box"></div>
+</div>
+
+<div id="toast-container"></div>
+
+<script>
+'use strict';
+
+/* =========================================================
+   BASE DE DADOS DE EQUIPAMENTOS (94 ativos / 5 áreas)
+   ========================================================= */
+const DATABASE = {
+    TOD: ['40AL02', '40EM01', '40MG02', '40SL01', '40TC02', '40TC03', '40TC04', '40TC05', 'CARREGAMENTO'],
+    TCLD: ['27TC15', '27TC15A', '27TC16B', '27TC16A', '33AL03', '33TC17', '27MG01', '27MG02', '27MG03', '27MG04', '33TC18', '33TC19', '33TC20', 'GROTA ZERO', '33SL02', '40SL01', '40MG01', '27TC16'],
+    USINA: ['21AL02', '21AL03', '21TC03', '22BR02', '22BR03', '22BR04', '22PE01', '22PE02', '22PE02A', '22PE02B', '22TC04', '22TC05', '22TC08', '23CE01A', '23CE01B', '23CE01C', '23PE04A', '23PE04B', '23PE04C', '24BP01A', '24BP01B', '24BP01C', '25BP01A', '25BP01B', '25BP01C', '25BV01A', '25BV01B', '25BV01C', '26EX01', '27EM01', '27TC06', '27TC07', '27TC09', '27TC10', '27TC11', '27TC12', '27TC13', '27TC14', 'FV01A', 'FV01B', 'FV01C', 'FV01D', '27TC08'],
+    SBR: ['12AL01', '12BR01', '12DV01', '12DV02', '12PE02A', '12PE02B', '12TC01A', '12TC02', '12TC08', '12TC10A', '12TC10B', '12TC11A', '12TC11B', '12TC9A', '12TC9B', '12TC01'],
+    ITMS: ['65EM01', '65TC01', '65TC02', '65TC03', '65TC04A', '65TC05', '65TC06', '65TC07']
+};
+const AREA_LABEL = { TOD: 'TOD', TCLD: 'TCLD', USINA: 'USINA', SBR: 'SBR', ITMS: 'ITM-S' };
+
+function getAllEquip() {
+    const list = [];
+    Object.keys(DATABASE).forEach(area => DATABASE[area].forEach(tag => list.push({ tag, area })));
+    return list;
+}
+const ALL_EQUIP = getAllEquip();
+function areaOf(tag) { const e = ALL_EQUIP.find(x => x.tag === tag); return e ? e.area : null; }
+
+/* =========================================================
+   MATRIZ DE PERMISSÕES (RBAC)
+   ========================================================= */
+const ROLE_META = {
+    PCM: { label: 'PCM — Planej. e Controle de Manutenção', canBook: ['Manutenção Preventiva', 'Manutenção Corretiva'], readOnly: false },
+    PCO: { label: 'PCO — Planej. e Controle Operacional', canBook: ['Limpeza', 'Limpeza Lokaminas'], readOnly: false },
+    ENG_CONF: { label: 'Engenheiro de Confiabilidade', canBook: [], readOnly: true },
+    ENG_EST: { label: 'Engenheiro Estrutural', canBook: [], readOnly: true },
+    ADMIN: { label: 'Admin Master', canBook: ['Manutenção Preventiva', 'Manutenção Corretiva', 'Limpeza', 'Limpeza Lokaminas'], readOnly: false },
+    VISITANTE: { label: 'Visitante (Somente Leitura)', canBook: [], readOnly: true }
+};
+const TYPE_STATUS = { 'Manutenção Preventiva': 'manutencao', 'Manutenção Corretiva': 'manutencao', 'Limpeza': 'limpeza', 'Limpeza Lokaminas': 'limpeza' };
+const GUEST_USER = { id: 'guest', name: 'Visitante', username: 'guest', role: 'VISITANTE', canExport: false, active: true };
+
+function initialsOf(name) {
+    return name.trim().split(/\s+/).map(p => p[0]).slice(0, 2).join('').toUpperCase();
+}
+
+const state = {
+    profileKey: null, currentUser: null, users: [],
+    currentArea: 'TOD', agendaTag: ALL_EQUIP[0].tag, weekStart: getSunday(todayStr()),
+    bookings: [], auditLog: [], reportFilter: { from: null, to: null, username: null },
+    heatmapFilter: { from: null, to: null, equip: null }
+};
+let pendingBookingDate = null;
+
+function activeProfile() {
+    const u = state.currentUser;
+    if (!u) return { label: '', user: '', initials: '', canBook: [], readOnly: true, canExport: false };
+    const role = ROLE_META[u.role];
+    return { label: role.label, user: u.name, initials: initialsOf(u.name), canBook: role.canBook, readOnly: role.readOnly, canExport: u.role === 'ADMIN' ? true : !!u.canExport };
+}
+function canBookType(type) { const p = activeProfile(); return !p.readOnly && p.canBook.includes(type); }
+function canExportReports() { return activeProfile().canExport; }
+
+/* =========================================================
+   HELPERS DE DATA/HORA
+   ========================================================= */
+function pad(n) { return String(n).padStart(2, '0'); }
+function todayStr() { const d = new Date(); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`; }
+function nowHour() { return new Date().getHours(); }
+function nowMinutes() { const d = new Date(); return d.getHours() * 60 + d.getMinutes(); }
+function timeToMinutes(t) { const [h, m] = t.split(':').map(Number); return h * 60 + m; }
+function minutesToTime(mins) { const h = Math.floor(mins / 60), m = mins % 60; return `${pad(h)}:${pad(m)}`; }
+function addDays(dateStr, delta) {
+    const [y, m, d] = dateStr.split('-').map(Number);
+    const dt = new Date(y, m - 1, d + delta);
+    return `${dt.getFullYear()}-${pad(dt.getMonth() + 1)}-${pad(dt.getDate())}`;
+}
+function formatDateBR(dateStr) { const [y, m, d] = dateStr.split('-'); return `${d}/${m}/${y}`; }
+function getSunday(dateStr) {
+    const [y, m, d] = dateStr.split('-').map(Number);
+    const dt = new Date(y, m - 1, d);
+    dt.setDate(dt.getDate() - dt.getDay()); // getDay(): 0=Dom..6=Sáb
+    return `${dt.getFullYear()}-${pad(dt.getMonth() + 1)}-${pad(dt.getDate())}`;
+}
+function getWeekDates(weekStart) { return Array.from({ length: 7 }, (_, i) => addDays(weekStart, i)); }
+function escapeHtml(str) {
+    return String(str).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+/* =========================================================
+   PERSISTÊNCIA (LocalStorage)
+   ========================================================= */
+const LS_BOOKINGS = 'vale_saas_bookings_v1';
+const LS_AUDIT = 'vale_saas_auditlog_v1';
+const LS_USERS = 'vale_saas_users_v1';
+const LS_SESSION = 'vale_saas_session_v1';
+const LS_SIDEBAR = 'vale_saas_sidebar_collapsed_v1';
+
+function persist() {
+    localStorage.setItem(LS_BOOKINGS, JSON.stringify(state.bookings));
+    localStorage.setItem(LS_AUDIT, JSON.stringify(state.auditLog));
+}
+function loadPersisted() {
+    const b = localStorage.getItem(LS_BOOKINGS);
+    const a = localStorage.getItem(LS_AUDIT);
+    if (b) state.bookings = JSON.parse(b);
+    if (a) state.auditLog = JSON.parse(a);
+}
+
+function persistUsers() { localStorage.setItem(LS_USERS, JSON.stringify(state.users)); }
+function loadUsers() {
+    const u = localStorage.getItem(LS_USERS);
+    if (u) state.users = JSON.parse(u);
+}
+function seedUsersIfEmpty() {
+    if (localStorage.getItem(LS_USERS) !== null) return;
+    state.users = [
+        { id: 'u_admin', name: 'Thiago Fernandes', username: 'thiago.fernandes', password: 'admin123', role: 'ADMIN', canExport: true, active: true },
+        { id: 'u_pcm1', name: 'Carlos Lima', username: 'carlos.lima', password: 'pcm123', role: 'PCM', canExport: true, active: true },
+        { id: 'u_pco1', name: 'Ana Pereira', username: 'ana.pereira', password: 'pco123', role: 'PCO', canExport: true, active: true },
+        { id: 'u_eng1', name: 'Fernanda Ribeiro', username: 'fernanda.ribeiro', password: 'eng123', role: 'ENG_CONF', canExport: false, active: true },
+        { id: 'u_eng2', name: 'Roberto Alves', username: 'roberto.alves', password: 'est123', role: 'ENG_EST', canExport: false, active: true }
+    ];
+    persistUsers();
+}
+
+function addAuditEntry({ tag, acao, justificativa, dataHora, om, agendamentoData, agendamentoHorario }) {
+    state.auditLog.unshift({
+        id: 'a_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7),
+        dataHora: dataHora || new Date().toISOString(),
+        tag, area: areaOf(tag), acao,
+        justificativa,
+        operador: `${activeProfile().user} (${state.profileKey})`,
+        role: state.profileKey,
+        username: state.currentUser ? state.currentUser.username : null,
+        om: om || null,
+        agendamentoData: agendamentoData || null,
+        agendamentoHorario: agendamentoHorario || null
+    });
+}
+
+/* =========================================================
+   SEED DE DADOS DEMO (primeira execução)
+   ========================================================= */
+function seedIfEmpty() {
+    if (localStorage.getItem(LS_BOOKINGS) !== null) return;
+    const h = nowHour();
+    const capMin = m => Math.min(m, 23 * 60 + 59);
+    const today = todayStr();
+    const tomorrow = addDays(today, 1);
+
+    const seedBookings = [
+        { tag: '22BR02', area: 'USINA', date: today, startMin: h * 60, endMin: capMin(h * 60 + 180), type: 'Manutenção Preventiva', emergencial: false, om: '100234567890', justification: 'Inspeção preventiva de rotina programada na reunião S-1.', profileKey: 'PCM', operator: 'Carlos Lima (PCM)' },
+        { tag: '12TC01', area: 'SBR', date: today, startMin: h * 60, endMin: capMin(h * 60 + 120), type: 'Limpeza', emergencial: false, om: '200345678901', justification: 'Lavagem de canais e correias transportadoras.', profileKey: 'PCO', operator: 'Ana Pereira (PCO)' },
+        { tag: '40TC02', area: 'TOD', date: today, startMin: h * 60, endMin: capMin(h * 60 + 60), type: 'Manutenção Corretiva', emergencial: true, om: '300456789012', justification: 'Falha crítica identificada — substituição emergencial de rolamento.', profileKey: 'PCM', operator: 'Carlos Lima (PCM)' },
+        { tag: '27TC15', area: 'TCLD', date: tomorrow, startMin: 8 * 60, endMin: 12 * 60, type: 'Manutenção Preventiva', emergencial: false, om: '400567890123', justification: 'Troca de correia programada para amanhã.', profileKey: 'PCM', operator: 'Carlos Lima (PCM)' }
+    ];
+
+    const seedUsernames = { PCM: 'carlos.lima', PCO: 'ana.pereira' };
+    seedBookings.forEach(b => {
+        const booking = { id: 'b_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7), ...b, createdAt: new Date().toISOString() };
+        state.bookings.push(booking);
+        state.auditLog.unshift({
+            id: 'a_' + booking.id, dataHora: booking.createdAt, tag: booking.tag, area: booking.area, acao: booking.type,
+            justificativa: booking.justification, operador: booking.operator, role: booking.profileKey, username: seedUsernames[booking.profileKey],
+            om: booking.om, agendamentoData: booking.date, agendamentoHorario: `${minutesToTime(booking.startMin)}–${minutesToTime(booking.endMin)}`
+        });
+    });
+
+    // Histórico adicional para riqueza dos gráficos (eventos passados, não ativos na agenda)
+    const histTags = ['27TC10', '27TC10', '22PE01', '22PE01', '22PE01', '12DV01', '65TC02', '40AL02', '33TC18', '22BR03', '27TC13', '12TC02', '65TC01', '22TC04', '40TC03'];
+    const histTypes = ['Manutenção Preventiva', 'Manutenção Corretiva', 'Limpeza'];
+    const histJust = ['Troca de correia', 'Inspeção preventiva', 'Lavagem de canais', 'Corretiva emergencial — motor', 'Lubrificação programada', 'Ajuste de esticamento'];
+    const histNames = { PCM: 'Carlos Lima', PCO: 'Ana Pereira' };
+    histTags.forEach((tag, i) => {
+        const daysAgo = 2 + i * 2;
+        const type = histTypes[i % histTypes.length];
+        const profileKey = TYPE_STATUS[type] === 'limpeza' ? 'PCO' : 'PCM';
+        const dt = new Date(); dt.setDate(dt.getDate() - daysAgo);
+        const dtStr = `${dt.getFullYear()}-${pad(dt.getMonth() + 1)}-${pad(dt.getDate())}`;
+        state.auditLog.push({
+            id: 'a_hist_' + i, dataHora: dt.toISOString(), tag, area: areaOf(tag), acao: type,
+            justificativa: histJust[i % histJust.length], operador: `${histNames[profileKey]} (${profileKey})`,
+            role: profileKey, username: seedUsernames[profileKey],
+            om: String(500000000000 + i).slice(0, 12), agendamentoData: dtStr, agendamentoHorario: null
+        });
+    });
+    state.auditLog.sort((x, y) => new Date(y.dataHora) - new Date(x.dataHora));
+    persist();
+}
+
+/* =========================================================
+   STATUS "AO VIVO" DE UM EQUIPAMENTO
+   ========================================================= */
+function getLiveStatus(tag) {
+    const today = todayStr(); const nowMin = nowMinutes();
+    const b = state.bookings.find(bk => bk.tag === tag && bk.date === today && nowMin >= bk.startMin && nowMin < bk.endMin);
+    if (!b) return { status: 'livre', label: 'Livre' };
+    if (TYPE_STATUS[b.type] === 'limpeza') return { status: 'limpeza', label: 'Limpeza', booking: b };
+    if (b.emergencial) return { status: 'critico', label: 'Crítico', booking: b };
+    return { status: 'manutencao', label: 'Manut.', booking: b };
+}
+
+/* =========================================================
+   TOASTS
+   ========================================================= */
+function toast(msg, type = 'success') {
+    const el = document.createElement('div');
+    el.className = 'toast' + (type === 'error' ? ' error' : type === 'warn' ? ' warn' : '');
+    el.textContent = msg;
+    document.getElementById('toast-container').appendChild(el);
+    setTimeout(() => { el.style.transition = 'opacity 0.3s'; el.style.opacity = '0'; setTimeout(() => el.remove(), 300); }, 3600);
+}
+
+/* =========================================================
+   MODAIS
+   ========================================================= */
+function openModal(html) {
+    document.getElementById('modal-box').innerHTML = html;
+    document.getElementById('modal-overlay').classList.add('open');
+}
+function closeModal() { document.getElementById('modal-overlay').classList.remove('open'); }
+document.getElementById('modal-overlay').addEventListener('click', e => { if (e.target.id === 'modal-overlay') closeModal(); });
+
+function showAccessDenied(detail) {
+    openModal(`
+        <div class="modal-header"><h3>Acesso Restrito</h3><button class="modal-close" onclick="closeModal()">&times;</button></div>
+        <div class="modal-body">
+            <div class="access-denied-icon">&#128683;</div>
+            <div class="access-denied-text"><b>Acesso Negado:</b> Perfil sem privilégios para esta ação.${detail ? '<br><br>' + escapeHtml(detail) : ''}</div>
+        </div>
+        <div class="modal-footer"><button class="btn-primary" onclick="closeModal()">Entendi</button></div>
+    `);
+}
+
+function openBookingModal(tag, dateStr, startHour) {
+    const p = activeProfile();
+    if (p.readOnly || p.canBook.length === 0) { showAccessDenied(`O perfil "${p.label}" possui acesso apenas de leitura ao calendário.`); return; }
+    pendingBookingDate = dateStr;
+    const options = p.canBook.map(t => `<option value="${t}">${t}</option>`).join('');
+    const defaultStart = `${pad(startHour)}:00`;
+    const defaultEnd = minutesToTime(Math.min(startHour * 60 + 60, 23 * 60 + 59));
+    openModal(`
+        <div class="modal-header"><h3>Novo Agendamento — ${tag}</h3><button class="modal-close" onclick="closeModal()">&times;</button></div>
+        <div class="modal-body">
+            <div class="m-field"><label>Equipamento</label><input type="text" value="${tag} (${AREA_LABEL[areaOf(tag)]})" disabled></div>
+            <div class="m-field"><label>Data</label><input type="text" value="${formatDateBR(dateStr)}" disabled></div>
+            <div class="m-field"><label>Horário de Início *</label><input type="time" id="bk-start" value="${defaultStart}"></div>
+            <div class="m-field"><label>Horário de Término *</label><input type="time" id="bk-end" value="${defaultEnd}"></div>
+            <div class="m-field"><label>Tipo de Bloqueio</label><select id="bk-type">${options}</select></div>
+            <div class="m-field"><label>Número da OM *</label><input type="text" id="bk-om" maxlength="12" inputmode="numeric" placeholder="Ex: 123456789012"></div>
+            <div class="m-field" id="bk-emergencial-wrap" style="display:none;">
+                <label class="m-checkbox"><input type="checkbox" id="bk-emergencial" style="width:auto;"> Corretiva emergencial (marca como crítico)</label>
+            </div>
+            <div class="m-field"><label>Justificativa Técnica *</label><textarea id="bk-just" rows="3" maxlength="200" placeholder="Ex: Troca de correia, Inspeção preventiva, Lavagem de canais..."></textarea></div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn-secondary" onclick="closeModal()">Cancelar</button>
+            <button class="btn-primary" onclick="submitBooking('${tag}')">Confirmar Agendamento</button>
+        </div>
+    `);
+    const typeSelect = document.getElementById('bk-type');
+    const toggleEmergencial = () => { document.getElementById('bk-emergencial-wrap').style.display = typeSelect.value === 'Manutenção Corretiva' ? 'block' : 'none'; };
+    typeSelect.addEventListener('change', toggleEmergencial);
+    toggleEmergencial();
+}
+
+function submitBooking(tag) {
+    const dateStr = pendingBookingDate;
+    const startStr = document.getElementById('bk-start').value;
+    const endStr = document.getElementById('bk-end').value;
+    const type = document.getElementById('bk-type').value;
+    const om = document.getElementById('bk-om').value.trim();
+    const emergencial = document.getElementById('bk-emergencial') ? document.getElementById('bk-emergencial').checked : false;
+    const justification = document.getElementById('bk-just').value.trim();
+
+    if (!canBookType(type)) { showAccessDenied(`O perfil ativo não pode agendar bloqueios do tipo "${type}".`); return; }
+    if (!startStr || !endStr) { toast('Informe o horário de início e de término.', 'error'); return; }
+    if (!/^\d{1,12}$/.test(om)) { toast('Informe o número da OM (somente dígitos, até 12 caracteres).', 'error'); return; }
+    if (justification.length < 5) { toast('Informe uma justificativa técnica válida (mínimo 5 caracteres).', 'error'); return; }
+
+    const startMin = timeToMinutes(startStr);
+    const endMin = timeToMinutes(endStr);
+    if (endMin <= startMin) { toast('O horário de término deve ser depois do horário de início.', 'error'); return; }
+
+    const overlap = state.bookings.some(b => b.tag === tag && b.date === dateStr && startMin < b.endMin && endMin > b.startMin);
+    if (overlap) { toast('Conflito de horário: já existe um bloqueio nesse intervalo para este equipamento.', 'error'); return; }
+
+    const booking = {
+        id: 'b_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7),
+        tag, area: areaOf(tag), date: dateStr, startMin, endMin, type, om,
+        emergencial: type === 'Manutenção Corretiva' ? emergencial : false,
+        justification, profileKey: state.profileKey, operator: `${activeProfile().user} (${state.profileKey})`,
+        createdAt: new Date().toISOString()
+    };
+    state.bookings.push(booking);
+    addAuditEntry({
+        tag, acao: type, justificativa: justification, dataHora: booking.createdAt,
+        om, agendamentoData: dateStr, agendamentoHorario: `${minutesToTime(startMin)}–${minutesToTime(endMin)}`
+    });
+    persist();
+    closeModal();
+    toast('Agendamento confirmado com sucesso.');
+    renderWeekGrid(); renderAtivos(); renderDashboard(); updateUpcomingBadge();
+}
+
+function openDetailModal(booking) {
+    const p = activeProfile();
+    const canCancel = p.readOnly === false && (state.profileKey === 'ADMIN' || p.canBook.includes(booking.type));
+    openModal(`
+        <div class="modal-header"><h3>${booking.tag} — Detalhes do Bloqueio</h3><button class="modal-close" onclick="closeModal()">&times;</button></div>
+        <div class="modal-body">
+            <div class="m-info-row"><span>Área</span><b>${AREA_LABEL[booking.area] || booking.area}</b></div>
+            <div class="m-info-row"><span>Tipo</span><b>${escapeHtml(booking.type)}${booking.emergencial ? ' (Emergencial)' : ''}</b></div>
+            <div class="m-info-row"><span>OM</span><b>${escapeHtml(booking.om || '—')}</b></div>
+            <div class="m-info-row"><span>Data</span><b>${formatDateBR(booking.date)}</b></div>
+            <div class="m-info-row"><span>Horário</span><b>${minutesToTime(booking.startMin)} — ${minutesToTime(booking.endMin)}</b></div>
+            <div class="m-info-row"><span>Operador Responsável</span><b>${escapeHtml(booking.operator)}</b></div>
+            <div class="m-field" style="margin-top:6px;"><label>Justificativa Técnica</label><div style="font-size:13px; color: var(--text-primary); line-height:1.5;">${escapeHtml(booking.justification)}</div></div>
+        </div>
+        <div class="modal-footer">
+            ${canCancel ? `<button class="btn-danger" onclick="openCancelModal('${booking.id}')">Encerrar / Cancelar Bloqueio</button>` : ''}
+            <button class="btn-secondary" onclick="closeModal()">Fechar</button>
+        </div>
+    `);
+}
+
+function openCancelModal(id) {
+    const booking = state.bookings.find(b => b.id === id);
+    if (!booking) return;
+    const p = activeProfile();
+    if (p.readOnly || (state.profileKey !== 'ADMIN' && !p.canBook.includes(booking.type))) { showAccessDenied('Perfil sem privilégios para cancelar este tipo de bloqueio.'); return; }
+    openModal(`
+        <div class="modal-header"><h3>Cancelar Agendamento — ${booking.tag}</h3><button class="modal-close" onclick="closeModal()">&times;</button></div>
+        <div class="modal-body">
+            <div class="m-info-row"><span>Tipo</span><b>${escapeHtml(booking.type)}${booking.emergencial ? ' (Emergencial)' : ''}</b></div>
+            <div class="m-info-row"><span>OM</span><b>${escapeHtml(booking.om || '—')}</b></div>
+            <div class="m-info-row"><span>Data / Horário</span><b>${formatDateBR(booking.date)} — ${minutesToTime(booking.startMin)} às ${minutesToTime(booking.endMin)}</b></div>
+            <div class="m-info-row"><span>Justificativa original</span><b>${escapeHtml(booking.justification)}</b></div>
+            <div class="m-field" style="margin-top:6px;"><label>Justificativa do Cancelamento *</label><textarea id="cancel-just" rows="3" maxlength="200" placeholder="Explique o motivo do cancelamento/liberação antecipada deste bloqueio..."></textarea></div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn-secondary" onclick="closeModal()">Voltar</button>
+            <button class="btn-danger" onclick="confirmCancelBooking('${booking.id}')">Confirmar Cancelamento</button>
+        </div>
+    `);
+}
+
+function confirmCancelBooking(id) {
+    const idx = state.bookings.findIndex(b => b.id === id);
+    if (idx === -1) return;
+    const booking = state.bookings[idx];
+    const p = activeProfile();
+    if (p.readOnly || (state.profileKey !== 'ADMIN' && !p.canBook.includes(booking.type))) { showAccessDenied('Perfil sem privilégios para cancelar este tipo de bloqueio.'); return; }
+    const reason = document.getElementById('cancel-just').value.trim();
+    if (reason.length < 5) { toast('Informe uma justificativa para o cancelamento (mínimo 5 caracteres).', 'error'); return; }
+    state.bookings.splice(idx, 1);
+    addAuditEntry({
+        tag: booking.tag, acao: `${booking.type} (Cancelado)`, justificativa: reason,
+        om: booking.om, agendamentoData: booking.date, agendamentoHorario: `${minutesToTime(booking.startMin)}–${minutesToTime(booking.endMin)}`
+    });
+    persist();
+    closeModal();
+    toast('Bloqueio cancelado e removido da agenda.', 'warn');
+    renderWeekGrid(); renderAtivos(); renderDashboard(); updateUpcomingBadge();
+}
+
+/* =========================================================
+   LOGIN / LOGOUT
+   ========================================================= */
+let refreshInterval = null;
+function loginAs(user, options) {
+    const logEvent = !options || options.logEvent !== false;
+    state.currentUser = user;
+    state.profileKey = user.role;
+    localStorage.setItem(LS_SESSION, user.id);
+    document.getElementById('login-screen').style.display = 'none';
+    document.querySelector('aside').style.display = 'flex';
+    document.querySelector('main').style.display = 'flex';
+    if (logEvent) {
+        addAuditEntry({ tag: '—', acao: 'Login', justificativa: 'Acesso ao sistema autenticado.' });
+        persist();
+    }
+    onProfileChanged();
+    switchView('dashboard');
+    updateUpcomingBadge();
+    if (refreshInterval) clearInterval(refreshInterval);
+    refreshInterval = setInterval(() => {
+        updateUpcomingBadge();
+        renderAtivos(); renderDashboard();
+        if (document.getElementById('view-calendario').classList.contains('view-active')) renderWeekGrid();
+    }, 60000);
+}
+function logout() {
+    if (state.currentUser) {
+        addAuditEntry({ tag: '—', acao: 'Logout', justificativa: 'Sessão encerrada pelo usuário.' });
+        persist();
+    }
+    if (refreshInterval) { clearInterval(refreshInterval); refreshInterval = null; }
+    localStorage.removeItem(LS_SESSION);
+    state.currentUser = null;
+    state.profileKey = null;
+    document.getElementById('login-form').reset();
+    document.getElementById('login-error').style.display = 'none';
+    document.getElementById('login-screen').style.display = 'flex';
+    document.querySelector('aside').style.display = 'none';
+    document.querySelector('main').style.display = 'none';
+}
+document.getElementById('btn-logout').addEventListener('click', logout);
+document.getElementById('login-form').addEventListener('submit', e => {
+    e.preventDefault();
+    const username = document.getElementById('login-user').value.trim().toLowerCase();
+    const password = document.getElementById('login-pass').value;
+    const errEl = document.getElementById('login-error');
+    const user = state.users.find(u => u.username.toLowerCase() === username && u.password === password && u.active);
+    if (!user) { errEl.textContent = 'Usuário ou senha inválidos, ou conta inativa.'; errEl.style.display = 'block'; return; }
+    errEl.style.display = 'none';
+    loginAs(user);
+});
+document.getElementById('btn-guest-login').addEventListener('click', () => {
+    document.getElementById('login-error').style.display = 'none';
+    loginAs(GUEST_USER);
+});
+
+/* =========================================================
+   ALERTA DE AGENDAMENTO PRÓXIMO (badge no menu)
+   ========================================================= */
+function updateUpcomingBadge() {
+    const badge = document.getElementById('nav-badge-calendario');
+    const today = todayStr();
+    const nowMin = nowMinutes();
+    const count = state.bookings.filter(b => b.date === today && b.startMin > nowMin && b.startMin <= nowMin + 60).length;
+    if (count > 0) { badge.textContent = count; badge.style.display = 'flex'; }
+    else { badge.style.display = 'none'; }
+}
+
+/* =========================================================
+   RECOLHER / EXPANDIR SIDEBAR
+   ========================================================= */
+function applySidebarCollapse(collapsed) {
+    document.querySelector('aside').classList.toggle('collapsed', collapsed);
+    localStorage.setItem(LS_SIDEBAR, collapsed ? '1' : '0');
+}
+document.getElementById('btn-toggle-sidebar').addEventListener('click', () => {
+    applySidebarCollapse(!document.querySelector('aside').classList.contains('collapsed'));
+});
+
+/* =========================================================
+   RENDER: USUÁRIO LOGADO
+   ========================================================= */
+function onProfileChanged() {
+    const p = activeProfile();
+    document.getElementById('user-name').textContent = p.user;
+    document.getElementById('user-role').textContent = p.label;
+    document.getElementById('user-avatar').textContent = p.initials;
+    document.getElementById('logged-user-name').textContent = p.user;
+    document.getElementById('logged-user-role').textContent = p.label;
+    const bookTags = p.readOnly ? '<span class="perm-tag perm-no">Sem Agendamento</span>' :
+        p.canBook.map(t => `<span class="perm-tag perm-yes">${t}</span>`).join('');
+    document.getElementById('profile-perms').innerHTML = `
+        <div><b>Agendar:</b></div>
+        <div>${bookTags}</div>
+        <div style="margin-top:6px;"><span class="perm-tag ${p.canExport ? 'perm-yes' : 'perm-no'}">${p.canExport ? 'Exporta Relatórios' : 'Sem Exportação'}</span></div>
+    `;
+    document.querySelector('[data-view="usuarios"]').style.display = state.profileKey === 'ADMIN' ? 'flex' : 'none';
+    renderAssetMgmtPanel();
+    renderAgendaEquipSelect();
+    renderAtivos(); renderWeekGrid(); renderAudit(); renderDashboard();
+}
+
+/* =========================================================
+   RENDER: NAVEGAÇÃO / VIEWS
+   ========================================================= */
+const VIEW_META = {
+    dashboard: { title: 'Dashboard Geral', sub: 'Visão executiva dos ativos do complexo' },
+    ativos: { title: 'Ativos & Áreas', sub: 'Mapeamento e filtro georreferenciado de ativos' },
+    calendario: { title: 'Calendário de Processos', sub: 'Agenda interativa de ocupação dos equipamentos' },
+    relatorios: { title: 'Relatórios & Auditoria', sub: 'Indicadores operacionais e trilha de auditoria' },
+    mapacalor: { title: 'Mapa de Calor', sub: 'Indicadores de manutenção e limpeza por equipamento' },
+    usuarios: { title: 'Usuários & Acessos', sub: 'Gestão de contas e permissões (Admin Master)' }
+};
+function switchView(view) {
+    if (view === 'usuarios' && state.profileKey !== 'ADMIN') { showAccessDenied('Apenas o Admin Master pode gerenciar usuários.'); return; }
+    document.querySelectorAll('.nav-item').forEach(b => b.classList.toggle('active', b.dataset.view === view));
+    document.querySelectorAll('.content-container').forEach(c => c.classList.toggle('view-active', c.id === 'view-' + view));
+    document.getElementById('header-title').textContent = VIEW_META[view].title;
+    document.getElementById('header-subtitle').textContent = VIEW_META[view].sub;
+    applySidebarCollapse(view === 'calendario');
+    if (view === 'relatorios') { renderReportUserFilter(); renderCharts(); }
+    if (view === 'dashboard') renderDashboard();
+    if (view === 'usuarios') renderUsersView();
+    if (view === 'calendario') renderWeekGrid();
+    if (view === 'mapacalor') renderHeatmap();
+}
+document.querySelectorAll('.nav-item').forEach(btn => btn.addEventListener('click', () => switchView(btn.dataset.view)));
+
+/* =========================================================
+   RENDER: ATIVOS & ÁREAS
+   ========================================================= */
+function renderAreaFilterButtons() {
+    const group = document.getElementById('area-filter-group');
+    const areaKeys = Object.keys(DATABASE);
+    group.innerHTML = areaKeys.map(k => `<button class="btn-area-filter${state.currentArea === k ? ' active' : ''}" data-area="${k}">${escapeHtml(AREA_LABEL[k] || k)} <span>${DATABASE[k].length}</span></button>`).join('')
+        + `<button class="btn-area-filter${state.currentArea === 'ALL' ? ' active' : ''}" data-area="ALL">VER TODOS <span>${ALL_EQUIP.length}</span></button>`;
+    group.querySelectorAll('.btn-area-filter').forEach(btn => btn.addEventListener('click', () => {
+        state.currentArea = btn.dataset.area;
+        renderAtivos();
+    }));
+}
+function renderAtivos() {
+    renderAreaFilterButtons();
+    const container = document.getElementById('container-equipamentos');
+    const gridTitle = document.getElementById('grid-title');
+    container.innerHTML = '';
+    let items;
+    if (state.currentArea === 'ALL') {
+        gridTitle.textContent = `Todos os Ativos do Complexo (${ALL_EQUIP.length} itens)`;
+        items = ALL_EQUIP;
+    } else {
+        gridTitle.textContent = `Equipamentos da Área: ${AREA_LABEL[state.currentArea]} (${DATABASE[state.currentArea].length} itens)`;
+        items = DATABASE[state.currentArea].map(tag => ({ tag, area: state.currentArea }));
+    }
+    items.forEach(item => {
+        const live = getLiveStatus(item.tag);
+        const card = document.createElement('div');
+        card.className = 'equip-card';
+        card.innerHTML = `
+            <div class="equip-meta"><span class="status-dot st-${live.status}"></span><span>${live.label}</span></div>
+            <div class="equip-tag">${item.tag}</div>
+            <div style="font-size: 10px; color: var(--text-secondary); text-transform: uppercase;">${AREA_LABEL[item.area]}</div>
+        `;
+        card.addEventListener('click', () => {
+            state.agendaTag = item.tag;
+            document.getElementById('agenda-equip').value = item.tag;
+            switchView('calendario');
+            renderWeekGrid();
+        });
+        container.appendChild(card);
+    });
+}
+/* =========================================================
+   RENDER: CALENDÁRIO DE PROCESSOS
+   ========================================================= */
+function renderAgendaEquipSelect() {
+    const sel = document.getElementById('agenda-equip');
+    sel.innerHTML = Object.keys(DATABASE).map(area =>
+        `<optgroup label="${AREA_LABEL[area]}">${DATABASE[area].map(tag => `<option value="${tag}" ${tag === state.agendaTag ? 'selected' : ''}>${tag}</option>`).join('')}</optgroup>`
+    ).join('');
+    sel.onchange = () => { state.agendaTag = sel.value; renderWeekGrid(); };
+}
+const SHIFTS = [
+    { label: 'Madrugada (00h–06h)', from: 0, to: 6 },
+    { label: 'Manhã (06h–12h)', from: 6, to: 12 },
+    { label: 'Tarde (12h–18h)', from: 12, to: 18 },
+    { label: 'Noite (18h–24h)', from: 18, to: 24 }
+];
+const WEEKDAY_NAMES = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
+
+function renderWeekGrid() {
+    const tag = state.agendaTag;
+    const dates = getWeekDates(state.weekStart);
+    const today = todayStr();
+    document.getElementById('agenda-title').textContent =
+        `Agenda de ${tag} — ${AREA_LABEL[areaOf(tag)]} — Semana de ${formatDateBR(dates[0])} a ${formatDateBR(dates[6])}`;
+    document.getElementById('week-jump-date').value = state.weekStart;
+
+    const grid = document.getElementById('week-grid');
+    grid.innerHTML = '';
+
+    const corner = document.createElement('div');
+    corner.className = 'wg-corner';
+    grid.appendChild(corner);
+    dates.forEach((dateStr, i) => {
+        const head = document.createElement('div');
+        head.className = 'wg-head' + (dateStr === today ? ' today' : '');
+        head.innerHTML = `<div class="day-name">${WEEKDAY_NAMES[i]}</div><div class="day-date">${formatDateBR(dateStr)}</div>`;
+        grid.appendChild(head);
+    });
+
+    const weekBookings = state.bookings.filter(b => b.tag === tag && dates.includes(b.date));
+
+    SHIFTS.forEach(shift => {
+        const shiftLabel = document.createElement('div');
+        shiftLabel.className = 'wg-shift-label';
+        shiftLabel.textContent = shift.label;
+        grid.appendChild(shiftLabel);
+
+        for (let h = shift.from; h < shift.to; h++) {
+            const hourLabel = document.createElement('div');
+            hourLabel.className = 'wg-hour-label';
+            hourLabel.textContent = `${pad(h)}:00`;
+            grid.appendChild(hourLabel);
+
+            dates.forEach(dateStr => {
+                const booking = weekBookings.find(b => b.date === dateStr && b.startMin < (h + 1) * 60 && b.endMin > h * 60);
+                const cell = document.createElement('div');
+                const isPast = dateStr < today;
+                if (booking) {
+                    const st = TYPE_STATUS[booking.type] === 'limpeza' ? 'limpeza' : (booking.emergencial ? 'critico' : 'manutencao');
+                    const badgeLabel = booking.emergencial ? 'Emergencial' : booking.type;
+                    cell.className = 'wg-slot';
+                    cell.title = `OM ${booking.om || '—'} — ${booking.justification} — ${booking.operator}`;
+                    cell.innerHTML = `<span class="wg-badge badge-${st}">${badgeLabel}</span><span class="wg-time">${minutesToTime(booking.startMin)}–${minutesToTime(booking.endMin)}</span><span class="wg-just">${escapeHtml(booking.justification)}</span>`;
+                    cell.addEventListener('click', () => openDetailModal(booking));
+                } else {
+                    cell.className = 'wg-slot wg-livre' + (isPast ? ' wg-past' : '');
+                    cell.title = isPast ? 'Data passada' : 'Disponível para agendamento';
+                    cell.innerHTML = `<span class="wg-badge badge-livre">Livre</span>`;
+                    cell.addEventListener('click', () => {
+                        if (isPast) { toast('Não é possível criar agendamentos em datas passadas.', 'warn'); return; }
+                        openBookingModal(tag, dateStr, h);
+                    });
+                }
+                grid.appendChild(cell);
+            });
+        }
+    });
+}
+document.getElementById('week-jump-date').addEventListener('change', e => { if (e.target.value) { state.weekStart = getSunday(e.target.value); renderWeekGrid(); } });
+document.getElementById('btn-prev-week').addEventListener('click', () => { state.weekStart = addDays(state.weekStart, -7); renderWeekGrid(); });
+document.getElementById('btn-next-week').addEventListener('click', () => { state.weekStart = addDays(state.weekStart, 7); renderWeekGrid(); });
+document.getElementById('btn-this-week').addEventListener('click', () => { state.weekStart = getSunday(todayStr()); renderWeekGrid(); });
+
+/* =========================================================
+   RENDER: DASHBOARD GERAL
+   ========================================================= */
+let chartStatus = null;
+function renderDashboard() {
+    const counts = { livre: 0, manutencao: 0, limpeza: 0, critico: 0 };
+    ALL_EQUIP.forEach(e => { counts[getLiveStatus(e.tag).status]++; });
+    document.getElementById('kpi-total').textContent = ALL_EQUIP.length;
+    document.getElementById('kpi-livres').textContent = counts.livre;
+    document.getElementById('kpi-manutencao').textContent = counts.manutencao + counts.critico;
+    document.getElementById('kpi-limpeza').textContent = counts.limpeza;
+
+    const recent = document.getElementById('dashboard-recent');
+    recent.innerHTML = state.auditLog.slice(0, 8).map(a => `
+        <div class="slot-row" style="cursor:default;">
+            <span class="slot-hour" style="width:110px;">${new Date(a.dataHora).toLocaleDateString('pt-BR')}</span>
+            <span class="slot-badge badge-${TYPE_STATUS[a.acao.replace(' (Cancelado)','')] || 'manutencao'}">${escapeHtml(a.tag)}</span>
+            <span class="slot-desc">${escapeHtml(a.acao)} — ${escapeHtml(a.justificativa)}</span>
+        </div>
+    `).join('') || '<div style="color:var(--text-muted); font-size:13px;">Nenhum evento registrado ainda.</div>';
+
+    const ctx = document.getElementById('chart-status');
+    if (ctx) {
+        if (chartStatus) chartStatus.destroy();
+        chartStatus = new Chart(ctx, {
+            type: 'doughnut',
+            data: {
+                labels: ['Livre', 'Manutenção', 'Limpeza', 'Crítico'],
+                datasets: [{ data: [counts.livre, counts.manutencao, counts.limpeza, counts.critico], backgroundColor: ['#10b981', '#f59e0b', '#2563eb', '#ef4444'], borderWidth: 0 }]
+            },
+            options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom', labels: { color: '#8a99ad', boxWidth: 12, font: { size: 11 } } } } }
+        });
+    }
+}
+
+/* =========================================================
+   RENDER: RELATÓRIOS (CHARTS + AUDITORIA)
+   ========================================================= */
+const NON_BOOKING_ACTIONS = ['Login', 'Logout', 'Redefinição de Senha', 'Exclusão de Usuário', 'Exclusão de Registro'];
+function getFilteredAuditLog() {
+    return state.auditLog.filter(a => {
+        if (state.profileKey !== 'ADMIN' && NON_BOOKING_ACTIONS.includes(a.acao)) return false;
+        if ((state.profileKey === 'PCM' || state.profileKey === 'PCO') && a.role === 'ADMIN') return false;
+        if (state.profileKey === 'ADMIN' && state.reportFilter.username && a.username !== state.reportFilter.username) return false;
+        const d = a.dataHora.slice(0, 10);
+        if (state.reportFilter.from && d < state.reportFilter.from) return false;
+        if (state.reportFilter.to && d > state.reportFilter.to) return false;
+        return true;
+    });
+}
+function renderReportUserFilter() {
+    const wrap = document.getElementById('report-user-wrap');
+    const isAdmin = state.profileKey === 'ADMIN';
+    wrap.style.display = isAdmin ? 'flex' : 'none';
+    if (!isAdmin) return;
+    const sel = document.getElementById('report-user');
+    const current = sel.value;
+    sel.innerHTML = '<option value="">Todos os Usuários</option>' +
+        state.users.map(u => `<option value="${escapeHtml(u.username)}">${escapeHtml(u.name)} (${ROLE_META[u.role].label})</option>`).join('');
+    sel.value = current;
+}
+document.getElementById('btn-apply-filter').addEventListener('click', () => {
+    state.reportFilter.from = document.getElementById('report-from').value || null;
+    state.reportFilter.to = document.getElementById('report-to').value || null;
+    state.reportFilter.username = document.getElementById('report-user').value || null;
+    renderCharts();
+});
+document.getElementById('btn-clear-filter').addEventListener('click', () => {
+    document.getElementById('report-from').value = '';
+    document.getElementById('report-to').value = '';
+    document.getElementById('report-user').value = '';
+    state.reportFilter = { from: null, to: null, username: null };
+    renderCharts();
+});
+
+let chartTop5 = null, chartArea = null;
+function renderCharts() {
+    const activeLog = getFilteredAuditLog().filter(a => TYPE_STATUS[a.acao] !== undefined);
+    const perTag = {};
+    activeLog.forEach(a => { perTag[a.tag] = (perTag[a.tag] || 0) + 1; });
+    const top5 = Object.entries(perTag).sort((a, b) => b[1] - a[1]).slice(0, 5);
+
+    const ctx1 = document.getElementById('chart-top5');
+    if (ctx1) {
+        if (chartTop5) chartTop5.destroy();
+        chartTop5 = new Chart(ctx1, {
+            type: 'bar',
+            data: { labels: top5.map(t => t[0]), datasets: [{ label: 'Intervenções', data: top5.map(t => t[1]), backgroundColor: '#f59e0b', borderRadius: 5 }] },
+            options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { ticks: { color: '#8a99ad' }, grid: { color: '#2b394e' } }, y: { ticks: { color: '#8a99ad', stepSize: 1 }, grid: { color: '#2b394e' }, beginAtZero: true } } }
+        });
+    }
+
+    const perArea = {};
+    activeLog.forEach(a => { const lbl = AREA_LABEL[a.area] || a.area; perArea[lbl] = (perArea[lbl] || 0) + 1; });
+    const ctx2 = document.getElementById('chart-area');
+    if (ctx2) {
+        if (chartArea) chartArea.destroy();
+        chartArea = new Chart(ctx2, {
+            type: 'bar',
+            data: { labels: Object.keys(perArea), datasets: [{ label: 'Intervenções', data: Object.values(perArea), backgroundColor: '#2563eb', borderRadius: 5 }] },
+            options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { ticks: { color: '#8a99ad' }, grid: { color: '#2b394e' } }, y: { ticks: { color: '#8a99ad', stepSize: 1 }, grid: { color: '#2b394e' }, beginAtZero: true } } }
+        });
+    }
+    renderAudit();
+}
+
+function formatAgendamento(a) {
+    if (!a.agendamentoData) return '—';
+    return formatDateBR(a.agendamentoData) + (a.agendamentoHorario ? ` (${a.agendamentoHorario})` : '');
+}
+function renderAudit() {
+    const section = document.getElementById('audit-section');
+    if (!canExportReports()) {
+        section.innerHTML = `
+            <div class="locked-panel">
+                <div class="lock-icon">&#128274;</div>
+                <div><b>Seção restrita.</b></div>
+                <div>A auditoria completa e a exportação de relatórios estão disponíveis apenas para os perfis PCM, PCO e Admin Master.</div>
+            </div>`;
+        return;
+    }
+    const isAdmin = state.profileKey === 'ADMIN';
+    section.innerHTML = `
+        <div class="audit-toolbar">
+            <div class="filter-title" style="margin-bottom:0;">Log de Auditoria de Ativos</div>
+            <div style="display:flex; gap:10px;">
+                <button class="btn-secondary" id="btn-print-audit">Imprimir Relatório</button>
+                <button class="btn-primary" id="btn-export-audit">Exportar Excel (.xlsx)</button>
+            </div>
+        </div>
+        <div style="height:16px;"></div>
+        <div class="audit-table-wrap">
+            <table class="audit-table">
+                <thead><tr><th>Data/Hora do Registro</th><th>Data do Agendamento</th><th>Tag</th><th>Área</th><th>Ação</th><th>OM</th><th>Justificativa</th><th>Operador Responsável</th>${isAdmin ? '<th>Ações</th>' : ''}</tr></thead>
+                <tbody id="audit-tbody"></tbody>
+            </table>
+        </div>`;
+    const tbody = document.getElementById('audit-tbody');
+    const filtered = getFilteredAuditLog();
+    tbody.innerHTML = filtered.map(a => `
+        <tr>
+            <td>${new Date(a.dataHora).toLocaleString('pt-BR')}</td>
+            <td>${formatAgendamento(a)}</td>
+            <td><span class="tag-chip">${escapeHtml(a.tag)}</span></td>
+            <td>${AREA_LABEL[a.area] || escapeHtml(a.area || '')}</td>
+            <td>${escapeHtml(a.acao)}</td>
+            <td>${escapeHtml(a.om || '—')}</td>
+            <td>${escapeHtml(a.justificativa)}</td>
+            <td>${escapeHtml(a.operador)}</td>
+            ${isAdmin ? `<td><button class="btn-danger" style="padding:5px 9px; font-size:11px;" onclick="openDeleteAuditModal('${a.id}')">Excluir</button></td>` : ''}
+        </tr>
+    `).join('') || `<tr><td colspan="${isAdmin ? 9 : 8}" style="text-align:center; color:var(--text-muted);">Nenhum registro de auditoria no período selecionado.</td></tr>`;
+
+    document.getElementById('btn-export-audit').addEventListener('click', exportAuditExcel);
+    document.getElementById('btn-print-audit').addEventListener('click', () => window.print());
+}
+
+function openDeleteAuditModal(id) {
+    if (state.profileKey !== 'ADMIN') { showAccessDenied('Apenas o Admin Master pode excluir registros do histórico.'); return; }
+    const entry = state.auditLog.find(a => a.id === id);
+    if (!entry) return;
+    openModal(`
+        <div class="modal-header"><h3>Excluir Registro de Auditoria</h3><button class="modal-close" onclick="closeModal()">&times;</button></div>
+        <div class="modal-body">
+            <div class="access-denied-icon">&#128465;</div>
+            <div class="access-denied-text">
+                Tem certeza que deseja excluir permanentemente este registro do histórico?<br><br>
+                <b>${escapeHtml(entry.tag)}</b> — ${escapeHtml(entry.acao)}<br>
+                ${escapeHtml(entry.justificativa)}<br><br>
+                Esta ação não pode ser desfeita e não afeta agendamentos ativos.
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn-secondary" onclick="closeModal()">Cancelar</button>
+            <button class="btn-danger" onclick="confirmDeleteAuditEntry('${id}')">Excluir Registro</button>
+        </div>
+    `);
+}
+function confirmDeleteAuditEntry(id) {
+    if (state.profileKey !== 'ADMIN') { showAccessDenied('Apenas o Admin Master pode excluir registros do histórico.'); return; }
+    const idx = state.auditLog.findIndex(a => a.id === id);
+    if (idx === -1) return;
+    const entry = state.auditLog[idx];
+    state.auditLog.splice(idx, 1);
+    addAuditEntry({ tag: '—', acao: 'Exclusão de Registro', justificativa: `Registro removido do histórico: "${entry.acao}" — ${entry.tag} (${entry.justificativa})` });
+    persist();
+    closeModal();
+    toast('Registro de auditoria excluído com sucesso.', 'warn');
+    renderCharts();
+}
+
+function auditRowToSheetRow(a) {
+    return {
+        'Data/Hora do Registro': new Date(a.dataHora).toLocaleString('pt-BR'),
+        'Data do Agendamento': a.agendamentoData ? formatDateBR(a.agendamentoData) : '',
+        'Horario do Agendamento': a.agendamentoHorario || '',
+        'Tag': a.tag,
+        'Area': AREA_LABEL[a.area] || a.area || '',
+        'Acao': a.acao,
+        'OM': a.om || '',
+        'Justificativa': a.justificativa,
+        'Operador Responsavel': a.operador
+    };
+}
+function exportAuditExcel() {
+    if (!canExportReports()) { showAccessDenied('Perfil sem privilégios para extrair relatórios de auditoria.'); return; }
+    const filtered = getFilteredAuditLog();
+    if (!filtered.length) { toast('Nenhum registro para exportar no período selecionado.', 'warn'); return; }
+    const colWidths = [{ wch: 20 }, { wch: 16 }, { wch: 16 }, { wch: 14 }, { wch: 10 }, { wch: 22 }, { wch: 14 }, { wch: 42 }, { wch: 24 }];
+    const wb = XLSX.utils.book_new();
+
+    const generalWs = XLSX.utils.json_to_sheet(filtered.map(auditRowToSheetRow));
+    generalWs['!cols'] = colWidths;
+    XLSX.utils.book_append_sheet(wb, generalWs, 'Auditoria Geral');
+
+    const areas = [...new Set(filtered.map(a => a.area).filter(Boolean))];
+    areas.forEach(areaKey => {
+        const areaRows = filtered.filter(a => a.area === areaKey).map(auditRowToSheetRow);
+        const ws = XLSX.utils.json_to_sheet(areaRows);
+        ws['!cols'] = colWidths;
+        const sheetName = (AREA_LABEL[areaKey] || areaKey).slice(0, 31);
+        XLSX.utils.book_append_sheet(wb, ws, sheetName);
+    });
+
+    XLSX.writeFile(wb, `auditoria_vale_${todayStr()}.xlsx`);
+    toast('Relatório exportado em Excel (.xlsx) com sucesso, com abas por área.');
+}
+
+/* =========================================================
+   MAPA DE CALOR
+   ========================================================= */
+const HEATMAP_TYPES = ['Manutenção Preventiva', 'Manutenção Corretiva', 'Limpeza', 'Limpeza Lokaminas'];
+
+function getHeatmapAuditLog() {
+    return state.auditLog.filter(a => {
+        if (TYPE_STATUS[a.acao] === undefined) return false;
+        if (state.heatmapFilter.equip && a.tag !== state.heatmapFilter.equip) return false;
+        const d = a.agendamentoData || a.dataHora.slice(0, 10);
+        if (state.heatmapFilter.from && d < state.heatmapFilter.from) return false;
+        if (state.heatmapFilter.to && d > state.heatmapFilter.to) return false;
+        return true;
+    });
+}
+
+function renderHeatmapEquipSelect() {
+    const sel = document.getElementById('heatmap-equip');
+    const current = sel.value;
+    sel.innerHTML = '<option value="">Todos os Equipamentos</option>' +
+        Object.keys(DATABASE).map(area =>
+            `<optgroup label="${escapeHtml(AREA_LABEL[area] || area)}">${DATABASE[area].map(tag => `<option value="${tag}">${tag}</option>`).join('')}</optgroup>`
+        ).join('');
+    sel.value = current;
+}
+
+document.getElementById('btn-heatmap-apply').addEventListener('click', () => {
+    state.heatmapFilter.from = document.getElementById('heatmap-from').value || null;
+    state.heatmapFilter.to = document.getElementById('heatmap-to').value || null;
+    state.heatmapFilter.equip = document.getElementById('heatmap-equip').value || null;
+    renderHeatmap();
+});
+document.getElementById('btn-heatmap-clear').addEventListener('click', () => {
+    document.getElementById('heatmap-from').value = '';
+    document.getElementById('heatmap-to').value = '';
+    document.getElementById('heatmap-equip').value = '';
+    state.heatmapFilter = { from: null, to: null, equip: null };
+    renderHeatmap();
+});
+document.getElementById('btn-heatmap-print').addEventListener('click', () => window.print());
+
+function heatCellStyle(count, maxCount, kind) {
+    if (!count) return '';
+    const alpha = 0.1 + 0.7 * (count / maxCount);
+    const rgb = kind === 'limpeza' ? '37,99,235' : '245,158,11';
+    return `background-color: rgba(${rgb}, ${alpha.toFixed(2)}); color: #fff;`;
+}
+
+function renderHeatmap() {
+    renderHeatmapEquipSelect();
+    document.getElementById('heatmap-from').value = state.heatmapFilter.from || '';
+    document.getElementById('heatmap-to').value = state.heatmapFilter.to || '';
+    document.getElementById('heatmap-equip').value = state.heatmapFilter.equip || '';
+
+    const data = getHeatmapAuditLog();
+    const counts = {}; // tag -> { type: count }
+    data.forEach(a => {
+        if (!counts[a.tag]) counts[a.tag] = {};
+        counts[a.tag][a.acao] = (counts[a.tag][a.acao] || 0) + 1;
+    });
+
+    const allRows = Object.keys(counts).map(tag => {
+        const byType = counts[tag];
+        const total = HEATMAP_TYPES.reduce((s, t) => s + (byType[t] || 0), 0);
+        return { tag, area: areaOf(tag), byType, total };
+    }).sort((a, b) => b.total - a.total);
+
+    const rows = (!state.heatmapFilter.equip && allRows.length > 25) ? allRows.slice(0, 25) : allRows;
+
+    let maxCount = 0;
+    rows.forEach(r => HEATMAP_TYPES.forEach(t => { maxCount = Math.max(maxCount, r.byType[t] || 0); }));
+    if (maxCount === 0) maxCount = 1;
+
+    const table = document.getElementById('heatmap-table');
+    table.innerHTML = `
+        <thead><tr><th>Equipamento</th><th>Área</th>${HEATMAP_TYPES.map(t => `<th>${t}</th>`).join('')}<th>Total</th></tr></thead>
+        <tbody>
+            ${rows.map(r => `
+                <tr>
+                    <td><span class="tag-chip">${escapeHtml(r.tag)}</span></td>
+                    <td>${AREA_LABEL[r.area] || r.area || ''}</td>
+                    ${HEATMAP_TYPES.map(t => {
+                        const c = r.byType[t] || 0;
+                        const kind = TYPE_STATUS[t] === 'limpeza' ? 'limpeza' : 'manutencao';
+                        return `<td class="${c ? '' : 'hm-empty'}" style="${heatCellStyle(c, maxCount, kind)}">${c || '–'}</td>`;
+                    }).join('')}
+                    <td class="hm-total">${r.total}</td>
+                </tr>
+            `).join('') || `<tr><td colspan="${HEATMAP_TYPES.length + 3}" style="text-align:center; color:var(--text-muted);">Nenhuma intervenção registrada no período selecionado.</td></tr>`}
+        </tbody>
+    `;
+
+    const manutSorted = allRows.map(r => ({ tag: r.tag, area: r.area, count: (r.byType['Manutenção Preventiva'] || 0) + (r.byType['Manutenção Corretiva'] || 0) })).sort((a, b) => b.count - a.count);
+    const limpezaSorted = allRows.map(r => ({ tag: r.tag, area: r.area, count: (r.byType['Limpeza'] || 0) + (r.byType['Limpeza Lokaminas'] || 0) })).sort((a, b) => b.count - a.count);
+    const topManut = manutSorted.find(r => r.count > 0);
+    const topLimpeza = limpezaSorted.find(r => r.count > 0);
+
+    document.getElementById('heatmap-kpi-manut').textContent = topManut ? topManut.tag : '—';
+    document.getElementById('heatmap-kpi-manut-sub').textContent = topManut ? `${topManut.count} intervenções — ${AREA_LABEL[topManut.area] || topManut.area}` : 'Nenhum dado no período';
+    document.getElementById('heatmap-kpi-limpeza').textContent = topLimpeza ? topLimpeza.tag : '—';
+    document.getElementById('heatmap-kpi-limpeza-sub').textContent = topLimpeza ? `${topLimpeza.count} intervenções — ${AREA_LABEL[topLimpeza.area] || topLimpeza.area}` : 'Nenhum dado no período';
+}
+
+/* =========================================================
+   RENDER: USUÁRIOS & ACESSOS (Admin Master)
+   ========================================================= */
+function renderUsersView() {
+    if (state.profileKey !== 'ADMIN') return;
+    const tbody = document.getElementById('users-tbody');
+    tbody.innerHTML = state.users.map(u => `
+        <tr>
+            <td>${escapeHtml(u.name)}</td>
+            <td>${escapeHtml(u.username)}</td>
+            <td>${ROLE_META[u.role].label}</td>
+            <td>${u.role === 'ADMIN' ? '<span class="perm-tag perm-yes">Sempre</span>' : `<span class="perm-tag ${u.canExport ? 'perm-yes' : 'perm-no'}">${u.canExport ? 'Sim' : 'Não'}</span>`}</td>
+            <td>${u.active ? '<span class="perm-tag perm-yes">Ativo</span>' : '<span class="perm-tag perm-no">Inativo</span>'}</td>
+            <td style="display:flex; gap:6px; white-space:nowrap; flex-wrap:wrap;">
+                <button class="btn-secondary" style="padding:6px 10px; font-size:11.5px;" onclick="openUserModal('${u.id}')">Editar</button>
+                <button class="btn-secondary" style="padding:6px 10px; font-size:11.5px;" onclick="openResetPasswordModal('${u.id}')">Redefinir Senha</button>
+                <button class="btn-danger" style="padding:6px 10px; font-size:11.5px;" onclick="toggleUserActive('${u.id}')">${u.active ? 'Desativar' : 'Reativar'}</button>
+                <button class="btn-danger" style="padding:6px 10px; font-size:11.5px;" onclick="openDeleteUserModal('${u.id}')">Excluir</button>
+            </td>
+        </tr>
+    `).join('');
+}
+document.getElementById('btn-new-user').addEventListener('click', () => openUserModal(null));
+
+function openUserModal(id) {
+    const editing = id ? state.users.find(u => u.id === id) : null;
+    const roles = Object.keys(ROLE_META);
+    openModal(`
+        <div class="modal-header"><h3>${editing ? 'Editar Usuário' : 'Novo Usuário'}</h3><button class="modal-close" onclick="closeModal()">&times;</button></div>
+        <div class="modal-body">
+            <div class="m-field"><label>Nome Completo</label><input type="text" id="um-name" value="${editing ? escapeHtml(editing.name) : ''}"></div>
+            <div class="m-field"><label>Usuário (login)</label><input type="text" id="um-username" value="${editing ? escapeHtml(editing.username) : ''}"></div>
+            <div class="m-field"><label>Senha ${editing ? '(deixe em branco para manter a atual)' : ''}</label><input type="password" id="um-password"></div>
+            <div class="m-field"><label>Perfil</label>
+                <select id="um-role">${roles.map(r => `<option value="${r}" ${editing && editing.role === r ? 'selected' : ''}>${ROLE_META[r].label}</option>`).join('')}</select>
+            </div>
+            <div class="m-field" id="um-export-wrap">
+                <label class="m-checkbox"><input type="checkbox" id="um-export" style="width:auto;" ${editing ? (editing.canExport ? 'checked' : '') : 'checked'}> Permitir exportação de relatórios (Excel/CSV) e filtro por período</label>
+            </div>
+            <div class="m-field"><label class="m-checkbox"><input type="checkbox" id="um-active" style="width:auto;" ${(!editing || editing.active) ? 'checked' : ''}> Conta ativa</label></div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn-secondary" onclick="closeModal()">Cancelar</button>
+            <button class="btn-primary" onclick="saveUser(${editing ? `'${editing.id}'` : 'null'})">Salvar</button>
+        </div>
+    `);
+    const roleSelect = document.getElementById('um-role');
+    const toggleExportVisibility = () => { document.getElementById('um-export-wrap').style.display = roleSelect.value === 'ADMIN' ? 'none' : 'block'; };
+    roleSelect.addEventListener('change', toggleExportVisibility);
+    toggleExportVisibility();
+}
+
+function saveUser(id) {
+    const name = document.getElementById('um-name').value.trim();
+    const username = document.getElementById('um-username').value.trim().toLowerCase();
+    const password = document.getElementById('um-password').value;
+    const role = document.getElementById('um-role').value;
+    const canExport = document.getElementById('um-export').checked;
+    const active = document.getElementById('um-active').checked;
+
+    if (!name || !username) { toast('Preencha nome e usuário.', 'error'); return; }
+    if (!id && password.length < 4) { toast('Defina uma senha com ao menos 4 caracteres.', 'error'); return; }
+    const dup = state.users.find(u => u.username === username && u.id !== id);
+    if (dup) { toast('Já existe um usuário com esse login.', 'error'); return; }
+
+    if (id) {
+        const u = state.users.find(x => x.id === id);
+        u.name = name; u.username = username; u.role = role; u.canExport = role === 'ADMIN' ? true : canExport; u.active = active;
+        if (password) u.password = password;
+        if (state.currentUser && state.currentUser.id === u.id) { state.currentUser = u; state.profileKey = u.role; }
+    } else {
+        state.users.push({ id: 'u_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), name, username, password, role, canExport: role === 'ADMIN' ? true : canExport, active });
+    }
+    persistUsers();
+    closeModal();
+    toast('Usuário salvo com sucesso.');
+    renderUsersView();
+    if (id && state.currentUser && state.currentUser.id === id) onProfileChanged();
+}
+
+function openResetPasswordModal(id) {
+    const u = state.users.find(x => x.id === id);
+    if (!u) return;
+    openModal(`
+        <div class="modal-header"><h3>Redefinir Senha — ${escapeHtml(u.name)}</h3><button class="modal-close" onclick="closeModal()">&times;</button></div>
+        <div class="modal-body">
+            <div class="m-field"><label>Nova Senha</label><input type="password" id="rp-password" placeholder="Mínimo 4 caracteres"></div>
+            <div class="m-field"><label>Confirmar Nova Senha</label><input type="password" id="rp-password2"></div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn-secondary" onclick="closeModal()">Cancelar</button>
+            <button class="btn-primary" onclick="confirmResetPassword('${u.id}')">Redefinir</button>
+        </div>
+    `);
+}
+function confirmResetPassword(id) {
+    const u = state.users.find(x => x.id === id);
+    if (!u) return;
+    const p1 = document.getElementById('rp-password').value;
+    const p2 = document.getElementById('rp-password2').value;
+    if (p1.length < 4) { toast('A nova senha deve ter ao menos 4 caracteres.', 'error'); return; }
+    if (p1 !== p2) { toast('As senhas não conferem.', 'error'); return; }
+    u.password = p1;
+    persistUsers();
+    addAuditEntry({ tag: '—', acao: 'Redefinição de Senha', justificativa: `Senha redefinida pelo Admin Master para o usuário ${u.name} (${u.username}).` });
+    persist();
+    closeModal();
+    toast(`Senha de ${u.name} redefinida com sucesso.`);
+}
+
+function openDeleteUserModal(id) {
+    const u = state.users.find(x => x.id === id);
+    if (!u) return;
+    if (state.currentUser && u.id === state.currentUser.id) { toast('Você não pode excluir sua própria conta enquanto estiver logado.', 'error'); return; }
+    if (u.role === 'ADMIN' && state.users.filter(x => x.role === 'ADMIN').length <= 1) { toast('Não é possível excluir o último Admin Master cadastrado.', 'error'); return; }
+    openModal(`
+        <div class="modal-header"><h3>Excluir Usuário</h3><button class="modal-close" onclick="closeModal()">&times;</button></div>
+        <div class="modal-body">
+            <div class="access-denied-icon">&#128465;</div>
+            <div class="access-denied-text">Tem certeza que deseja excluir permanentemente o usuário <b>${escapeHtml(u.name)}</b> (${escapeHtml(u.username)})? Essa ação não pode ser desfeita. O histórico de auditoria já registrado será mantido.</div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn-secondary" onclick="closeModal()">Cancelar</button>
+            <button class="btn-danger" onclick="confirmDeleteUser('${u.id}')">Excluir Permanentemente</button>
+        </div>
+    `);
+}
+function confirmDeleteUser(id) {
+    const idx = state.users.findIndex(x => x.id === id);
+    if (idx === -1) return;
+    const u = state.users[idx];
+    state.users.splice(idx, 1);
+    persistUsers();
+    addAuditEntry({ tag: '—', acao: 'Exclusão de Usuário', justificativa: `Conta de ${u.name} (${u.username}) excluída pelo Admin Master.` });
+    persist();
+    closeModal();
+    toast(`Usuário ${u.name} excluído com sucesso.`, 'warn');
+    renderUsersView();
+}
+
+function toggleUserActive(id) {
+    const u = state.users.find(x => x.id === id);
+    if (!u) return;
+    if (state.currentUser && u.id === state.currentUser.id) { toast('Você não pode desativar sua própria conta enquanto estiver logado.', 'error'); return; }
+    if (u.active && u.role === 'ADMIN' && state.users.filter(x => x.role === 'ADMIN' && x.active).length <= 1) { toast('Não é possível desativar o último Admin Master ativo.', 'error'); return; }
+    u.active = !u.active;
+    persistUsers();
+    toast(u.active ? 'Usuário reativado.' : 'Usuário desativado.', u.active ? 'success' : 'warn');
+    renderUsersView();
+}
+
+/* =========================================================
+   GESTÃO DE ATIVOS (Admin Master): novas áreas e equipamentos
+   ========================================================= */
+const LS_CUSTOM_AREAS = 'vale_saas_custom_areas_v1';
+const LS_CUSTOM_EQUIP = 'vale_saas_custom_equip_v1';
+const LS_EQUIP_AREA_OVERRIDE = 'vale_saas_equip_area_override_v1';
+
+function loadCustomAssets() {
+    const areas = JSON.parse(localStorage.getItem(LS_CUSTOM_AREAS) || '{}');
+    const equip = JSON.parse(localStorage.getItem(LS_CUSTOM_EQUIP) || '{}');
+    Object.keys(areas).forEach(k => {
+        if (!AREA_LABEL[k]) AREA_LABEL[k] = areas[k];
+        if (!DATABASE[k]) DATABASE[k] = [];
+    });
+    Object.keys(equip).forEach(k => {
+        if (!DATABASE[k]) DATABASE[k] = [];
+        equip[k].forEach(tag => {
+            if (!DATABASE[k].includes(tag)) { DATABASE[k].push(tag); ALL_EQUIP.push({ tag, area: k }); }
+        });
+    });
+    applyEquipAreaOverrides();
+}
+function applyEquipAreaOverrides() {
+    const overrides = JSON.parse(localStorage.getItem(LS_EQUIP_AREA_OVERRIDE) || '{}');
+    Object.keys(overrides).forEach(tag => {
+        const newArea = overrides[tag];
+        const item = ALL_EQUIP.find(e => e.tag === tag);
+        if (!item || item.area === newArea || !DATABASE[newArea]) return;
+        if (DATABASE[item.area]) DATABASE[item.area] = DATABASE[item.area].filter(t => t !== tag);
+        if (!DATABASE[newArea].includes(tag)) DATABASE[newArea].push(tag);
+        item.area = newArea;
+    });
+}
+function persistCustomArea(key, label) {
+    const areas = JSON.parse(localStorage.getItem(LS_CUSTOM_AREAS) || '{}');
+    areas[key] = label;
+    localStorage.setItem(LS_CUSTOM_AREAS, JSON.stringify(areas));
+}
+function persistCustomEquip(areaKey, tag) {
+    const equip = JSON.parse(localStorage.getItem(LS_CUSTOM_EQUIP) || '{}');
+    if (!equip[areaKey]) equip[areaKey] = [];
+    equip[areaKey].push(tag);
+    localStorage.setItem(LS_CUSTOM_EQUIP, JSON.stringify(equip));
+}
+function persistEquipAreaOverride(tag, area) {
+    const overrides = JSON.parse(localStorage.getItem(LS_EQUIP_AREA_OVERRIDE) || '{}');
+    overrides[tag] = area;
+    localStorage.setItem(LS_EQUIP_AREA_OVERRIDE, JSON.stringify(overrides));
+}
+
+function renderAssetMgmtPanel() {
+    document.getElementById('admin-asset-mgmt').style.display = state.profileKey === 'ADMIN' ? 'flex' : 'none';
+    const sel = document.getElementById('new-equip-area');
+    if (sel) sel.innerHTML = Object.keys(DATABASE).map(k => `<option value="${k}">${escapeHtml(AREA_LABEL[k] || k)}</option>`).join('');
+    const moveTagSel = document.getElementById('move-equip-tag');
+    if (moveTagSel) {
+        moveTagSel.innerHTML = Object.keys(DATABASE).map(area =>
+            `<optgroup label="${escapeHtml(AREA_LABEL[area] || area)}">${DATABASE[area].map(tag => `<option value="${tag}">${tag} (${escapeHtml(AREA_LABEL[area] || area)})</option>`).join('')}</optgroup>`
+        ).join('');
+    }
+    const moveAreaSel = document.getElementById('move-equip-area');
+    if (moveAreaSel) moveAreaSel.innerHTML = Object.keys(DATABASE).map(k => `<option value="${k}">${escapeHtml(AREA_LABEL[k] || k)}</option>`).join('');
+}
+
+function moveEquipment(tag, newArea) {
+    const item = ALL_EQUIP.find(e => e.tag === tag);
+    if (!item) { toast('Equipamento não encontrado.', 'error'); return; }
+    if (item.area === newArea) { toast('O equipamento já está nessa área.', 'warn'); return; }
+    const oldArea = item.area;
+    DATABASE[oldArea] = DATABASE[oldArea].filter(t => t !== tag);
+    if (!DATABASE[newArea]) DATABASE[newArea] = [];
+    DATABASE[newArea].push(tag);
+    item.area = newArea;
+    persistEquipAreaOverride(tag, newArea);
+    toast(`${tag} movido de ${AREA_LABEL[oldArea] || oldArea} para ${AREA_LABEL[newArea] || newArea}.`);
+    renderAssetMgmtPanel();
+    renderAtivos(); renderAgendaEquipSelect(); renderDashboard();
+}
+document.getElementById('btn-move-equip').addEventListener('click', () => {
+    if (state.profileKey !== 'ADMIN') { showAccessDenied('Apenas o Admin Master pode mover equipamentos entre áreas.'); return; }
+    const tag = document.getElementById('move-equip-tag').value;
+    const newArea = document.getElementById('move-equip-area').value;
+    if (!tag || !newArea) { toast('Selecione o equipamento e a área de destino.', 'error'); return; }
+    moveEquipment(tag, newArea);
+});
+
+document.getElementById('btn-add-area').addEventListener('click', () => {
+    if (state.profileKey !== 'ADMIN') { showAccessDenied('Apenas o Admin Master pode gerenciar áreas e equipamentos.'); return; }
+    const codeRaw = document.getElementById('new-area-code').value.trim().toUpperCase().replace(/[^A-Z0-9_-]/g, '');
+    const label = document.getElementById('new-area-label').value.trim();
+    if (!codeRaw || !label) { toast('Informe o código e o nome de exibição da nova área.', 'error'); return; }
+    if (DATABASE[codeRaw]) { toast('Já existe uma área com esse código.', 'error'); return; }
+    DATABASE[codeRaw] = [];
+    AREA_LABEL[codeRaw] = label;
+    persistCustomArea(codeRaw, label);
+    document.getElementById('new-area-code').value = '';
+    document.getElementById('new-area-label').value = '';
+    toast(`Área "${label}" adicionada com sucesso.`);
+    renderAssetMgmtPanel();
+    renderAtivos(); renderAgendaEquipSelect(); renderDashboard();
+});
+
+document.getElementById('btn-add-equip').addEventListener('click', () => {
+    if (state.profileKey !== 'ADMIN') { showAccessDenied('Apenas o Admin Master pode gerenciar áreas e equipamentos.'); return; }
+    const areaKey = document.getElementById('new-equip-area').value;
+    const tag = document.getElementById('new-equip-tag').value.trim().toUpperCase();
+    if (!areaKey || !tag) { toast('Selecione a área e informe a tag do equipamento.', 'error'); return; }
+    if (ALL_EQUIP.some(e => e.tag === tag)) { toast('Já existe um equipamento com essa tag no complexo.', 'error'); return; }
+    DATABASE[areaKey].push(tag);
+    ALL_EQUIP.push({ tag, area: areaKey });
+    persistCustomEquip(areaKey, tag);
+    document.getElementById('new-equip-tag').value = '';
+    toast(`Equipamento "${tag}" adicionado à área ${AREA_LABEL[areaKey] || areaKey}.`);
+    renderAssetMgmtPanel();
+    renderAtivos(); renderAgendaEquipSelect(); renderDashboard();
+});
+
+/* =========================================================
+   INICIALIZAÇÃO
+   ========================================================= */
+loadCustomAssets();
+loadPersisted();
+seedIfEmpty();
+if (localStorage.getItem(LS_BOOKINGS) === null) persist();
+loadUsers();
+seedUsersIfEmpty();
+renderAssetMgmtPanel();
+applySidebarCollapse(localStorage.getItem(LS_SIDEBAR) === '1');
+
+const sessionUserId = localStorage.getItem(LS_SESSION);
+const sessionUser = sessionUserId === 'guest' ? GUEST_USER : state.users.find(u => u.id === sessionUserId && u.active);
+if (sessionUser) { loginAs(sessionUser, { logEvent: false }); } else { document.getElementById('login-user').focus(); }
+</script>
+</body>
+</html>
