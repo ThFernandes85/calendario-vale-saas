@@ -144,7 +144,10 @@ header {
 /* --- FILTROS POR ÁREA --- */
 .filter-section, .card-section { background-color: var(--bg-card); border: 1px solid var(--border-color); border-radius: 12px; padding: 20px; }
 .filter-title { font-size: 13px; text-transform: uppercase; color: var(--text-secondary); margin-bottom: 12px; font-weight: 600; letter-spacing: 0.5px; }
+.filter-title-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
 .filter-btn-group { display: flex; gap: 10px; flex-wrap: wrap; }
+#admin-asset-mgmt.asset-mgmt-collapsed .profile-toggle-btn svg { transform: rotate(-90deg); }
+#admin-asset-mgmt.asset-mgmt-collapsed #asset-mgmt-content { display: none; }
 
 .btn-area-filter {
     background-color: #1c2533; border: 1px solid var(--border-color); color: var(--text-primary);
@@ -637,41 +640,48 @@ aside.collapsed .nav-badge { top: 2px; right: 2px; }
         </div>
 
         <div class="card-section" id="admin-asset-mgmt" style="display:none;">
-            <div class="filter-title">Gerenciar Ativos (Admin Master)</div>
-            <div class="agenda-toolbar">
-                <div class="agenda-field">
-                    <label>Novo Código de Área</label>
-                    <input type="text" id="new-area-code" placeholder="ex: NOVA1" style="min-width:140px;">
-                </div>
-                <div class="agenda-field">
-                    <label>Nome de Exibição</label>
-                    <input type="text" id="new-area-label" placeholder="ex: Nova Área" style="min-width:160px;">
-                </div>
-                <button class="btn-primary" id="btn-add-area" style="align-self:flex-end;">+ Adicionar Área</button>
+            <div class="filter-title-row">
+                <div class="filter-title" style="margin-bottom:0;">Gerenciar Ativos (Admin Master)</div>
+                <button type="button" id="btn-toggle-asset-mgmt" class="profile-toggle-btn" title="Minimizar/Expandir">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
+                </button>
             </div>
-            <div style="height:14px;"></div>
-            <div class="agenda-toolbar">
-                <div class="agenda-field">
-                    <label>Área de Destino</label>
-                    <select id="new-equip-area"></select>
+            <div id="asset-mgmt-content">
+                <div class="agenda-toolbar">
+                    <div class="agenda-field">
+                        <label>Novo Código de Área</label>
+                        <input type="text" id="new-area-code" placeholder="ex: NOVA1" style="min-width:140px;">
+                    </div>
+                    <div class="agenda-field">
+                        <label>Nome de Exibição</label>
+                        <input type="text" id="new-area-label" placeholder="ex: Nova Área" style="min-width:160px;">
+                    </div>
+                    <button class="btn-primary" id="btn-add-area" style="align-self:flex-end;">+ Adicionar Área</button>
                 </div>
-                <div class="agenda-field">
-                    <label>Tag do Equipamento</label>
-                    <input type="text" id="new-equip-tag" placeholder="ex: 99TC01" style="min-width:160px;">
+                <div style="height:14px;"></div>
+                <div class="agenda-toolbar">
+                    <div class="agenda-field">
+                        <label>Área de Destino</label>
+                        <select id="new-equip-area"></select>
+                    </div>
+                    <div class="agenda-field">
+                        <label>Tag do Equipamento</label>
+                        <input type="text" id="new-equip-tag" placeholder="ex: 99TC01" style="min-width:160px;">
+                    </div>
+                    <button class="btn-primary" id="btn-add-equip" style="align-self:flex-end;">+ Adicionar Equipamento</button>
                 </div>
-                <button class="btn-primary" id="btn-add-equip" style="align-self:flex-end;">+ Adicionar Equipamento</button>
-            </div>
-            <div style="height:14px;"></div>
-            <div class="agenda-toolbar">
-                <div class="agenda-field">
-                    <label>Equipamento a Mover</label>
-                    <select id="move-equip-tag" style="min-width:200px;"></select>
+                <div style="height:14px;"></div>
+                <div class="agenda-toolbar">
+                    <div class="agenda-field">
+                        <label>Equipamento a Mover</label>
+                        <select id="move-equip-tag" style="min-width:200px;"></select>
+                    </div>
+                    <div class="agenda-field">
+                        <label>Nova Área</label>
+                        <select id="move-equip-area" style="min-width:160px;"></select>
+                    </div>
+                    <button class="btn-primary" id="btn-move-equip" style="align-self:flex-end;">Mover Equipamento</button>
                 </div>
-                <div class="agenda-field">
-                    <label>Nova Área</label>
-                    <select id="move-equip-area" style="min-width:160px;"></select>
-                </div>
-                <button class="btn-primary" id="btn-move-equip" style="align-self:flex-end;">Mover Equipamento</button>
             </div>
         </div>
 
@@ -1431,6 +1441,15 @@ document.getElementById('btn-toggle-user-perms').addEventListener('click', () =>
     applyUserBoxCollapse(!document.getElementById('user-profile-box').classList.contains('perms-collapsed'));
 });
 
+const LS_ASSETMGMT_COLLAPSED = 'vale_saas_assetmgmt_collapsed_v1';
+function applyAssetMgmtCollapse(collapsed) {
+    document.getElementById('admin-asset-mgmt').classList.toggle('asset-mgmt-collapsed', collapsed);
+    localStorage.setItem(LS_ASSETMGMT_COLLAPSED, collapsed ? '1' : '0');
+}
+document.getElementById('btn-toggle-asset-mgmt').addEventListener('click', () => {
+    applyAssetMgmtCollapse(!document.getElementById('admin-asset-mgmt').classList.contains('asset-mgmt-collapsed'));
+});
+
 /* =========================================================
    RENDER: USUÁRIO LOGADO
    ========================================================= */
@@ -2003,6 +2022,25 @@ function renderUsersView() {
 }
 document.getElementById('btn-new-user').addEventListener('click', () => openUserModal(null));
 
+/* Chama a Edge Function e extrai a mensagem de erro real do corpo da
+   resposta — o cliente Supabase só devolve "non-2xx status code" em
+   error.message, o texto útil vem em error.context (a Response crua). */
+async function invokeAdminFn(body) {
+    const { data, error } = await sb.functions.invoke('admin-manage-user', { body });
+    if (error) {
+        let msg = error.message;
+        if (error.context && typeof error.context.json === 'function') {
+            try {
+                const parsed = await error.context.json();
+                if (parsed && parsed.error) msg = parsed.error;
+            } catch (_) { /* corpo não era JSON, mantém error.message */ }
+        }
+        return { data: null, errMsg: msg };
+    }
+    if (data && data.error) return { data: null, errMsg: data.error };
+    return { data, errMsg: null };
+}
+
 function openUserModal(id) {
     const editing = id ? state.users.find(u => u.id === id) : null;
     const roles = Object.keys(ROLE_META);
@@ -2058,10 +2096,7 @@ async function saveUser(id) {
         if (password.length < 6) { toast('Informe uma senha inicial com no mínimo 6 caracteres.', 'error'); return; }
         const btn = document.getElementById('um-save-btn');
         btn.disabled = true; btn.textContent = 'Criando...';
-        const { data, error } = await sb.functions.invoke('admin-manage-user', {
-            body: { action: 'create', name, email, password, role, canExport: role === 'ADMIN' ? true : canExport, active, sites }
-        });
-        const errMsg = error ? (data && data.error ? data.error : error.message) : (data && data.error ? data.error : null);
+        const { errMsg } = await invokeAdminFn({ action: 'create', name, email, password, role, canExport: role === 'ADMIN' ? true : canExport, active, sites });
         if (errMsg) { toast('Erro ao criar usuário: ' + errMsg, 'error'); btn.disabled = false; btn.textContent = 'Criar Conta'; return; }
         closeModal();
         toast(`Conta de ${name} criada com sucesso. Avise a pessoa da senha inicial por fora do sistema.`);
@@ -2134,8 +2169,7 @@ async function confirmDeleteUser(id) {
     if (!u) return;
     const btn = document.getElementById('um-delete-btn');
     btn.disabled = true; btn.textContent = 'Excluindo...';
-    const { data, error } = await sb.functions.invoke('admin-manage-user', { body: { action: 'delete', id } });
-    const errMsg = error ? (data && data.error ? data.error : error.message) : (data && data.error ? data.error : null);
+    const { errMsg } = await invokeAdminFn({ action: 'delete', id });
     if (errMsg) { toast('Erro ao excluir usuário: ' + errMsg, 'error'); btn.disabled = false; btn.textContent = 'Excluir Permanentemente'; return; }
     closeModal();
     toast(`Usuário ${u.name} excluído com sucesso.`, 'warn');
@@ -2252,6 +2286,7 @@ document.getElementById('btn-add-equip').addEventListener('click', async () => {
 (async () => {
     applySidebarCollapse(localStorage.getItem(LS_SIDEBAR) === '1');
     applyUserBoxCollapse(localStorage.getItem(LS_USERBOX_COLLAPSED) === '1');
+    applyAssetMgmtCollapse(localStorage.getItem(LS_ASSETMGMT_COLLAPSED) === '1');
 
     const { data: { session } } = await sb.auth.getSession();
     if (session && session.user) {
