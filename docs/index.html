@@ -859,26 +859,11 @@ const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 /* =========================================================
    BASE DE DADOS DE EQUIPAMENTOS — POR SITE
-   (Mutuca é o site seed original com os 94 ativos / 5 áreas;
-   novos sites começam vazios e são povoados pelo Admin Master)
+   (áreas e equipamentos vivem nas tabelas Supabase `areas`/`equipment`,
+   carregadas por site em loadSiteDatabase())
    ========================================================= */
-const MUTUCA_SEED_DATABASE = {
-    TOD: ['40AL02', '40EM01', '40MG02', '40SL01', '40TC02', '40TC03', '40TC04', '40TC05', 'CARREGAMENTO'],
-    TCLD: ['27TC15', '27TC15A', '27TC16B', '27TC16A', '33AL03', '33TC17', '27MG01', '27MG02', '27MG03', '27MG04', '33TC18', '33TC19', '33TC20', 'GROTA ZERO', '33SL02', '40SL01', '40MG01', '27TC16'],
-    USINA: ['21AL02', '21AL03', '21TC03', '22BR02', '22BR03', '22BR04', '22PE01', '22PE02', '22PE02A', '22PE02B', '22TC04', '22TC05', '22TC08', '23CE01A', '23CE01B', '23CE01C', '23PE04A', '23PE04B', '23PE04C', '24BP01A', '24BP01B', '24BP01C', '25BP01A', '25BP01B', '25BP01C', '25BV01A', '25BV01B', '25BV01C', '26EX01', '27EM01', '27TC06', '27TC07', '27TC09', '27TC10', '27TC11', '27TC12', '27TC13', '27TC14', 'FV01A', 'FV01B', 'FV01C', 'FV01D', '27TC08'],
-    SBR: ['12AL01', '12BR01', '12DV01', '12DV02', '12PE02A', '12PE02B', '12TC01A', '12TC02', '12TC08', '12TC10A', '12TC10B', '12TC11A', '12TC11B', '12TC9A', '12TC9B', '12TC01'],
-    ITMS: ['65EM01', '65TC01', '65TC02', '65TC03', '65TC04A', '65TC05', '65TC06', '65TC07']
-};
-const MUTUCA_SEED_AREA_LABEL = { TOD: 'TOD', TCLD: 'TCLD', USINA: 'USINA', SBR: 'SBR', ITMS: 'ITM-S' };
-
 const DATABASE = {};
 const AREA_LABEL = {};
-
-function getAllEquip() {
-    const list = [];
-    Object.keys(DATABASE).forEach(area => DATABASE[area].forEach(tag => list.push({ tag, area })));
-    return list;
-}
 const ALL_EQUIP = [];
 function areaOf(tag) { const e = ALL_EQUIP.find(x => x.tag === tag); return e ? e.area : null; }
 
@@ -943,41 +928,49 @@ function escapeHtml(str) {
 }
 
 /* =========================================================
-   PERSISTÊNCIA (LocalStorage)
+   PERSISTÊNCIA (Supabase — agendamentos e auditoria por site)
    ========================================================= */
-const LS_BOOKINGS = 'vale_saas_bookings_v1';
-const LS_AUDIT = 'vale_saas_auditlog_v1';
 const LS_SIDEBAR = 'vale_saas_sidebar_collapsed_v1';
 
-/* Chave de storage isolada por site — cada site tem seu próprio conjunto
-   de agendamentos, auditoria, áreas e equipamentos. */
-function siteKey(base) { return `${base}__${state.currentSite}`; }
-
-function persist() {
-    localStorage.setItem(siteKey(LS_BOOKINGS), JSON.stringify(state.bookings));
-    localStorage.setItem(siteKey(LS_AUDIT), JSON.stringify(state.auditLog));
+function mapBookingFromDb(row) {
+    return {
+        id: row.id, tag: row.tag, area: row.area_code, date: row.date,
+        startMin: row.start_min, endMin: row.end_min, type: row.type,
+        emergencial: row.emergencial, om: row.om, justification: row.justification,
+        operator: row.operator_label, createdAt: row.created_at
+    };
 }
-function loadPersisted() {
-    const b = localStorage.getItem(siteKey(LS_BOOKINGS));
-    const a = localStorage.getItem(siteKey(LS_AUDIT));
-    state.bookings = b ? JSON.parse(b) : [];
-    state.auditLog = a ? JSON.parse(a) : [];
+function mapAuditFromDb(row) {
+    return {
+        id: row.id, dataHora: row.data_hora, tag: row.tag, area: row.area_code, acao: row.acao,
+        justificativa: row.justificativa, operador: row.operador_label, role: row.role,
+        username: row.username, om: row.om, agendamentoData: row.agendamento_data, agendamentoHorario: row.agendamento_horario
+    };
+}
+
+async function loadPersisted() {
+    const [{ data: bookings, error: bErr }, { data: audit, error: aErr }] = await Promise.all([
+        sb.from('bookings').select('*').eq('site_key', state.currentSite),
+        sb.from('audit_log').select('*').eq('site_key', state.currentSite).order('data_hora', { ascending: false })
+    ]);
+    if (bErr) { toast('Erro ao carregar agendamentos: ' + bErr.message, 'error'); state.bookings = []; }
+    else state.bookings = (bookings || []).map(mapBookingFromDb);
+    if (aErr) { toast('Erro ao carregar histórico: ' + aErr.message, 'error'); state.auditLog = []; }
+    else state.auditLog = (audit || []).map(mapAuditFromDb);
 }
 
 /* =========================================================
    SITES (múltiplas unidades operacionais: Mutuca, etc.)
    ========================================================= */
-const LS_SITES = 'vale_saas_sites_v1';
 const LS_ACTIVE_SITE = 'vale_saas_active_site_v1';
 let SITES = {};
 
-function loadSites() {
-    const s = localStorage.getItem(LS_SITES);
-    SITES = s ? JSON.parse(s) : { MUTUCA: 'Mutuca' };
-    if (!SITES.MUTUCA) SITES.MUTUCA = 'Mutuca';
-    persistSites();
+async function loadSites() {
+    const { data, error } = await sb.from('sites').select('key, label').order('label');
+    if (error) { toast('Erro ao carregar sites: ' + error.message, 'error'); SITES = {}; return; }
+    SITES = {};
+    (data || []).forEach(s => { SITES[s.key] = s.label; });
 }
-function persistSites() { localStorage.setItem(LS_SITES, JSON.stringify(SITES)); }
 
 function accessibleSites() {
     if (!state.currentUser) return Object.keys(SITES);
@@ -996,8 +989,8 @@ function renderSiteSelect() {
             <span>${escapeHtml(SITES[k])}</span><span class="check">&#10003;</span>
         </button>
     `).join('') : `<div class="site-dropdown-empty">Nenhum site liberado para o seu usuário.</div>`;
-    list.querySelectorAll('.site-dropdown-item').forEach(btn => btn.addEventListener('click', () => {
-        switchSite(btn.dataset.site);
+    list.querySelectorAll('.site-dropdown-item').forEach(btn => btn.addEventListener('click', async () => {
+        await switchSite(btn.dataset.site);
         closeSiteDropdown();
     }));
     const isAdmin = state.profileKey === 'ADMIN';
@@ -1026,14 +1019,13 @@ document.getElementById('btn-open-add-site').addEventListener('click', () => {
     openAddSiteModal();
 });
 
-function switchSite(newSiteKey) {
+async function switchSite(newSiteKey) {
     if (!SITES[newSiteKey] || newSiteKey === state.currentSite) return;
     if (!accessibleSites().includes(newSiteKey)) { showAccessDenied('Você não tem acesso a este site.'); return; }
     state.currentSite = newSiteKey;
     localStorage.setItem(LS_ACTIVE_SITE, newSiteKey);
-    loadSiteDatabase();
-    loadPersisted();
-    seedIfEmpty();
+    await loadSiteDatabase();
+    await loadPersisted();
     state.currentArea = 'ALL';
     state.agendaTag = ALL_EQUIP.length ? ALL_EQUIP[0].tag : null;
     state.reportFilter = { from: null, to: null, username: null };
@@ -1060,14 +1052,15 @@ function openAddSiteModal() {
 }
 function confirmAddSite() { addSite(document.getElementById('new-site-name').value); }
 
-function addSite(name) {
+async function addSite(name) {
     if (state.profileKey !== 'ADMIN') { showAccessDenied('Apenas o Admin Master pode criar novos sites.'); return; }
     const trimmed = name.trim();
     const key = trimmed.toUpperCase().replace(/[^A-Z0-9_]/g, '_').replace(/_+/g, '_');
     if (!trimmed || !key) { toast('Informe um nome válido para o site.', 'error'); return; }
     if (SITES[key]) { toast('Já existe um site com esse nome.', 'error'); return; }
+    const { error } = await sb.from('sites').insert({ key, label: trimmed });
+    if (error) { toast('Erro ao criar site: ' + error.message, 'error'); return; }
     SITES[key] = trimmed;
-    persistSites();
     renderSiteSelect();
     closeModal();
     toast(`Site "${trimmed}" criado. Selecione-o para cadastrar áreas e equipamentos.`);
@@ -1097,70 +1090,18 @@ async function loadProfiles() {
     }));
 }
 
-function addAuditEntry({ tag, acao, justificativa, dataHora, om, agendamentoData, agendamentoHorario }) {
-    state.auditLog.unshift({
-        id: 'a_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7),
-        dataHora: dataHora || new Date().toISOString(),
-        tag, area: areaOf(tag), acao,
-        justificativa,
-        operador: `${activeProfile().user} (${state.profileKey})`,
-        role: state.profileKey,
+async function addAuditEntry({ tag, acao, justificativa, dataHora, om, agendamentoData, agendamentoHorario }) {
+    const row = {
+        site_key: state.currentSite, tag, area_code: areaOf(tag), acao, justificativa,
+        operador_label: `${activeProfile().user} (${state.profileKey})`, role: state.profileKey,
         username: state.currentUser ? state.currentUser.username : null,
-        om: om || null,
-        agendamentoData: agendamentoData || null,
-        agendamentoHorario: agendamentoHorario || null
-    });
-}
-
-/* =========================================================
-   SEED DE DADOS DEMO (primeira execução)
-   ========================================================= */
-function seedIfEmpty() {
-    if (localStorage.getItem(siteKey(LS_BOOKINGS)) !== null) return;
-    if (state.currentSite !== 'MUTUCA') { persist(); return; } // sites novos começam vazios
-    const h = nowHour();
-    const capMin = m => Math.min(m, 23 * 60 + 59);
-    const today = todayStr();
-    const tomorrow = addDays(today, 1);
-
-    const seedBookings = [
-        { tag: '22BR02', area: 'USINA', date: today, startMin: h * 60, endMin: capMin(h * 60 + 180), type: 'Manutenção Preventiva', emergencial: false, om: '100234567890', justification: 'Inspeção preventiva de rotina programada na reunião S-1.', profileKey: 'PCM', operator: 'Carlos Lima (PCM)' },
-        { tag: '12TC01', area: 'SBR', date: today, startMin: h * 60, endMin: capMin(h * 60 + 120), type: 'Limpeza', emergencial: false, om: '200345678901', justification: 'Lavagem de canais e correias transportadoras.', profileKey: 'PCO', operator: 'Ana Pereira (PCO)' },
-        { tag: '40TC02', area: 'TOD', date: today, startMin: h * 60, endMin: capMin(h * 60 + 60), type: 'Manutenção Corretiva', emergencial: true, om: '300456789012', justification: 'Falha crítica identificada — substituição emergencial de rolamento.', profileKey: 'PCM', operator: 'Carlos Lima (PCM)' },
-        { tag: '27TC15', area: 'TCLD', date: tomorrow, startMin: 8 * 60, endMin: 12 * 60, type: 'Manutenção Preventiva', emergencial: false, om: '400567890123', justification: 'Troca de correia programada para amanhã.', profileKey: 'PCM', operator: 'Carlos Lima (PCM)' }
-    ];
-
-    const seedUsernames = { PCM: 'carlos.lima', PCO: 'ana.pereira' };
-    seedBookings.forEach(b => {
-        const booking = { id: 'b_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7), ...b, createdAt: new Date().toISOString() };
-        state.bookings.push(booking);
-        state.auditLog.unshift({
-            id: 'a_' + booking.id, dataHora: booking.createdAt, tag: booking.tag, area: booking.area, acao: booking.type,
-            justificativa: booking.justification, operador: booking.operator, role: booking.profileKey, username: seedUsernames[booking.profileKey],
-            om: booking.om, agendamentoData: booking.date, agendamentoHorario: `${minutesToTime(booking.startMin)}–${minutesToTime(booking.endMin)}`
-        });
-    });
-
-    // Histórico adicional para riqueza dos gráficos (eventos passados, não ativos na agenda)
-    const histTags = ['27TC10', '27TC10', '22PE01', '22PE01', '22PE01', '12DV01', '65TC02', '40AL02', '33TC18', '22BR03', '27TC13', '12TC02', '65TC01', '22TC04', '40TC03'];
-    const histTypes = ['Manutenção Preventiva', 'Manutenção Corretiva', 'Limpeza'];
-    const histJust = ['Troca de correia', 'Inspeção preventiva', 'Lavagem de canais', 'Corretiva emergencial — motor', 'Lubrificação programada', 'Ajuste de esticamento'];
-    const histNames = { PCM: 'Carlos Lima', PCO: 'Ana Pereira' };
-    histTags.forEach((tag, i) => {
-        const daysAgo = 2 + i * 2;
-        const type = histTypes[i % histTypes.length];
-        const profileKey = TYPE_STATUS[type] === 'limpeza' ? 'PCO' : 'PCM';
-        const dt = new Date(); dt.setDate(dt.getDate() - daysAgo);
-        const dtStr = `${dt.getFullYear()}-${pad(dt.getMonth() + 1)}-${pad(dt.getDate())}`;
-        state.auditLog.push({
-            id: 'a_hist_' + i, dataHora: dt.toISOString(), tag, area: areaOf(tag), acao: type,
-            justificativa: histJust[i % histJust.length], operador: `${histNames[profileKey]} (${profileKey})`,
-            role: profileKey, username: seedUsernames[profileKey],
-            om: String(500000000000 + i).slice(0, 12), agendamentoData: dtStr, agendamentoHorario: null
-        });
-    });
-    state.auditLog.sort((x, y) => new Date(y.dataHora) - new Date(x.dataHora));
-    persist();
+        om: om || null, agendamento_data: agendamentoData || null, agendamento_horario: agendamentoHorario || null,
+        data_hora: dataHora || new Date().toISOString(),
+        profile_id: state.currentUser ? state.currentUser.id : null
+    };
+    const { data, error } = await sb.from('audit_log').insert(row).select().single();
+    if (error) { toast('Erro ao registrar auditoria: ' + error.message, 'error'); return; }
+    state.auditLog.unshift(mapAuditFromDb(data));
 }
 
 /* =========================================================
@@ -1239,7 +1180,7 @@ function openBookingModal(tag, dateStr, startHour) {
     toggleEmergencial();
 }
 
-function submitBooking(tag) {
+async function submitBooking(tag) {
     const dateStr = pendingBookingDate;
     const startStr = document.getElementById('bk-start').value;
     const endStr = document.getElementById('bk-end').value;
@@ -1260,19 +1201,19 @@ function submitBooking(tag) {
     const overlap = state.bookings.some(b => b.tag === tag && b.date === dateStr && startMin < b.endMin && endMin > b.startMin);
     if (overlap) { toast('Conflito de horário: já existe um bloqueio nesse intervalo para este equipamento.', 'error'); return; }
 
-    const booking = {
-        id: 'b_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7),
-        tag, area: areaOf(tag), date: dateStr, startMin, endMin, type, om,
-        emergencial: type === 'Manutenção Corretiva' ? emergencial : false,
-        justification, profileKey: state.profileKey, operator: `${activeProfile().user} (${state.profileKey})`,
-        createdAt: new Date().toISOString()
-    };
+    const finalEmergencial = type === 'Manutenção Corretiva' ? emergencial : false;
+    const { data, error } = await sb.from('bookings').insert({
+        site_key: state.currentSite, tag, area_code: areaOf(tag), date: dateStr,
+        start_min: startMin, end_min: endMin, type, emergencial: finalEmergencial, om, justification,
+        operator_id: state.currentUser.id, operator_label: `${activeProfile().user} (${state.profileKey})`
+    }).select().single();
+    if (error) { toast('Erro ao salvar agendamento: ' + error.message, 'error'); return; }
+    const booking = mapBookingFromDb(data);
     state.bookings.push(booking);
-    addAuditEntry({
+    await addAuditEntry({
         tag, acao: type, justificativa: justification, dataHora: booking.createdAt,
         om, agendamentoData: dateStr, agendamentoHorario: `${minutesToTime(startMin)}–${minutesToTime(endMin)}`
     });
-    persist();
     closeModal();
     toast('Agendamento confirmado com sucesso.');
     renderWeekGrid(); renderAtivos(); renderDashboard(); updateUpcomingBadge();
@@ -1320,7 +1261,7 @@ function openCancelModal(id) {
     `);
 }
 
-function confirmCancelBooking(id) {
+async function confirmCancelBooking(id) {
     const idx = state.bookings.findIndex(b => b.id === id);
     if (idx === -1) return;
     const booking = state.bookings[idx];
@@ -1328,12 +1269,13 @@ function confirmCancelBooking(id) {
     if (p.readOnly || (state.profileKey !== 'ADMIN' && !p.canBook.includes(booking.type))) { showAccessDenied('Perfil sem privilégios para cancelar este tipo de bloqueio.'); return; }
     const reason = document.getElementById('cancel-just').value.trim();
     if (reason.length < 5) { toast('Informe uma justificativa para o cancelamento (mínimo 5 caracteres).', 'error'); return; }
+    const { error } = await sb.from('bookings').delete().eq('id', id);
+    if (error) { toast('Erro ao cancelar agendamento: ' + error.message, 'error'); return; }
     state.bookings.splice(idx, 1);
-    addAuditEntry({
+    await addAuditEntry({
         tag: booking.tag, acao: `${booking.type} (Cancelado)`, justificativa: reason,
         om: booking.om, agendamentoData: booking.date, agendamentoHorario: `${minutesToTime(booking.startMin)}–${minutesToTime(booking.endMin)}`
     });
-    persist();
     closeModal();
     toast('Bloqueio cancelado e removido da agenda.', 'warn');
     renderWeekGrid(); renderAtivos(); renderDashboard(); updateUpcomingBadge();
@@ -1343,16 +1285,16 @@ function confirmCancelBooking(id) {
    LOGIN / LOGOUT
    ========================================================= */
 let refreshInterval = null;
-function ensureAccessibleSite() {
+async function ensureAccessibleSite() {
     const accessible = accessibleSites();
-    if (accessible.includes(state.currentSite)) return;
-    const fallback = accessible[0];
-    if (fallback) {
-        state.currentSite = fallback;
-        localStorage.setItem(LS_ACTIVE_SITE, fallback);
-        loadSiteDatabase();
-        loadPersisted();
-        seedIfEmpty();
+    if (!accessible.includes(state.currentSite)) {
+        const fallback = accessible[0];
+        state.currentSite = fallback || null;
+        if (fallback) localStorage.setItem(LS_ACTIVE_SITE, fallback);
+    }
+    if (state.currentSite) {
+        await loadSiteDatabase();
+        await loadPersisted();
     } else {
         // usuário sem nenhum site liberado: não deixa dados de outro site visíveis
         Object.keys(DATABASE).forEach(k => delete DATABASE[k]);
@@ -1369,13 +1311,17 @@ async function loginAs(user, options) {
     const logEvent = !options || options.logEvent !== false;
     state.currentUser = user;
     state.profileKey = user.role;
-    ensureAccessibleSite();
+    await loadSites();
+    state.currentSite = localStorage.getItem(LS_ACTIVE_SITE) || 'MUTUCA';
+    if (!SITES[state.currentSite]) state.currentSite = Object.keys(SITES)[0] || 'MUTUCA';
+    await ensureAccessibleSite();
     document.getElementById('login-screen').style.display = 'none';
     document.querySelector('aside').style.display = 'flex';
     document.querySelector('main').style.display = 'flex';
+    renderSiteSelect();
+    renderAssetMgmtPanel();
     if (logEvent) {
-        addAuditEntry({ tag: '—', acao: 'Login', justificativa: 'Acesso ao sistema autenticado.' });
-        persist();
+        await addAuditEntry({ tag: '—', acao: 'Login', justificativa: 'Acesso ao sistema autenticado.' });
     }
     onProfileChanged();
     switchView('dashboard');
@@ -1389,8 +1335,7 @@ async function loginAs(user, options) {
 }
 async function logout() {
     if (state.currentUser) {
-        addAuditEntry({ tag: '—', acao: 'Logout', justificativa: 'Sessão encerrada pelo usuário.' });
-        persist();
+        await addAuditEntry({ tag: '—', acao: 'Logout', justificativa: 'Sessão encerrada pelo usuário.' });
     }
     if (refreshInterval) { clearInterval(refreshInterval); refreshInterval = null; }
     await sb.auth.signOut();
@@ -1425,13 +1370,13 @@ document.getElementById('login-form').addEventListener('submit', async e => {
         errEl.style.display = 'block';
         return;
     }
-    loginAs(profile);
+    await loginAs(profile);
 });
 document.getElementById('btn-guest-login').addEventListener('click', async () => {
     document.getElementById('login-error').style.display = 'none';
     const { data, error } = await sb.auth.signInAnonymously();
     if (error) { toast('Não foi possível entrar como visitante: ' + error.message, 'error'); return; }
-    loginAs({ id: data.user.id, name: 'Visitante', username: 'visitante', role: 'VISITANTE', canExport: false, active: true, sites: [] });
+    await loginAs({ id: data.user.id, name: 'Visitante', username: 'visitante', role: 'VISITANTE', canExport: false, active: true, sites: [] });
 });
 
 /* =========================================================
@@ -1817,14 +1762,15 @@ function openDeleteAuditModal(id) {
         </div>
     `);
 }
-function confirmDeleteAuditEntry(id) {
+async function confirmDeleteAuditEntry(id) {
     if (state.profileKey !== 'ADMIN') { showAccessDenied('Apenas o Admin Master pode excluir registros do histórico.'); return; }
     const idx = state.auditLog.findIndex(a => a.id === id);
     if (idx === -1) return;
     const entry = state.auditLog[idx];
+    const { error } = await sb.from('audit_log').delete().eq('id', id);
+    if (error) { toast('Erro ao excluir registro: ' + error.message, 'error'); return; }
     state.auditLog.splice(idx, 1);
-    addAuditEntry({ tag: '—', acao: 'Exclusão de Registro', justificativa: `Registro removido do histórico: "${entry.acao}" — ${entry.tag} (${entry.justificativa})` });
-    persist();
+    await addAuditEntry({ tag: '—', acao: 'Exclusão de Registro', justificativa: `Registro removido do histórico: "${entry.acao}" — ${entry.tag} (${entry.justificativa})` });
     closeModal();
     toast('Registro de auditoria excluído com sucesso.', 'warn');
     renderCharts();
@@ -2034,9 +1980,9 @@ function openUserModal(id) {
     openModal(`
         <div class="modal-header"><h3>${editing ? 'Editar Usuário' : 'Novo Usuário'}</h3><button class="modal-close" onclick="closeModal()">&times;</button></div>
         <div class="modal-body">
-            ${!editing ? `<div class="login-hint" style="display:block; margin-top:0;">Como o login agora é um backend real, criar um usuário tem 2 passos: preencha os dados aqui, depois eu peço o UUID gerado ao criar a conta no painel do Supabase (Authentication → Users → Add user).</div>` : ''}
+            ${!editing ? `<div class="login-hint" style="display:block; margin-top:0;">A pessoa recebe um e-mail de convite para definir a própria senha.</div>` : ''}
             <div class="m-field"><label>Nome Completo</label><input type="text" id="um-name" value="${editing ? escapeHtml(editing.name) : ''}"></div>
-            <div class="m-field"><label>E-mail ${editing ? '' : '(precisa ser o mesmo usado ao criar a conta no Supabase)'}</label><input type="email" id="um-username" value="${editing ? escapeHtml(editing.username) : ''}" ${editing ? 'disabled' : ''}></div>
+            <div class="m-field"><label>E-mail</label><input type="email" id="um-username" value="${editing ? escapeHtml(editing.username) : ''}" ${editing ? 'disabled' : ''}></div>
             <div class="m-field"><label>Perfil</label>
                 <select id="um-role">${roles.map(r => `<option value="${r}" ${editing && editing.role === r ? 'selected' : ''}>${ROLE_META[r].label}</option>`).join('')}</select>
             </div>
@@ -2053,7 +1999,7 @@ function openUserModal(id) {
         </div>
         <div class="modal-footer">
             <button class="btn-secondary" onclick="closeModal()">Cancelar</button>
-            <button class="btn-primary" onclick="saveUser(${editing ? `'${editing.id}'` : 'null'})">${editing ? 'Salvar' : 'Continuar'}</button>
+            <button class="btn-primary" id="um-save-btn" onclick="saveUser(${editing ? `'${editing.id}'` : 'null'})">${editing ? 'Salvar' : 'Enviar Convite'}</button>
         </div>
     `);
     const roleSelect = document.getElementById('um-role');
@@ -2091,49 +2037,23 @@ async function saveUser(id) {
         if (state.currentUser && state.currentUser.id === id) {
             state.currentUser = await fetchUserProfile({ id, is_anonymous: false });
             state.profileKey = state.currentUser.role;
-            ensureAccessibleSite();
+            await ensureAccessibleSite();
+            renderSiteSelect();
             onProfileChanged();
         }
         loadProfiles().then(renderUsersView);
     } else {
-        openLinkUuidModal({ name, email, role, canExport: role === 'ADMIN' ? true : canExport, active, sites });
+        const btn = document.getElementById('um-save-btn');
+        btn.disabled = true; btn.textContent = 'Enviando...';
+        const { data, error } = await sb.functions.invoke('admin-manage-user', {
+            body: { action: 'create', name, email, role, canExport: role === 'ADMIN' ? true : canExport, active, sites }
+        });
+        const errMsg = error ? (data && data.error ? data.error : error.message) : (data && data.error ? data.error : null);
+        if (errMsg) { toast('Erro ao criar usuário: ' + errMsg, 'error'); btn.disabled = false; btn.textContent = 'Enviar Convite'; return; }
+        closeModal();
+        toast(`Convite enviado para ${email}.`);
+        loadProfiles().then(renderUsersView);
     }
-}
-
-function openLinkUuidModal(pending) {
-    openModal(`
-        <div class="modal-header"><h3>Vincular Conta — ${escapeHtml(pending.name)}</h3><button class="modal-close" onclick="closeModal()">&times;</button></div>
-        <div class="modal-body">
-            <div class="access-denied-text">
-                Agora, no painel do Supabase: <b>Authentication → Users → Add user</b>, crie a conta com o e-mail
-                <b>${escapeHtml(pending.email)}</b> e uma senha temporária (avise a pessoa por fora do sistema, ou peça
-                para ela usar "Esqueci minha senha" na tela de login). Copie o <b>UUID</b> gerado e cole abaixo.
-            </div>
-            <div class="m-field" style="margin-top:14px;"><label>UUID do usuário</label><input type="text" id="link-uuid" placeholder="ex: 3fa85f64-5717-4562-b3fc-2c963f66afa6"></div>
-        </div>
-        <div class="modal-footer">
-            <button class="btn-secondary" onclick="closeModal()">Cancelar</button>
-            <button class="btn-primary" onclick="confirmLinkUuid()">Vincular Perfil</button>
-        </div>
-    `);
-    window.__pendingNewProfile = pending;
-}
-async function confirmLinkUuid() {
-    const uuid = document.getElementById('link-uuid').value.trim();
-    const pending = window.__pendingNewProfile;
-    if (!uuid || !pending) { toast('Informe o UUID copiado do Supabase.', 'error'); return; }
-    const { error: profErr } = await sb.from('profiles').insert({
-        id: uuid, name: pending.name, email: pending.email, role: pending.role,
-        can_export: pending.canExport, active: pending.active
-    });
-    if (profErr) { toast('Erro ao vincular perfil: ' + profErr.message, 'error'); return; }
-    if (pending.sites.length) {
-        await sb.from('profile_sites').insert(pending.sites.map(site_key => ({ profile_id: uuid, site_key })));
-    }
-    window.__pendingNewProfile = null;
-    closeModal();
-    toast(`Usuário ${pending.name} vinculado com sucesso.`);
-    loadProfiles().then(renderUsersView);
 }
 
 function openResetPasswordModal(id) {
@@ -2155,8 +2075,7 @@ async function confirmResetPassword(id) {
     if (!u) return;
     const { error } = await sb.auth.resetPasswordForEmail(u.username);
     if (error) { toast('Erro ao enviar e-mail: ' + error.message, 'error'); return; }
-    addAuditEntry({ tag: '—', acao: 'Redefinição de Senha', justificativa: `E-mail de redefinição de senha enviado pelo Admin Master para ${u.name} (${u.username}).` });
-    persist();
+    await addAuditEntry({ tag: '—', acao: 'Redefinição de Senha', justificativa: `E-mail de redefinição de senha enviado pelo Admin Master para ${u.name} (${u.username}).` });
     closeModal();
     toast(`E-mail de redefinição enviado para ${u.name}.`);
 }
@@ -2169,12 +2088,25 @@ function openDeleteUserModal(id) {
         <div class="modal-header"><h3>Excluir Usuário</h3><button class="modal-close" onclick="closeModal()">&times;</button></div>
         <div class="modal-body">
             <div class="access-denied-icon">&#9888;</div>
-            <div class="access-denied-text">Exclusão permanente ainda requer uma configuração adicional no backend (em andamento). Por enquanto, use <b>Desativar</b> na lista de usuários — bloqueia o login e o acesso da pessoa imediatamente, com a mesma segurança.</div>
+            <div class="access-denied-text">Tem certeza que deseja excluir permanentemente <b>${escapeHtml(u.name)}</b> (${escapeHtml(u.username)})? A conta de login e o histórico de acesso são removidos e não podem ser desfeitos. Se preferir só bloquear o acesso, use <b>Desativar</b> em vez disso.</div>
         </div>
         <div class="modal-footer">
-            <button class="btn-primary" onclick="closeModal()">Entendi</button>
+            <button class="btn-secondary" onclick="closeModal()">Cancelar</button>
+            <button class="btn-danger" id="um-delete-btn" onclick="confirmDeleteUser('${id}')">Excluir Permanentemente</button>
         </div>
     `);
+}
+async function confirmDeleteUser(id) {
+    const u = state.users.find(x => x.id === id);
+    if (!u) return;
+    const btn = document.getElementById('um-delete-btn');
+    btn.disabled = true; btn.textContent = 'Excluindo...';
+    const { data, error } = await sb.functions.invoke('admin-manage-user', { body: { action: 'delete', id } });
+    const errMsg = error ? (data && data.error ? data.error : error.message) : (data && data.error ? data.error : null);
+    if (errMsg) { toast('Erro ao excluir usuário: ' + errMsg, 'error'); btn.disabled = false; btn.textContent = 'Excluir Permanentemente'; return; }
+    closeModal();
+    toast(`Usuário ${u.name} excluído com sucesso.`, 'warn');
+    loadProfiles().then(renderUsersView);
 }
 
 async function toggleUserActive(id) {
@@ -2192,64 +2124,23 @@ async function toggleUserActive(id) {
 /* =========================================================
    GESTÃO DE ATIVOS (Admin Master): novas áreas e equipamentos
    ========================================================= */
-const LS_CUSTOM_AREAS = 'vale_saas_custom_areas_v1';
-const LS_CUSTOM_EQUIP = 'vale_saas_custom_equip_v1';
-const LS_EQUIP_AREA_OVERRIDE = 'vale_saas_equip_area_override_v1';
 
-function loadCustomAssets() {
-    const areas = JSON.parse(localStorage.getItem(siteKey(LS_CUSTOM_AREAS)) || '{}');
-    const equip = JSON.parse(localStorage.getItem(siteKey(LS_CUSTOM_EQUIP)) || '{}');
-    Object.keys(areas).forEach(k => {
-        if (!AREA_LABEL[k]) AREA_LABEL[k] = areas[k];
-        if (!DATABASE[k]) DATABASE[k] = [];
-    });
-    Object.keys(equip).forEach(k => {
-        if (!DATABASE[k]) DATABASE[k] = [];
-        equip[k].forEach(tag => {
-            if (!DATABASE[k].includes(tag)) { DATABASE[k].push(tag); ALL_EQUIP.push({ tag, area: k }); }
-        });
-    });
-    applyEquipAreaOverrides();
-}
-function applyEquipAreaOverrides() {
-    const overrides = JSON.parse(localStorage.getItem(siteKey(LS_EQUIP_AREA_OVERRIDE)) || '{}');
-    Object.keys(overrides).forEach(tag => {
-        const newArea = overrides[tag];
-        const item = ALL_EQUIP.find(e => e.tag === tag);
-        if (!item || item.area === newArea || !DATABASE[newArea]) return;
-        if (DATABASE[item.area]) DATABASE[item.area] = DATABASE[item.area].filter(t => t !== tag);
-        if (!DATABASE[newArea].includes(tag)) DATABASE[newArea].push(tag);
-        item.area = newArea;
-    });
-}
-function persistCustomArea(key, label) {
-    const areas = JSON.parse(localStorage.getItem(siteKey(LS_CUSTOM_AREAS)) || '{}');
-    areas[key] = label;
-    localStorage.setItem(siteKey(LS_CUSTOM_AREAS), JSON.stringify(areas));
-}
-function persistCustomEquip(areaKey, tag) {
-    const equip = JSON.parse(localStorage.getItem(siteKey(LS_CUSTOM_EQUIP)) || '{}');
-    if (!equip[areaKey]) equip[areaKey] = [];
-    equip[areaKey].push(tag);
-    localStorage.setItem(siteKey(LS_CUSTOM_EQUIP), JSON.stringify(equip));
-}
-function persistEquipAreaOverride(tag, area) {
-    const overrides = JSON.parse(localStorage.getItem(siteKey(LS_EQUIP_AREA_OVERRIDE)) || '{}');
-    overrides[tag] = area;
-    localStorage.setItem(siteKey(LS_EQUIP_AREA_OVERRIDE), JSON.stringify(overrides));
-}
-
-/* Limpa e recarrega DATABASE/AREA_LABEL/ALL_EQUIP para o site ativo. */
-function loadSiteDatabase() {
+/* Limpa e recarrega DATABASE/AREA_LABEL/ALL_EQUIP a partir das tabelas
+   Supabase `areas`/`equipment` para o site ativo. */
+async function loadSiteDatabase() {
     Object.keys(DATABASE).forEach(k => delete DATABASE[k]);
     Object.keys(AREA_LABEL).forEach(k => delete AREA_LABEL[k]);
     ALL_EQUIP.length = 0;
-    if (state.currentSite === 'MUTUCA') {
-        Object.keys(MUTUCA_SEED_DATABASE).forEach(k => { DATABASE[k] = [...MUTUCA_SEED_DATABASE[k]]; });
-        Object.assign(AREA_LABEL, MUTUCA_SEED_AREA_LABEL);
-    }
-    ALL_EQUIP.push(...getAllEquip());
-    loadCustomAssets();
+    const { data: areas, error: areasErr } = await sb.from('areas').select('code, label').eq('site_key', state.currentSite);
+    if (areasErr) { toast('Erro ao carregar áreas: ' + areasErr.message, 'error'); return; }
+    (areas || []).forEach(a => { DATABASE[a.code] = []; AREA_LABEL[a.code] = a.label; });
+    const { data: equip, error: equipErr } = await sb.from('equipment').select('tag, area_code').eq('site_key', state.currentSite);
+    if (equipErr) { toast('Erro ao carregar equipamentos: ' + equipErr.message, 'error'); return; }
+    (equip || []).forEach(e => {
+        if (!DATABASE[e.area_code]) DATABASE[e.area_code] = [];
+        DATABASE[e.area_code].push(e.tag);
+        ALL_EQUIP.push({ tag: e.tag, area: e.area_code });
+    });
 }
 
 function renderAssetMgmtPanel() {
@@ -2266,37 +2157,39 @@ function renderAssetMgmtPanel() {
     if (moveAreaSel) moveAreaSel.innerHTML = Object.keys(DATABASE).map(k => `<option value="${k}">${escapeHtml(AREA_LABEL[k] || k)}</option>`).join('');
 }
 
-function moveEquipment(tag, newArea) {
+async function moveEquipment(tag, newArea) {
     const item = ALL_EQUIP.find(e => e.tag === tag);
     if (!item) { toast('Equipamento não encontrado.', 'error'); return; }
     if (item.area === newArea) { toast('O equipamento já está nessa área.', 'warn'); return; }
     const oldArea = item.area;
+    const { error } = await sb.from('equipment').update({ area_code: newArea }).eq('site_key', state.currentSite).eq('tag', tag);
+    if (error) { toast('Erro ao mover equipamento: ' + error.message, 'error'); return; }
     DATABASE[oldArea] = DATABASE[oldArea].filter(t => t !== tag);
     if (!DATABASE[newArea]) DATABASE[newArea] = [];
     DATABASE[newArea].push(tag);
     item.area = newArea;
-    persistEquipAreaOverride(tag, newArea);
     toast(`${tag} movido de ${AREA_LABEL[oldArea] || oldArea} para ${AREA_LABEL[newArea] || newArea}.`);
     renderAssetMgmtPanel();
     renderAtivos(); renderAgendaEquipSelect(); renderDashboard();
 }
-document.getElementById('btn-move-equip').addEventListener('click', () => {
+document.getElementById('btn-move-equip').addEventListener('click', async () => {
     if (state.profileKey !== 'ADMIN') { showAccessDenied('Apenas o Admin Master pode mover equipamentos entre áreas.'); return; }
     const tag = document.getElementById('move-equip-tag').value;
     const newArea = document.getElementById('move-equip-area').value;
     if (!tag || !newArea) { toast('Selecione o equipamento e a área de destino.', 'error'); return; }
-    moveEquipment(tag, newArea);
+    await moveEquipment(tag, newArea);
 });
 
-document.getElementById('btn-add-area').addEventListener('click', () => {
+document.getElementById('btn-add-area').addEventListener('click', async () => {
     if (state.profileKey !== 'ADMIN') { showAccessDenied('Apenas o Admin Master pode gerenciar áreas e equipamentos.'); return; }
     const codeRaw = document.getElementById('new-area-code').value.trim().toUpperCase().replace(/[^A-Z0-9_-]/g, '');
     const label = document.getElementById('new-area-label').value.trim();
     if (!codeRaw || !label) { toast('Informe o código e o nome de exibição da nova área.', 'error'); return; }
     if (DATABASE[codeRaw]) { toast('Já existe uma área com esse código.', 'error'); return; }
+    const { error } = await sb.from('areas').insert({ site_key: state.currentSite, code: codeRaw, label });
+    if (error) { toast('Erro ao criar área: ' + error.message, 'error'); return; }
     DATABASE[codeRaw] = [];
     AREA_LABEL[codeRaw] = label;
-    persistCustomArea(codeRaw, label);
     document.getElementById('new-area-code').value = '';
     document.getElementById('new-area-label').value = '';
     toast(`Área "${label}" adicionada com sucesso.`);
@@ -2304,15 +2197,16 @@ document.getElementById('btn-add-area').addEventListener('click', () => {
     renderAtivos(); renderAgendaEquipSelect(); renderDashboard();
 });
 
-document.getElementById('btn-add-equip').addEventListener('click', () => {
+document.getElementById('btn-add-equip').addEventListener('click', async () => {
     if (state.profileKey !== 'ADMIN') { showAccessDenied('Apenas o Admin Master pode gerenciar áreas e equipamentos.'); return; }
     const areaKey = document.getElementById('new-equip-area').value;
     const tag = document.getElementById('new-equip-tag').value.trim().toUpperCase();
     if (!areaKey || !tag) { toast('Selecione a área e informe a tag do equipamento.', 'error'); return; }
     if (ALL_EQUIP.some(e => e.tag === tag)) { toast('Já existe um equipamento com essa tag no complexo.', 'error'); return; }
+    const { error } = await sb.from('equipment').insert({ site_key: state.currentSite, area_code: areaKey, tag });
+    if (error) { toast('Erro ao adicionar equipamento: ' + error.message, 'error'); return; }
     DATABASE[areaKey].push(tag);
     ALL_EQUIP.push({ tag, area: areaKey });
-    persistCustomEquip(areaKey, tag);
     document.getElementById('new-equip-tag').value = '';
     toast(`Equipamento "${tag}" adicionado à área ${AREA_LABEL[areaKey] || areaKey}.`);
     renderAssetMgmtPanel();
@@ -2323,22 +2217,13 @@ document.getElementById('btn-add-equip').addEventListener('click', () => {
    INICIALIZAÇÃO
    ========================================================= */
 (async () => {
-    loadSites();
-    state.currentSite = localStorage.getItem(LS_ACTIVE_SITE) || 'MUTUCA';
-    if (!SITES[state.currentSite]) state.currentSite = 'MUTUCA';
-    loadSiteDatabase();
-    loadPersisted();
-    seedIfEmpty();
-    state.agendaTag = ALL_EQUIP.length ? ALL_EQUIP[0].tag : null;
-    renderSiteSelect();
-    renderAssetMgmtPanel();
     applySidebarCollapse(localStorage.getItem(LS_SIDEBAR) === '1');
 
     const { data: { session } } = await sb.auth.getSession();
     if (session && session.user) {
         const profile = await fetchUserProfile(session.user);
         if (profile && profile.active) {
-            loginAs(profile, { logEvent: false });
+            await loginAs(profile, { logEvent: false });
         } else {
             await sb.auth.signOut();
             document.getElementById('login-user').focus();

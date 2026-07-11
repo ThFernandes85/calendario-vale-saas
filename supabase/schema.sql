@@ -92,6 +92,7 @@ create table public.audit_log (
   justificativa text,
   operador_label text,
   role text,
+  username text,
   om text,
   agendamento_data date,
   agendamento_horario text,
