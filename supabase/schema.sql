@@ -51,7 +51,7 @@ create table public.profiles (
   id uuid primary key references auth.users(id) on delete cascade,
   name text not null,
   email text not null,
-  role text not null check (role in ('ADMIN','PCM','PCO','ENG_CONF','ENG_EST')),
+  role text not null check (role in ('ADMIN','PCM','PCO','PCM_PCO','ENG_CONF','ENG_EST')),
   can_export boolean not null default false,
   active boolean not null default true,
   created_at timestamptz default now()
@@ -179,7 +179,8 @@ create policy "bookings_insert" on public.bookings for insert
     and (
       public.is_admin()
       or (public.current_role_key() = 'PCM' and type in ('Manutenção Preventiva','Manutenção Corretiva'))
-      or (public.current_role_key() = 'PCO' and type in ('Limpeza','Limpeza Lokaminas'))
+      or (public.current_role_key() = 'PCO' and type in ('Limpeza','Limpeza Mecanizada'))
+      or (public.current_role_key() = 'PCM_PCO' and type in ('Manutenção Preventiva','Manutenção Corretiva','Limpeza','Limpeza Mecanizada'))
     )
   );
 create policy "bookings_delete" on public.bookings for delete
@@ -188,7 +189,8 @@ create policy "bookings_delete" on public.bookings for delete
     and (
       public.is_admin()
       or (public.current_role_key() = 'PCM' and type in ('Manutenção Preventiva','Manutenção Corretiva'))
-      or (public.current_role_key() = 'PCO' and type in ('Limpeza','Limpeza Lokaminas'))
+      or (public.current_role_key() = 'PCO' and type in ('Limpeza','Limpeza Mecanizada'))
+      or (public.current_role_key() = 'PCM_PCO' and type in ('Manutenção Preventiva','Manutenção Corretiva','Limpeza','Limpeza Mecanizada'))
     )
   );
 
