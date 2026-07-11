@@ -1980,9 +1980,10 @@ function openUserModal(id) {
     openModal(`
         <div class="modal-header"><h3>${editing ? 'Editar Usuário' : 'Novo Usuário'}</h3><button class="modal-close" onclick="closeModal()">&times;</button></div>
         <div class="modal-body">
-            ${!editing ? `<div class="login-hint" style="display:block; margin-top:0;">A pessoa recebe um e-mail de convite para definir a própria senha.</div>` : ''}
+            ${!editing ? `<div class="login-hint" style="display:block; margin-top:0;">A conta já é criada com a senha abaixo — avise a pessoa por fora do sistema. Se ela esquecer a senha depois, pode usar "Redefinir Senha" na lista de usuários (isso sim manda um e-mail).</div>` : ''}
             <div class="m-field"><label>Nome Completo</label><input type="text" id="um-name" value="${editing ? escapeHtml(editing.name) : ''}"></div>
             <div class="m-field"><label>E-mail</label><input type="email" id="um-username" value="${editing ? escapeHtml(editing.username) : ''}" ${editing ? 'disabled' : ''}></div>
+            ${!editing ? `<div class="m-field"><label>Senha Inicial</label><input type="text" id="um-password" placeholder="Mínimo 6 caracteres" autocomplete="new-password"></div>` : ''}
             <div class="m-field"><label>Perfil</label>
                 <select id="um-role">${roles.map(r => `<option value="${r}" ${editing && editing.role === r ? 'selected' : ''}>${ROLE_META[r].label}</option>`).join('')}</select>
             </div>
@@ -1999,7 +2000,7 @@ function openUserModal(id) {
         </div>
         <div class="modal-footer">
             <button class="btn-secondary" onclick="closeModal()">Cancelar</button>
-            <button class="btn-primary" id="um-save-btn" onclick="saveUser(${editing ? `'${editing.id}'` : 'null'})">${editing ? 'Salvar' : 'Enviar Convite'}</button>
+            <button class="btn-primary" id="um-save-btn" onclick="saveUser(${editing ? `'${editing.id}'` : 'null'})">${editing ? 'Salvar' : 'Criar Conta'}</button>
         </div>
     `);
     const roleSelect = document.getElementById('um-role');
@@ -2023,37 +2024,40 @@ async function saveUser(id) {
     if (!name || !email) { toast('Preencha nome e e-mail.', 'error'); return; }
     if (role !== 'ADMIN' && sites.length === 0) { toast('Selecione ao menos um site para este usuário (ou ele não conseguirá acessar nada).', 'warn'); }
 
-    if (id) {
-        const { error } = await sb.from('profiles').update({
-            name, role, can_export: role === 'ADMIN' ? true : canExport, active
-        }).eq('id', id);
-        if (error) { toast('Erro ao salvar: ' + error.message, 'error'); return; }
-        await sb.from('profile_sites').delete().eq('profile_id', id);
-        if (sites.length) {
-            await sb.from('profile_sites').insert(sites.map(site_key => ({ profile_id: id, site_key })));
-        }
-        closeModal();
-        toast('Usuário salvo com sucesso.');
-        if (state.currentUser && state.currentUser.id === id) {
-            state.currentUser = await fetchUserProfile({ id, is_anonymous: false });
-            state.profileKey = state.currentUser.role;
-            await ensureAccessibleSite();
-            renderSiteSelect();
-            onProfileChanged();
-        }
-        loadProfiles().then(renderUsersView);
-    } else {
+    if (!id) {
+        const password = document.getElementById('um-password').value;
+        if (password.length < 6) { toast('Informe uma senha inicial com no mínimo 6 caracteres.', 'error'); return; }
         const btn = document.getElementById('um-save-btn');
-        btn.disabled = true; btn.textContent = 'Enviando...';
+        btn.disabled = true; btn.textContent = 'Criando...';
         const { data, error } = await sb.functions.invoke('admin-manage-user', {
-            body: { action: 'create', name, email, role, canExport: role === 'ADMIN' ? true : canExport, active, sites }
+            body: { action: 'create', name, email, password, role, canExport: role === 'ADMIN' ? true : canExport, active, sites }
         });
         const errMsg = error ? (data && data.error ? data.error : error.message) : (data && data.error ? data.error : null);
-        if (errMsg) { toast('Erro ao criar usuário: ' + errMsg, 'error'); btn.disabled = false; btn.textContent = 'Enviar Convite'; return; }
+        if (errMsg) { toast('Erro ao criar usuário: ' + errMsg, 'error'); btn.disabled = false; btn.textContent = 'Criar Conta'; return; }
         closeModal();
-        toast(`Convite enviado para ${email}.`);
+        toast(`Conta de ${name} criada com sucesso. Avise a pessoa da senha inicial por fora do sistema.`);
         loadProfiles().then(renderUsersView);
+        return;
     }
+
+    const { error } = await sb.from('profiles').update({
+        name, role, can_export: role === 'ADMIN' ? true : canExport, active
+    }).eq('id', id);
+    if (error) { toast('Erro ao salvar: ' + error.message, 'error'); return; }
+    await sb.from('profile_sites').delete().eq('profile_id', id);
+    if (sites.length) {
+        await sb.from('profile_sites').insert(sites.map(site_key => ({ profile_id: id, site_key })));
+    }
+    closeModal();
+    toast('Usuário salvo com sucesso.');
+    if (state.currentUser && state.currentUser.id === id) {
+        state.currentUser = await fetchUserProfile({ id, is_anonymous: false });
+        state.profileKey = state.currentUser.role;
+        await ensureAccessibleSite();
+        renderSiteSelect();
+        onProfileChanged();
+    }
+    loadProfiles().then(renderUsersView);
 }
 
 function openResetPasswordModal(id) {

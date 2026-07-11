@@ -54,13 +54,18 @@ Deno.serve(async (req) => {
     const body = await req.json();
 
     if (body.action === 'create') {
-      const { name, email, role, canExport, active, sites } = body;
+      const { name, email, password, role, canExport, active, sites } = body;
       if (!name || !email || !role) return json({ error: 'Preencha nome, e-mail e perfil.' }, 400);
+      if (!password || password.length < 6) return json({ error: 'Informe uma senha inicial com no mínimo 6 caracteres.' }, 400);
 
-      const { data: invited, error: inviteErr } = await admin.auth.admin.inviteUserByEmail(email);
-      if (inviteErr) return json({ error: inviteErr.message }, 400);
+      // Cria a conta já com a senha definida pelo Admin e o e-mail confirmado
+      // de cara — a pessoa já consegue logar, sem precisar clicar em link nenhum.
+      const { data: created, error: createErr } = await admin.auth.admin.createUser({
+        email, password, email_confirm: true,
+      });
+      if (createErr) return json({ error: createErr.message }, 400);
 
-      const newId = invited.user.id;
+      const newId = created.user.id;
       const { error: profErr } = await admin.from('profiles').insert({
         id: newId, name, email, role, can_export: canExport, active,
       });
