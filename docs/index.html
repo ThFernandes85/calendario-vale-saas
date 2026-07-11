@@ -81,6 +81,13 @@ aside.collapsed .sidebar-topbar { justify-content: center; }
 .perm-yes { background: rgba(16,185,129,0.15); color: var(--color-operacao); border: 1px solid rgba(16,185,129,0.4); }
 .perm-no { background: rgba(239,68,68,0.12); color: var(--color-critico); border: 1px solid rgba(239,68,68,0.35); }
 #btn-logout { width: 100%; margin-top: 12px; padding: 8px 10px; font-size: 11.5px; }
+.profile-box-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+.profile-box-header .client-title { margin-bottom: 0; }
+.profile-toggle-btn { background: none; border: none; color: var(--text-secondary); cursor: pointer; padding: 2px; display: flex; align-items: center; }
+.profile-toggle-btn:hover { color: var(--text-primary); }
+.profile-toggle-btn svg { transition: transform 0.2s; }
+#user-profile-box.perms-collapsed .profile-toggle-btn svg { transform: rotate(-90deg); }
+#user-profile-box.perms-collapsed .profile-perms { display: none; }
 
 .nav-links { display: flex; flex-direction: column; gap: 4px; }
 .nav-item {
@@ -510,8 +517,13 @@ aside.collapsed .nav-badge { top: 2px; right: 2px; }
             </div>
         </div>
 
-        <div class="profile-box">
-            <span class="client-title">Usuário Logado</span>
+        <div class="profile-box" id="user-profile-box">
+            <div class="profile-box-header">
+                <span class="client-title">Usuário Logado</span>
+                <button type="button" id="btn-toggle-user-perms" class="profile-toggle-btn" title="Minimizar/Expandir permissões">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
+                </button>
+            </div>
             <div id="logged-user-name">—</div>
             <div id="logged-user-role">—</div>
             <div class="profile-perms" id="profile-perms"></div>
@@ -1410,6 +1422,15 @@ document.getElementById('btn-toggle-sidebar').addEventListener('click', () => {
     applySidebarCollapse(!document.querySelector('aside').classList.contains('collapsed'));
 });
 
+const LS_USERBOX_COLLAPSED = 'vale_saas_userbox_collapsed_v1';
+function applyUserBoxCollapse(collapsed) {
+    document.getElementById('user-profile-box').classList.toggle('perms-collapsed', collapsed);
+    localStorage.setItem(LS_USERBOX_COLLAPSED, collapsed ? '1' : '0');
+}
+document.getElementById('btn-toggle-user-perms').addEventListener('click', () => {
+    applyUserBoxCollapse(!document.getElementById('user-profile-box').classList.contains('perms-collapsed'));
+});
+
 /* =========================================================
    RENDER: USUÁRIO LOGADO
    ========================================================= */
@@ -2230,6 +2251,7 @@ document.getElementById('btn-add-equip').addEventListener('click', async () => {
    ========================================================= */
 (async () => {
     applySidebarCollapse(localStorage.getItem(LS_SIDEBAR) === '1');
+    applyUserBoxCollapse(localStorage.getItem(LS_USERBOX_COLLAPSED) === '1');
 
     const { data: { session } } = await sb.auth.getSession();
     if (session && session.user) {
