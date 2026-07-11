@@ -1670,9 +1670,11 @@ function renderDashboard() {
 /* =========================================================
    RENDER: RELATÓRIOS (CHARTS + AUDITORIA)
    ========================================================= */
-const NON_BOOKING_ACTIONS = ['Login', 'Logout', 'Redefinição de Senha', 'Exclusão de Usuário', 'Exclusão de Registro'];
+const ALWAYS_HIDDEN_ACTIONS = ['Login', 'Logout'];
+const NON_BOOKING_ACTIONS = ['Redefinição de Senha', 'Exclusão de Usuário', 'Exclusão de Registro'];
 function getFilteredAuditLog() {
     return state.auditLog.filter(a => {
+        if (ALWAYS_HIDDEN_ACTIONS.includes(a.acao)) return false;
         if (state.profileKey !== 'ADMIN' && NON_BOOKING_ACTIONS.includes(a.acao)) return false;
         if ((state.profileKey === 'PCM' || state.profileKey === 'PCO' || state.profileKey === 'PCM_PCO') && a.role === 'ADMIN') return false;
         if (state.profileKey === 'ADMIN' && state.reportFilter.username && a.username !== state.reportFilter.username) return false;
