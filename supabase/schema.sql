@@ -77,7 +77,7 @@ create table public.bookings (
   emergencial boolean not null default false,
   om text,
   justification text not null,
-  operator_id uuid references public.profiles(id),
+  operator_id uuid references public.profiles(id) on delete set null,
   operator_label text not null,
   created_at timestamptz default now()
 );
@@ -97,7 +97,7 @@ create table public.audit_log (
   agendamento_data date,
   agendamento_horario text,
   data_hora timestamptz not null default now(),
-  profile_id uuid references public.profiles(id)
+  profile_id uuid references public.profiles(id) on delete set null
 );
 
 -- ============================================================

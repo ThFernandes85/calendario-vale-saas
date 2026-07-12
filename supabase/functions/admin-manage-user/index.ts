@@ -63,13 +63,13 @@ Deno.serve(async (req) => {
       const { data: created, error: createErr } = await admin.auth.admin.createUser({
         email, password, email_confirm: true,
       });
-      if (createErr) return json({ error: createErr.message }, 400);
+      if (createErr) return json({ error: createErr.message || 'Falha ao criar a conta de login (motivo desconhecido no Auth).' }, 400);
 
       const newId = created.user.id;
       const { error: profErr } = await admin.from('profiles').insert({
         id: newId, name, email, role, can_export: canExport, active,
       });
-      if (profErr) { await admin.auth.admin.deleteUser(newId); return json({ error: profErr.message }, 400); }
+      if (profErr) { await admin.auth.admin.deleteUser(newId); return json({ error: profErr.message || 'Falha ao criar o perfil (motivo desconhecido no banco).' }, 400); }
 
       if (Array.isArray(sites) && sites.length) {
         await admin.from('profile_sites').insert(sites.map((site_key: string) => ({ profile_id: newId, site_key })));
@@ -82,7 +82,7 @@ Deno.serve(async (req) => {
       if (!id) return json({ error: 'ID do usuário não informado.' }, 400);
       if (id === caller.id) return json({ error: 'Você não pode excluir sua própria conta enquanto estiver logado.' }, 400);
       const { error: delErr } = await admin.auth.admin.deleteUser(id);
-      if (delErr) return json({ error: delErr.message }, 400);
+      if (delErr) return json({ error: delErr.message || 'Falha ao excluir a conta de login (verifique se ela não tem agendamentos/histórico vinculados).' }, 400);
       return json({ ok: true });
     }
 

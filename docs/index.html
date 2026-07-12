@@ -2044,7 +2044,7 @@ async function invokeAdminFn(body) {
                 if (parsed && parsed.error) msg = parsed.error;
             } catch (_) { /* corpo não era JSON, mantém error.message */ }
         }
-        return { data: null, errMsg: msg };
+        return { data: null, errMsg: (typeof msg === 'string' && msg) ? msg : 'Erro desconhecido na Edge Function (verifique os logs em Edge Functions no painel do Supabase).' };
     }
     if (data && data.error) return { data: null, errMsg: data.error };
     return { data, errMsg: null };
