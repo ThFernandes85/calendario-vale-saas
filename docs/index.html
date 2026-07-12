@@ -1139,7 +1139,11 @@ async function addAuditEntry({ tag, acao, justificativa, dataHora, om, agendamen
    ========================================================= */
 function getLiveStatus(tag) {
     const today = todayStr(); const nowMin = nowMinutes();
-    const b = state.bookings.find(bk => bk.tag === tag && bk.date === today && nowMin >= bk.startMin && nowMin < bk.endMin);
+    // Mostra o serviço já iniciado hoje mesmo depois do horário de término
+    // (fica como histórico do dia) — só volta a "Livre" se o bloqueio for
+    // cancelado (removido de state.bookings) ou no dia seguinte.
+    const started = state.bookings.filter(bk => bk.tag === tag && bk.date === today && nowMin >= bk.startMin);
+    const b = started.length ? started.reduce((latest, cur) => cur.startMin > latest.startMin ? cur : latest) : null;
     if (!b) return { status: 'livre', label: 'Livre' };
     if (TYPE_STATUS[b.type] === 'limpeza') return { status: 'limpeza', label: 'Limpeza', booking: b };
     if (b.emergencial) return { status: 'critico', label: 'Crítico', booking: b };
