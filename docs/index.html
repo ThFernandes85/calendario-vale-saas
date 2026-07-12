@@ -1935,7 +1935,10 @@ document.getElementById('btn-heatmap-clear').addEventListener('click', () => {
     state.heatmapFilter = { from: null, to: null, equip: null };
     renderHeatmap();
 });
-document.getElementById('btn-heatmap-print').addEventListener('click', () => window.print());
+document.getElementById('btn-heatmap-print').addEventListener('click', () => {
+    if (!canExportReports()) { showAccessDenied('Apenas perfis credenciados (PCM, PCO e Admin Master) podem imprimir relatórios.'); return; }
+    window.print();
+});
 
 function heatCellStyle(count, maxCount, kind) {
     if (!count) return '';
