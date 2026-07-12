@@ -682,6 +682,14 @@ aside.collapsed .nav-badge { top: 2px; right: 2px; }
                     </div>
                     <button class="btn-primary" id="btn-move-equip" style="align-self:flex-end;">Mover Equipamento</button>
                 </div>
+                <div style="height:14px;"></div>
+                <div class="agenda-toolbar">
+                    <div class="agenda-field">
+                        <label>Equipamento a Excluir</label>
+                        <select id="del-equip-tag" style="min-width:200px;"></select>
+                    </div>
+                    <button class="btn-danger" id="btn-delete-equip" style="align-self:flex-end;">Excluir Equipamento</button>
+                </div>
             </div>
         </div>
 
@@ -2231,6 +2239,12 @@ function renderAssetMgmtPanel() {
     }
     const moveAreaSel = document.getElementById('move-equip-area');
     if (moveAreaSel) moveAreaSel.innerHTML = Object.keys(DATABASE).map(k => `<option value="${k}">${escapeHtml(AREA_LABEL[k] || k)}</option>`).join('');
+    const delTagSel = document.getElementById('del-equip-tag');
+    if (delTagSel) {
+        delTagSel.innerHTML = Object.keys(DATABASE).map(area =>
+            `<optgroup label="${escapeHtml(AREA_LABEL[area] || area)}">${DATABASE[area].map(tag => `<option value="${tag}">${tag} (${escapeHtml(AREA_LABEL[area] || area)})</option>`).join('')}</optgroup>`
+        ).join('');
+    }
 }
 
 async function moveEquipment(tag, newArea) {
@@ -2287,6 +2301,47 @@ document.getElementById('btn-add-equip').addEventListener('click', async () => {
     toast(`Equipamento "${tag}" adicionado à área ${AREA_LABEL[areaKey] || areaKey}.`);
     renderAssetMgmtPanel();
     renderAtivos(); renderAgendaEquipSelect(); renderDashboard();
+});
+
+function openDeleteEquipModal(tag) {
+    const item = ALL_EQUIP.find(e => e.tag === tag);
+    if (!item) return;
+    const bookingCount = state.bookings.filter(b => b.tag === tag).length;
+    openModal(`
+        <div class="modal-header"><h3>Excluir Equipamento</h3><button class="modal-close" onclick="closeModal()">&times;</button></div>
+        <div class="modal-body">
+            <div class="access-denied-icon">&#9888;</div>
+            <div class="access-denied-text">
+                Tem certeza que deseja excluir permanentemente <b>${escapeHtml(tag)}</b> (${escapeHtml(AREA_LABEL[item.area] || item.area)})?
+                ${bookingCount > 0 ? `Este equipamento tem <b>${bookingCount} agendamento(s)</b> ativo(s), que deixarão de aparecer no calendário. ` : ''}
+                O histórico de auditoria já registrado não é afetado. Esta ação não pode ser desfeita.
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn-secondary" onclick="closeModal()">Cancelar</button>
+            <button class="btn-danger" onclick="confirmDeleteEquip('${tag}')">Excluir Equipamento</button>
+        </div>
+    `);
+}
+async function confirmDeleteEquip(tag) {
+    const item = ALL_EQUIP.find(e => e.tag === tag);
+    if (!item) return;
+    const { error } = await sb.from('equipment').delete().eq('site_key', state.currentSite).eq('tag', tag);
+    if (error) { toast('Erro ao excluir equipamento: ' + error.message, 'error'); return; }
+    DATABASE[item.area] = DATABASE[item.area].filter(t => t !== tag);
+    const idx = ALL_EQUIP.findIndex(e => e.tag === tag);
+    if (idx !== -1) ALL_EQUIP.splice(idx, 1);
+    if (state.agendaTag === tag) state.agendaTag = ALL_EQUIP.length ? ALL_EQUIP[0].tag : null;
+    closeModal();
+    toast(`Equipamento "${tag}" excluído com sucesso.`, 'warn');
+    renderAssetMgmtPanel();
+    renderAtivos(); renderAgendaEquipSelect(); renderDashboard(); renderWeekGrid();
+}
+document.getElementById('btn-delete-equip').addEventListener('click', () => {
+    if (state.profileKey !== 'ADMIN') { showAccessDenied('Apenas o Admin Master pode excluir equipamentos.'); return; }
+    const tag = document.getElementById('del-equip-tag').value;
+    if (!tag) { toast('Selecione o equipamento a excluir.', 'error'); return; }
+    openDeleteEquipModal(tag);
 });
 
 /* =========================================================
