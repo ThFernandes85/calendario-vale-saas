@@ -239,6 +239,9 @@ header {
 .wg-slot .wg-badge { font-size: 9px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.4px; padding: 2px 7px; border-radius: 10px; width: fit-content; }
 .wg-slot .wg-time { font-family: monospace; font-size: 9.5px; color: var(--text-muted); }
 .wg-slot .wg-just { font-size: 10.5px; color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wg-slot.wg-multi { cursor: default; align-items: stretch; }
+.wg-multi-item { font-size: 9.5px; font-weight: 700; padding: 3px 7px; border-radius: 5px; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.wg-multi-item:hover { filter: brightness(1.2); }
 
 .slot-row {
     display: flex; align-items: center; gap: 14px; padding: 11px 14px; border-radius: 8px;
@@ -1065,12 +1068,12 @@ async function switchSite(newSiteKey) {
     await loadSiteDatabase();
     await loadPersisted();
     state.currentArea = 'ALL';
-    state.agendaTag = ALL_EQUIP.length ? ALL_EQUIP[0].tag : null;
+    state.agendaTag = ALL_EQUIP.length ? ALL_EQUIP_TAG : null;
     state.reportFilter = { from: null, to: null, username: null };
     state.heatmapFilter = { from: null, to: null, equip: null };
     renderSiteSelect();
     onProfileChanged();
-    switchView('dashboard');
+    switchView('calendario');
     updateUpcomingBadge();
     toast(`Site alterado para "${SITES[newSiteKey]}".`);
 }
@@ -1348,7 +1351,7 @@ async function ensureAccessibleSite() {
         state.auditLog = [];
     }
     state.currentArea = 'ALL';
-    state.agendaTag = ALL_EQUIP.length ? ALL_EQUIP[0].tag : null;
+    state.agendaTag = ALL_EQUIP.length ? ALL_EQUIP_TAG : null;
 }
 
 async function loginAs(user, options) {
@@ -1368,7 +1371,7 @@ async function loginAs(user, options) {
         await addAuditEntry({ tag: '—', acao: 'Login', justificativa: 'Acesso ao sistema autenticado.' });
     }
     onProfileChanged();
-    switchView('dashboard');
+    switchView('calendario');
     updateUpcomingBadge();
     if (refreshInterval) clearInterval(refreshInterval);
     refreshInterval = setInterval(() => {
@@ -1561,9 +1564,11 @@ function renderAtivos() {
 /* =========================================================
    RENDER: CALENDÁRIO DE PROCESSOS
    ========================================================= */
+const ALL_EQUIP_TAG = '__ALL__';
 function renderAgendaEquipSelect() {
     const sel = document.getElementById('agenda-equip');
-    sel.innerHTML = Object.keys(DATABASE).map(area =>
+    const allOption = `<option value="${ALL_EQUIP_TAG}" ${state.agendaTag === ALL_EQUIP_TAG ? 'selected' : ''}>Todos os Equipamentos</option>`;
+    sel.innerHTML = allOption + Object.keys(DATABASE).map(area =>
         `<optgroup label="${AREA_LABEL[area]}">${DATABASE[area].map(tag => `<option value="${tag}" ${tag === state.agendaTag ? 'selected' : ''}>${tag}</option>`).join('')}</optgroup>`
     ).join('');
     sel.onchange = () => { state.agendaTag = sel.value; renderWeekGrid(); };
@@ -1584,10 +1589,12 @@ function renderWeekGrid() {
         grid.innerHTML = `<div style="grid-column:1/-1; padding:40px 20px; text-align:center; color:var(--text-muted);">Nenhum equipamento cadastrado neste site ainda. Peça ao Admin Master para cadastrar áreas e equipamentos em "Ativos &amp; Áreas".</div>`;
         return;
     }
+    const isAllMode = tag === ALL_EQUIP_TAG;
     const dates = getWeekDates(state.weekStart);
     const today = todayStr();
-    document.getElementById('agenda-title').textContent =
-        `Agenda de ${tag} — ${AREA_LABEL[areaOf(tag)]} — Semana de ${formatDateBR(dates[0])} a ${formatDateBR(dates[6])}`;
+    document.getElementById('agenda-title').textContent = isAllMode
+        ? `Agenda — Todos os Equipamentos — Semana de ${formatDateBR(dates[0])} a ${formatDateBR(dates[6])}`
+        : `Agenda de ${tag} — ${AREA_LABEL[areaOf(tag)]} — Semana de ${formatDateBR(dates[0])} a ${formatDateBR(dates[6])}`;
     document.getElementById('week-jump-date').value = state.weekStart;
 
     grid.innerHTML = '';
@@ -1602,7 +1609,7 @@ function renderWeekGrid() {
         grid.appendChild(head);
     });
 
-    const weekBookings = state.bookings.filter(b => b.tag === tag && dates.includes(b.date));
+    const weekBookings = state.bookings.filter(b => (isAllMode || b.tag === tag) && dates.includes(b.date));
 
     SHIFTS.forEach(shift => {
         const shiftLabel = document.createElement('div');
@@ -1617,22 +1624,36 @@ function renderWeekGrid() {
             grid.appendChild(hourLabel);
 
             dates.forEach(dateStr => {
-                const booking = weekBookings.find(b => b.date === dateStr && b.startMin < (h + 1) * 60 && b.endMin > h * 60);
+                const matches = weekBookings.filter(b => b.date === dateStr && b.startMin < (h + 1) * 60 && b.endMin > h * 60);
                 const cell = document.createElement('div');
                 const isPast = dateStr < today;
-                if (booking) {
+
+                if (isAllMode && matches.length > 1) {
+                    cell.className = 'wg-slot wg-multi';
+                    matches.forEach(booking => {
+                        const st = TYPE_STATUS[booking.type] === 'limpeza' ? 'limpeza' : (booking.emergencial ? 'critico' : 'manutencao');
+                        const item = document.createElement('div');
+                        item.className = `wg-multi-item badge-${st}`;
+                        item.textContent = `${booking.tag} · ${booking.emergencial ? 'Emergencial' : booking.type}`;
+                        item.title = `OM ${booking.om || '—'} — ${booking.justification} — ${booking.operator}`;
+                        item.addEventListener('click', e => { e.stopPropagation(); openDetailModal(booking); });
+                        cell.appendChild(item);
+                    });
+                } else if (matches.length) {
+                    const booking = matches[0];
                     const st = TYPE_STATUS[booking.type] === 'limpeza' ? 'limpeza' : (booking.emergencial ? 'critico' : 'manutencao');
                     const badgeLabel = booking.emergencial ? 'Emergencial' : booking.type;
                     cell.className = 'wg-slot';
                     cell.title = `OM ${booking.om || '—'} — ${booking.justification} — ${booking.operator}`;
-                    cell.innerHTML = `<span class="wg-badge badge-${st}">${badgeLabel}</span><span class="wg-time">${minutesToTime(booking.startMin)}–${minutesToTime(booking.endMin)}</span><span class="wg-just">${escapeHtml(booking.justification)}</span>`;
+                    cell.innerHTML = `<span class="wg-badge badge-${st}">${isAllMode ? `${booking.tag} · ${badgeLabel}` : badgeLabel}</span><span class="wg-time">${minutesToTime(booking.startMin)}–${minutesToTime(booking.endMin)}</span><span class="wg-just">${escapeHtml(booking.justification)}</span>`;
                     cell.addEventListener('click', () => openDetailModal(booking));
                 } else {
                     cell.className = 'wg-slot wg-livre' + (isPast ? ' wg-past' : '');
-                    cell.title = isPast ? 'Data passada' : 'Disponível para agendamento';
+                    cell.title = isPast ? 'Data passada' : (isAllMode ? 'Selecione um equipamento específico para agendar' : 'Disponível para agendamento');
                     cell.innerHTML = `<span class="wg-badge badge-livre">Livre</span>`;
                     cell.addEventListener('click', () => {
                         if (isPast) { toast('Não é possível criar agendamentos em datas passadas.', 'warn'); return; }
+                        if (isAllMode) { toast('Selecione um equipamento específico no filtro acima para agendar.', 'warn'); return; }
                         openBookingModal(tag, dateStr, h);
                     });
                 }
