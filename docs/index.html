@@ -373,15 +373,21 @@ table.heatmap-table tr:hover td { filter: brightness(1.15); }
     transition: opacity 0.15s ease, transform 0.15s ease;
 }
 .site-dropdown.open { opacity: 1; transform: translateY(0) scale(1); pointer-events: auto; }
-.site-dropdown-item {
-    display: flex; align-items: center; justify-content: space-between; width: 100%;
+.site-dropdown-item { display: flex; align-items: center; gap: 4px; width: 100%; border-radius: 6px; }
+.site-dropdown-item-btn {
+    display: flex; align-items: center; justify-content: space-between; flex: 1; min-width: 0;
     background: none; border: none; color: var(--text-secondary); padding: 10px 12px; border-radius: 6px;
     font-size: 12.5px; text-align: left; cursor: pointer; transition: all 0.12s;
 }
-.site-dropdown-item:hover { background-color: var(--bg-hover); color: var(--text-primary); transform: translateX(2px); }
-.site-dropdown-item.active { background-color: rgba(37,99,235,0.18); color: #7ea6ff; font-weight: 700; }
+.site-dropdown-item-btn:hover { background-color: var(--bg-hover); color: var(--text-primary); }
+.site-dropdown-item.active .site-dropdown-item-btn { background-color: rgba(37,99,235,0.18); color: #7ea6ff; font-weight: 700; }
 .site-dropdown-item .check { opacity: 0; font-size: 12px; }
 .site-dropdown-item.active .check { opacity: 1; }
+.site-dropdown-delete-btn {
+    flex-shrink: 0; background: none; border: none; color: var(--text-muted); padding: 6px; border-radius: 6px;
+    cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.12s;
+}
+.site-dropdown-delete-btn:hover { background-color: rgba(239,68,68,0.15); color: #ff8080; }
 .site-dropdown-empty { padding: 10px; font-size: 11.5px; color: var(--text-muted); text-align: center; }
 .site-dropdown-divider { border-top: 1px dashed var(--border-color); margin: 6px 4px; }
 
@@ -1024,17 +1030,24 @@ function renderSiteSelect() {
     if (!label) return;
     label.textContent = SITES[state.currentSite] || state.currentSite;
     const accessible = accessibleSites();
+    const isAdmin = state.profileKey === 'ADMIN';
     const list = document.getElementById('site-dropdown-list');
     list.innerHTML = accessible.length ? accessible.map(k => `
-        <button type="button" class="site-dropdown-item${k === state.currentSite ? ' active' : ''}" data-site="${k}">
-            <span>${escapeHtml(SITES[k])}</span><span class="check">&#10003;</span>
-        </button>
+        <div class="site-dropdown-item${k === state.currentSite ? ' active' : ''}">
+            <button type="button" class="site-dropdown-item-btn" data-site="${k}">
+                <span>${escapeHtml(SITES[k])}</span><span class="check">&#10003;</span>
+            </button>
+            ${isAdmin ? `<button type="button" class="site-dropdown-delete-btn" data-site="${k}" title="Excluir site">&#128465;</button>` : ''}
+        </div>
     `).join('') : `<div class="site-dropdown-empty">Nenhum site liberado para o seu usuário.</div>`;
-    list.querySelectorAll('.site-dropdown-item').forEach(btn => btn.addEventListener('click', async () => {
+    list.querySelectorAll('.site-dropdown-item-btn').forEach(btn => btn.addEventListener('click', async () => {
         await switchSite(btn.dataset.site);
         closeSiteDropdown();
     }));
-    const isAdmin = state.profileKey === 'ADMIN';
+    list.querySelectorAll('.site-dropdown-delete-btn').forEach(btn => btn.addEventListener('click', e => {
+        e.stopPropagation();
+        openDeleteSiteModal(btn.dataset.site);
+    }));
     document.getElementById('btn-open-add-site').style.display = isAdmin ? 'block' : 'none';
     document.getElementById('site-dropdown-divider').style.display = isAdmin ? 'block' : 'none';
 }
@@ -1105,6 +1118,43 @@ async function addSite(name) {
     renderSiteSelect();
     closeModal();
     toast(`Site "${trimmed}" criado. Selecione-o para cadastrar áreas e equipamentos.`);
+}
+
+function openDeleteSiteModal(key) {
+    const label = SITES[key];
+    if (!label) return;
+    if (Object.keys(SITES).length <= 1) { toast('Não é possível excluir o único site cadastrado.', 'error'); return; }
+    openModal(`
+        <div class="modal-header"><h3>Excluir Site</h3><button class="modal-close" onclick="closeModal()">&times;</button></div>
+        <div class="modal-body">
+            <div class="access-denied-icon">&#9888;</div>
+            <div class="access-denied-text">
+                Tem certeza que deseja excluir permanentemente o site <b>${escapeHtml(label)}</b>?<br><br>
+                Isso apaga também <b>todas as áreas, equipamentos, agendamentos, histórico de auditoria e liberações de acesso</b> vinculados a esse site. Esta ação não pode ser desfeita.
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn-secondary" onclick="closeModal()">Cancelar</button>
+            <button class="btn-danger" onclick="confirmDeleteSite('${key}')">Excluir Site Permanentemente</button>
+        </div>
+    `);
+}
+async function confirmDeleteSite(key) {
+    const label = SITES[key];
+    if (!label) return;
+    const { error } = await sb.from('sites').delete().eq('key', key);
+    if (error) { toast('Erro ao excluir site: ' + error.message, 'error'); return; }
+    delete SITES[key];
+    closeModal();
+    toast(`Site "${label}" excluído com sucesso.`, 'warn');
+    if (state.currentSite === key) {
+        await ensureAccessibleSite();
+        renderAssetMgmtPanel();
+        onProfileChanged();
+        switchView('calendario');
+        updateUpcomingBadge();
+    }
+    renderSiteSelect();
 }
 
 async function fetchUserProfile(authUser) {
