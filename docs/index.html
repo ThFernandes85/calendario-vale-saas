@@ -406,6 +406,10 @@ aside.collapsed .nav-badge { top: 2px; right: 2px; }
 
 @media print {
     aside, header, .filter-section, .agenda-toolbar, .audit-toolbar button, #btn-heatmap-print, #btn-print-full-report, #btn-print-book, #book-period-wrap, #toast-container { display: none !important; }
+    /* Log de Auditoria nunca sai impresso/em PDF, venha o print de onde vier
+       (botão dedicado, Relatório Completo, ou Ctrl+P direto na tela) -- ele
+       já tem seu próprio "Exportar Excel" para consulta fora do app. */
+    #audit-section { display: none !important; }
     body, main { overflow: visible !important; height: auto !important; }
     .content-container { display: flex !important; padding: 0; }
     .content-container:not(.view-active) { display: none !important; }
@@ -419,9 +423,6 @@ aside.collapsed .nav-badge { top: 2px; right: 2px; }
     body.print-report-mode #view-mapacalor { display: flex !important; }
     body.print-report-mode #view-dashboard,
     body.print-report-mode #view-relatorios { break-after: page; }
-    /* Log de Auditoria fica de fora do PDF do Relatório Completo -- ele já
-       tem seu próprio botão de impressão/exportação Excel separado. */
-    body.print-report-mode #audit-section { display: none !important; }
 
     body.print-book-mode #view-book { display: flex !important; }
 }
@@ -842,7 +843,6 @@ aside.collapsed .nav-badge { top: 2px; right: 2px; }
             <div class="audit-toolbar">
                 <div class="filter-title" style="margin-bottom:0;">Log de Auditoria de Ativos</div>
                 <div style="display:flex; gap:10px;">
-                    <button class="btn-secondary" id="btn-print-audit">Imprimir Relatório</button>
                     <button class="btn-primary" id="btn-export-audit">Exportar Excel (.xlsx)</button>
                 </div>
             </div>
@@ -2164,7 +2164,6 @@ function renderAudit() {
         <div class="audit-toolbar">
             <div class="filter-title" style="margin-bottom:0;">Log de Auditoria de Ativos</div>
             <div style="display:flex; gap:10px; align-items:center;">
-                <button class="btn-secondary" id="btn-print-audit">Imprimir Relatório</button>
                 <button class="btn-primary" id="btn-export-audit">Exportar Excel (.xlsx)</button>
                 <button type="button" id="btn-toggle-audit" class="profile-toggle-btn" title="Minimizar/Expandir">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
@@ -2197,7 +2196,6 @@ function renderAudit() {
     `).join('') || `<tr><td colspan="${isAdmin ? 9 : 8}" style="text-align:center; color:var(--text-muted);">Nenhum registro de auditoria no período selecionado.</td></tr>`;
 
     document.getElementById('btn-export-audit').addEventListener('click', exportAuditExcel);
-    document.getElementById('btn-print-audit').addEventListener('click', () => window.print());
     document.getElementById('btn-toggle-audit').addEventListener('click', () => {
         applyAuditCollapse(!section.classList.contains('audit-collapsed'));
     });
