@@ -1929,11 +1929,13 @@ function renderWeekGrid() {
                     cell.innerHTML = `<span class="wg-badge badge-${st}">${isAllMode ? `${booking.tag} · ${badgeLabel}` : badgeLabel}</span><span class="wg-time">${minutesToTime(booking.startMin)}–${minutesToTime(booking.endMin)}</span><span class="wg-just">${escapeHtml(booking.justification)}</span>`;
                     cell.addEventListener('click', () => openDetailModal(booking));
                 } else {
+                    // Datas passadas podem ser lançadas retroativamente (ex: alimentar o
+                    // histórico do período de medição com fotos/OM de um serviço que já
+                    // aconteceu) -- só o visual "apagado" indica que é passado, sem bloquear o clique.
                     cell.className = 'wg-slot wg-livre' + (isPast ? ' wg-past' : '');
-                    cell.title = isPast ? 'Data passada' : (isAllMode ? 'Selecione um equipamento específico para agendar' : 'Disponível para agendamento');
+                    cell.title = isAllMode ? 'Selecione um equipamento específico para agendar' : (isPast ? 'Data passada — disponível para lançamento retroativo' : 'Disponível para agendamento');
                     cell.innerHTML = `<span class="wg-badge badge-livre">Livre</span>`;
                     cell.addEventListener('click', () => {
-                        if (isPast) { toast('Não é possível criar agendamentos em datas passadas.', 'warn'); return; }
                         if (isAllMode) { toast('Selecione um equipamento específico no filtro acima para agendar.', 'warn'); return; }
                         openBookingModal(tag, dateStr, h);
                     });
