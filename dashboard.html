@@ -792,9 +792,19 @@ aside.collapsed .nav-badge { top: 2px; right: 2px; }
 
         <div class="kpi-grid" style="margin-bottom:18px;">
             <div class="kpi-card" style="--accent: var(--color-limpeza);">
-                <div class="kpi-label">Nota de Limpeza — Sodexo</div>
-                <div class="kpi-value" id="kpi-sodexo-score">—</div>
-                <div class="kpi-sub" id="kpi-sodexo-score-sub">Bloqueios de Limpeza encerrados sem pendência atribuída à Sodexo</div>
+                <div class="kpi-label">Nota de Limpeza — Sodexo (Atendido)</div>
+                <div class="kpi-value" id="kpi-sodexo-atendido">—</div>
+                <div class="kpi-sub" id="kpi-sodexo-atendido-sub">Bloqueios de Limpeza Sodexo concluídos no período</div>
+            </div>
+            <div class="kpi-card" style="--accent: var(--color-operacao);">
+                <div class="kpi-label">Pendente Vale</div>
+                <div class="kpi-value" id="kpi-sodexo-vale">—</div>
+                <div class="kpi-sub" id="kpi-sodexo-vale-sub">Não desconta da nota da Sodexo</div>
+            </div>
+            <div class="kpi-card" style="--accent: #ef4444;">
+                <div class="kpi-label">Pendente Sodexo</div>
+                <div class="kpi-value" id="kpi-sodexo-pendente">—</div>
+                <div class="kpi-sub" id="kpi-sodexo-pendente-sub">Desconta da nota de Limpeza</div>
             </div>
         </div>
 
@@ -2036,17 +2046,27 @@ function sodexoCleaningBreakdown(periodo) {
     };
 }
 function renderSodexoScore() {
-    const valorEl = document.getElementById('kpi-sodexo-score');
-    const subEl = document.getElementById('kpi-sodexo-score-sub');
-    if (!valorEl) return;
+    const atendidoEl = document.getElementById('kpi-sodexo-atendido');
+    if (!atendidoEl) return;
+    const valeEl = document.getElementById('kpi-sodexo-vale');
+    const pendenteEl = document.getElementById('kpi-sodexo-pendente');
+    const atendidoSub = document.getElementById('kpi-sodexo-atendido-sub');
+    const valeSub = document.getElementById('kpi-sodexo-vale-sub');
+    const pendenteSub = document.getElementById('kpi-sodexo-pendente-sub');
+
     const b = sodexoCleaningBreakdown();
     if (!b) {
-        valorEl.textContent = '—';
-        subEl.textContent = 'Nenhum bloqueio de Limpeza Sodexo encerrado no período selecionado';
+        atendidoEl.textContent = valeEl.textContent = pendenteEl.textContent = '—';
+        atendidoSub.textContent = valeSub.textContent = pendenteSub.textContent = 'Nenhum bloqueio de Limpeza Sodexo encerrado no período selecionado';
         return;
     }
-    valorEl.textContent = `${b.pctAtendido}%`;
-    subEl.textContent = `Atendido ${b.pctAtendido}% · Pendente Vale ${b.pctPendenteVale}% (não desconta) · Pendente Sodexo ${b.pctPendenteSodexo}% — ${b.total} bloqueio(s) no período`;
+    atendidoEl.textContent = `${b.pctAtendido}%`;
+    valeEl.textContent = `${b.pctPendenteVale}%`;
+    pendenteEl.textContent = `${b.pctPendenteSodexo}%`;
+    const totalTxt = `${b.total} bloqueio(s) no período`;
+    atendidoSub.textContent = `Bloqueios de Limpeza Sodexo concluídos — ${totalTxt}`;
+    valeSub.textContent = `Não desconta da nota da Sodexo — ${totalTxt}`;
+    pendenteSub.textContent = `Desconta da nota de Limpeza — ${totalTxt}`;
 }
 
 let chartTop5 = null, chartArea = null;
@@ -2349,11 +2369,11 @@ function buildAderenciaBookHtml() {
             <div style="display:flex; gap:12px;">
                 <div style="flex:1;">
                     <div style="font-size:11px; font-weight:600; margin-bottom:4px;">ANTES</div>
-                    ${b.closurePhotoBefore ? `<img src="${b.closurePhotoBefore}" style="width:100%; border-radius:6px; border:1px solid #ddd;" onerror="this.outerHTML='<div style=\\'font-size:11px;color:#c00;\\'>Falha ao carregar a foto</div>'">` : `<div style="font-size:11px; color:#999;">Sem foto</div>`}
+                    ${b.closurePhotoBefore ? `<img src="${b.closurePhotoBefore}" style="width:160px; height:160px; object-fit:cover; border-radius:6px; border:1px solid #ddd;" onerror="this.outerHTML='<div style=\\'font-size:11px;color:#c00;\\'>Falha ao carregar a foto</div>'">` : `<div style="font-size:11px; color:#999;">Sem foto</div>`}
                 </div>
                 <div style="flex:1;">
                     <div style="font-size:11px; font-weight:600; margin-bottom:4px;">DEPOIS</div>
-                    ${b.closurePhotoAfter ? `<img src="${b.closurePhotoAfter}" style="width:100%; border-radius:6px; border:1px solid #ddd;" onerror="this.outerHTML='<div style=\\'font-size:11px;color:#c00;\\'>Falha ao carregar a foto</div>'">` : `<div style="font-size:11px; color:#999;">Sem foto</div>`}
+                    ${b.closurePhotoAfter ? `<img src="${b.closurePhotoAfter}" style="width:160px; height:160px; object-fit:cover; border-radius:6px; border:1px solid #ddd;" onerror="this.outerHTML='<div style=\\'font-size:11px;color:#c00;\\'>Falha ao carregar a foto</div>'">` : `<div style="font-size:11px; color:#999;">Sem foto</div>`}
                 </div>
             </div>
         </div>
