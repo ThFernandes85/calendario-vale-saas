@@ -79,7 +79,13 @@ create table public.bookings (
   justification text not null,
   operator_id uuid references public.profiles(id) on delete set null,
   operator_label text not null,
-  created_at timestamptz default now()
+  created_at timestamptz default now(),
+  closure_status text check (closure_status in ('ENCERRADA','REPROGRAMADA','PENDENTE','PENDENTE_VALE','PENDENTE_SODEXO')),
+  closure_reason text,
+  closure_photo_before text,
+  closure_photo_after text,
+  closed_at timestamptz,
+  closed_by uuid references public.profiles(id) on delete set null
 );
 
 -- ---------- AUDIT LOG ----------
@@ -193,6 +199,25 @@ create policy "bookings_delete" on public.bookings for delete
       or (public.current_role_key() = 'PCM_PCO' and type in ('Manutenção Preventiva','Manutenção Corretiva','Limpeza','Limpeza Mecanizada'))
     )
   );
+create policy "bookings_update" on public.bookings for update
+  using (
+    public.has_site_access(site_key)
+    and (
+      public.is_admin()
+      or (public.current_role_key() = 'PCM' and type in ('Manutenção Preventiva','Manutenção Corretiva'))
+      or (public.current_role_key() = 'PCO' and type in ('Limpeza','Limpeza Mecanizada'))
+      or (public.current_role_key() = 'PCM_PCO' and type in ('Manutenção Preventiva','Manutenção Corretiva','Limpeza','Limpeza Mecanizada'))
+    )
+  )
+  with check (
+    public.has_site_access(site_key)
+    and (
+      public.is_admin()
+      or (public.current_role_key() = 'PCM' and type in ('Manutenção Preventiva','Manutenção Corretiva'))
+      or (public.current_role_key() = 'PCO' and type in ('Limpeza','Limpeza Mecanizada'))
+      or (public.current_role_key() = 'PCM_PCO' and type in ('Manutenção Preventiva','Manutenção Corretiva','Limpeza','Limpeza Mecanizada'))
+    )
+  );
 
 -- AUDIT LOG: entradas de um site exigem acesso ao site; entradas globais
 -- (login/logout, gestão de usuários) só o Admin vê. Inserção liberada a
@@ -206,6 +231,26 @@ create policy "audit_insert" on public.audit_log for insert
   with check (auth.uid() is not null);
 create policy "audit_admin_delete" on public.audit_log for delete
   using (public.is_admin());
+
+-- ============================================================
+-- STORAGE: fotos de antes/depois anexadas ao encerrar um bloqueio
+-- (bucket público — a URL fica salva em bookings.closure_photo_before/after)
+-- ============================================================
+insert into storage.buckets (id, name, public)
+values ('closure-photos', 'closure-photos', true)
+on conflict (id) do update set public = true;
+
+drop policy if exists "closure_photos_insert" on storage.objects;
+create policy "closure_photos_insert" on storage.objects for insert
+  with check (bucket_id = 'closure-photos' and auth.uid() is not null);
+
+drop policy if exists "closure_photos_select" on storage.objects;
+create policy "closure_photos_select" on storage.objects for select
+  using (bucket_id = 'closure-photos');
+
+drop policy if exists "closure_photos_admin_delete" on storage.objects;
+create policy "closure_photos_admin_delete" on storage.objects for delete
+  using (bucket_id = 'closure-photos' and public.is_admin());
 
 -- ============================================================
 -- DADOS INICIAIS: site Mutuca (áreas + 93 equipamentos)

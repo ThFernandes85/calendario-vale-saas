@@ -69,6 +69,20 @@ def _now() -> str:
 
 
 # ---------------------------------------------------------------------------
+# Migração: adiciona hora_inicio/hora_fim em bancos criados antes dessa
+# funcionalidade existir. `CREATE TABLE IF NOT EXISTS` não altera tabelas
+# já existentes, então quem já tinha um banco precisa de um ALTER TABLE.
+# ---------------------------------------------------------------------------
+def _migrar_colunas_horario(conn: sqlite3.Connection) -> None:
+    colunas_existentes = {linha["name"] for linha in conn.execute("PRAGMA table_info(bloqueios)")}
+    if "hora_inicio" not in colunas_existentes:
+        conn.execute("ALTER TABLE bloqueios ADD COLUMN hora_inicio TEXT NOT NULL DEFAULT '00:00'")
+    if "hora_fim" not in colunas_existentes:
+        conn.execute("ALTER TABLE bloqueios ADD COLUMN hora_fim TEXT NOT NULL DEFAULT '23:59'")
+    conn.commit()
+
+
+# ---------------------------------------------------------------------------
 # Criação das tabelas (schema)
 # ---------------------------------------------------------------------------
 def init_db() -> None:
@@ -133,6 +147,10 @@ def init_db() -> None:
     #   0 = bloqueio ativo (aparece no calendário)
     #   1 = já terminou / foi cancelado -> vira histórico, mas a linha
     #       continua no banco para sempre (não é apagada).
+    # `hora_inicio`/`hora_fim` (formato 'HH:MM') guardam o horário dentro
+    # de `data_inicio`/`data_fim_previsto` -- juntos formam o instante exato
+    # de início e (se houver previsão) de fim do bloqueio. Isso permite
+    # desenhar a grade do calendário por turno, não só por dia.
     cur.execute("""
         CREATE TABLE IF NOT EXISTS bloqueios (
             id                   INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -141,7 +159,9 @@ def init_db() -> None:
             origem               TEXT CHECK (origem IN ('programacao_s1', 'corretiva_emergencial')),
             tecnico_responsavel  TEXT,
             data_inicio          TEXT NOT NULL,
+            hora_inicio          TEXT NOT NULL DEFAULT '00:00',
             data_fim_previsto    TEXT,
+            hora_fim             TEXT NOT NULL DEFAULT '23:59',
             data_fim_real        TEXT,
             observacoes          TEXT,
             criado_por           INTEGER REFERENCES usuarios(id),
@@ -151,6 +171,7 @@ def init_db() -> None:
             arquivado            INTEGER NOT NULL DEFAULT 0
         )
     """)
+    _migrar_colunas_horario(conn)
 
     # --- historico_alteracoes --------------------------------------------
     # Log de auditoria: uma linha nova para cada criação, edição ou
@@ -305,15 +326,16 @@ def _registrar_historico(conn, bloqueio_id: int, acao: str, usuario_id: int,
 
 def criar_bloqueio(equipamento_id: int, status: str, origem: str,
                     tecnico_responsavel: str, data_inicio: str,
-                    data_fim_previsto: str | None, observacoes: str,
+                    hora_inicio: str, data_fim_previsto: str | None,
+                    hora_fim: str, observacoes: str,
                     usuario_id: int) -> int:
     """
     Cria um novo bloqueio (equipamento agendado ou ocupado) e já registra
     a criação no histórico. Retorna o id do bloqueio criado.
 
-    Datas são recebidas como texto no formato 'YYYY-MM-DD' (o app.py
-    converte os `date`/`datetime` do Streamlit para essa string antes
-    de chamar esta função).
+    Datas são recebidas como texto no formato 'YYYY-MM-DD' e horas no
+    formato 'HH:MM' (o app.py converte os `date`/`time` do Streamlit para
+    essas strings antes de chamar esta função).
     """
     conn = get_connection()
     agora = _now()
@@ -321,12 +343,13 @@ def criar_bloqueio(equipamento_id: int, status: str, origem: str,
         """
         INSERT INTO bloqueios
             (equipamento_id, status, origem, tecnico_responsavel,
-             data_inicio, data_fim_previsto, data_fim_real, observacoes,
-             criado_por, criado_em, arquivado)
-        VALUES (?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, 0)
+             data_inicio, hora_inicio, data_fim_previsto, hora_fim,
+             data_fim_real, observacoes, criado_por, criado_em, arquivado)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, 0)
         """,
         (equipamento_id, status, origem, tecnico_responsavel,
-         data_inicio, data_fim_previsto, observacoes, usuario_id, agora),
+         data_inicio, hora_inicio, data_fim_previsto, hora_fim,
+         observacoes, usuario_id, agora),
     )
     bloqueio_id = cur.lastrowid
 
@@ -341,8 +364,8 @@ def criar_bloqueio(equipamento_id: int, status: str, origem: str,
 def editar_bloqueio(bloqueio_id: int, usuario_id: int, **campos) -> None:
     """
     Atualiza um bloqueio existente. `**campos` aceita qualquer combinação
-    de: status, origem, tecnico_responsavel, data_inicio,
-    data_fim_previsto, observacoes.
+    de: status, origem, tecnico_responsavel, data_inicio, hora_inicio,
+    data_fim_previsto, hora_fim, observacoes.
 
     Exemplo de uso:
         editar_bloqueio(5, usuario_id=2, status="ocupado", observacoes="Piorou, virou corretiva")
@@ -351,7 +374,7 @@ def editar_bloqueio(bloqueio_id: int, usuario_id: int, **campos) -> None:
     """
     campos_permitidos = {
         "status", "origem", "tecnico_responsavel",
-        "data_inicio", "data_fim_previsto", "observacoes",
+        "data_inicio", "hora_inicio", "data_fim_previsto", "hora_fim", "observacoes",
     }
     campos_validos = {k: v for k, v in campos.items() if k in campos_permitidos}
     if not campos_validos:

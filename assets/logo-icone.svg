@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="250 70 300 300" width="100%" height="100%">
+  <defs>
+    <linearGradient id="gradVerde" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#00a86b" />
+      <stop offset="100%" stop-color="#1f5f38" />
+    </linearGradient>
+    <linearGradient id="gradAzul" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#2a6f97" />
+      <stop offset="100%" stop-color="#012a4a" />
+    </linearGradient>
+    <linearGradient id="gradOuro" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#f4a261" />
+      <stop offset="100%" stop-color="#e76f51" />
+    </linearGradient>
+    <filter id="sombraIcone" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="4" stdDeviation="6" flood-color="#000000" flood-opacity="0.5"/>
+    </filter>
+  </defs>
+  <g transform="translate(0, -30)">
+    <circle cx="400" cy="250" r="140" fill="none" stroke="url(#gradAzul)" stroke-width="4" stroke-dasharray="20, 10, 5, 10" opacity="0.7" />
+    <circle cx="400" cy="250" r="150" fill="none" stroke="url(#gradVerde)" stroke-width="3" stroke-dasharray="40, 15" opacity="0.6" />
+    <g filter="url(#sombraIcone)">
+      <circle cx="400" cy="250" r="70" fill="none" stroke="url(#gradOuro)" stroke-width="14" stroke-dasharray="30, 12" />
+      <circle cx="400" cy="250" r="65" fill="#22262f" stroke="url(#gradOuro)" stroke-width="3" />
+    </g>
+    <g filter="url(#sombraIcone)">
+      <path d="M 400,250 L 330,150 L 365,130 L 400,200 Z" fill="url(#gradAzul)" />
+      <path d="M 400,250 L 470,150 L 435,130 L 400,200 Z" fill="url(#gradVerde)" />
+      <path d="M 365,130 L 400,110 L 435,130 L 400,145 Z" fill="#2b303c" opacity="0.8" />
+    </g>
+    <g fill="none" stroke="#ffffff" stroke-linecap="round" opacity="0.9">
+      <line x1="400" y1="250" x2="400" y2="215" stroke-width="4" stroke="url(#gradOuro)" />
+      <line x1="400" y1="250" x2="430" y2="260" stroke-width="3" stroke="#ffffff" />
+      <circle cx="400" cy="250" r="4" fill="#ffffff" stroke="none" />
+    </g>
+  </g>
+</svg>
