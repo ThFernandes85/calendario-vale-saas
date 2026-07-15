@@ -1406,8 +1406,17 @@ async function confirmDeleteBooking(id) {
     const reason = document.getElementById('delete-booking-just').value.trim();
     if (reason.length < 5) { toast('Informe o motivo da exclusão (mínimo 5 caracteres).', 'error'); return; }
 
-    const { error } = await sb.from('bookings').delete().eq('id', id);
+    // `.select()` depois do delete é o jeito de saber se alguma linha foi
+    // realmente apagada -- se a política de segurança (RLS) bloquear
+    // silenciosamente a exclusão, o Supabase não retorna "error" nenhum,
+    // só devolve 0 linhas afetadas. Sem checar isso, o app dava a exclusão
+    // como certa mesmo quando o registro continuava intacto no banco.
+    const { data, error } = await sb.from('bookings').delete().eq('id', id).select();
     if (error) { toast('Erro ao excluir lançamento: ' + error.message, 'error'); return; }
+    if (!data || data.length === 0) {
+        toast('Não foi possível excluir: nenhum registro foi afetado no banco (verifique suas permissões).', 'error');
+        return;
+    }
     state.bookings.splice(idx, 1);
     await addAuditEntry({
         tag: booking.tag, acao: `${booking.type} (Excluído por engano)`, justificativa: reason,
@@ -1415,7 +1424,7 @@ async function confirmDeleteBooking(id) {
     });
     closeModal();
     toast('Lançamento excluído -- não conta mais para nenhuma métrica ou nota.', 'warn');
-    renderWeekGrid(); renderAtivos(); renderDashboard(); updateUpcomingBadge();
+    renderWeekGrid(); renderAtivos(); renderDashboard(); renderCharts(); updateUpcomingBadge();
 }
 
 function closureOutcomesFor(booking) {
@@ -1539,13 +1548,21 @@ async function confirmCloseBooking(id) {
 
     const closureStatus = outcome === 'PENDENTE' ? pendingClosureStatusFor(booking.type) : outcome;
     const closedAt = new Date().toISOString();
-    const { error } = await sb.from('bookings').update({
+    // `.select()` depois do update confirma que a linha foi realmente
+    // alterada -- se a política de segurança (RLS) bloquear silenciosamente
+    // a atualização, o Supabase não retorna "error", só devolve 0 linhas.
+    const { data, error } = await sb.from('bookings').update({
         closure_status: closureStatus, closure_reason: reason, closed_at: closedAt,
         closure_photo_before: photoBeforeUrl, closure_photo_after: photoAfterUrl,
         closed_by: (state.currentUser && state.profileKey !== 'VISITANTE') ? state.currentUser.id : null
-    }).eq('id', id);
+    }).eq('id', id).select();
     if (error) {
         toast('Erro ao encerrar agendamento: ' + error.message, 'error');
+        if (confirmBtn) { confirmBtn.disabled = false; confirmBtn.textContent = 'Confirmar'; }
+        return;
+    }
+    if (!data || data.length === 0) {
+        toast('Não foi possível encerrar: nenhum registro foi afetado no banco (verifique suas permissões).', 'error');
         if (confirmBtn) { confirmBtn.disabled = false; confirmBtn.textContent = 'Confirmar'; }
         return;
     }
@@ -1560,7 +1577,7 @@ async function confirmCloseBooking(id) {
     });
     closeModal();
     toast(`Bloqueio marcado como "${outcomeLabel}" — equipamento liberado na agenda.`, 'warn');
-    renderWeekGrid(); renderAtivos(); renderDashboard(); updateUpcomingBadge();
+    renderWeekGrid(); renderAtivos(); renderDashboard(); renderCharts(); updateUpcomingBadge();
 }
 
 /* =========================================================
