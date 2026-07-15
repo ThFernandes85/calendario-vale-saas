@@ -403,7 +403,7 @@ aside.collapsed .nav-badge { top: 2px; right: 2px; }
 .print-report-banner { display: none; }
 
 @media print {
-    aside, header, .filter-section, .agenda-toolbar, .audit-toolbar button, #btn-heatmap-print, #btn-print-full-report, #btn-print-book, #toast-container { display: none !important; }
+    aside, header, .filter-section, .agenda-toolbar, .audit-toolbar button, #btn-heatmap-print, #btn-print-full-report, #btn-print-book, #book-period-wrap, #toast-container { display: none !important; }
     body, main { overflow: visible !important; height: auto !important; }
     .content-container { display: flex !important; padding: 0; }
     .content-container:not(.view-active) { display: none !important; }
@@ -779,6 +779,11 @@ aside.collapsed .nav-badge { top: 2px; right: 2px; }
             </div>
             <div style="margin-top:14px; padding-top:14px; border-top:1px dashed var(--border-color);">
                 <button class="btn-primary" id="btn-print-full-report" style="width:100%;">Imprimir Relatório Completo (PDF) — Dashboard + Gráficos + Auditoria + Mapa de Calor</button>
+            </div>
+            <div id="book-period-wrap" style="margin-top:14px; padding-top:14px; border-top:1px dashed var(--border-color); display:flex; gap:14px; align-items:flex-end; flex-wrap:wrap;">
+                <div class="agenda-field"><label>BOOK — Período de medição, De</label><input type="date" id="book-from"></div>
+                <div class="agenda-field"><label>BOOK — Até</label><input type="date" id="book-to"></div>
+                <div style="font-size:11.5px; color:var(--text-secondary); max-width:260px;">Padrão: ciclo de medição da Vale (dia 21 a dia 20 do mês seguinte). Ajuste se precisar de outro período.</div>
             </div>
             <div style="margin-top:10px;">
                 <button class="btn-secondary" id="btn-print-book" style="width:100%;">Gerar BOOK de Aderência (PDF) — Limpeza Sodexo com fotos de Antes/Depois</button>
@@ -1350,6 +1355,7 @@ async function submitBooking(tag) {
 function openDetailModal(booking) {
     const p = activeProfile();
     const canCancel = p.readOnly === false && (state.profileKey === 'ADMIN' || p.canBook.includes(booking.type));
+    const canDelete = state.profileKey === 'ADMIN';
     openModal(`
         <div class="modal-header"><h3>${booking.tag} — Detalhes do Bloqueio</h3><button class="modal-close" onclick="closeModal()">&times;</button></div>
         <div class="modal-body">
@@ -1363,16 +1369,75 @@ function openDetailModal(booking) {
         </div>
         <div class="modal-footer">
             ${canCancel ? `<button class="btn-danger" onclick="openCloseBookingModal('${booking.id}')">Encerrar / Reprogramar Bloqueio</button>` : ''}
+            ${canDelete ? `<button class="btn-secondary" onclick="openDeleteBookingModal('${booking.id}')" style="color:#ef4444;">Excluir (lançamento incorreto)</button>` : ''}
             <button class="btn-secondary" onclick="closeModal()">Fechar</button>
         </div>
     `);
 }
 
-const CLOSURE_OUTCOMES = [
-    { value: 'ENCERRADA', label: 'Encerrado', hint: 'Serviço concluído normalmente — o equipamento volta a ficar livre.' },
-    { value: 'REPROGRAMADA', label: 'Reprogramado', hint: 'Será remarcado para outra data — crie o novo agendamento separadamente depois de confirmar aqui.' },
-    { value: 'PENDENTE', label: 'Pendente', hint: 'Não foi possível concluir nem reprogramar agora.' }
-];
+function openDeleteBookingModal(id) {
+    if (state.profileKey !== 'ADMIN') { showAccessDenied('Apenas o Admin Master pode excluir um lançamento incorreto.'); return; }
+    const booking = state.bookings.find(b => b.id === id);
+    if (!booking) return;
+    openModal(`
+        <div class="modal-header"><h3>Excluir Lançamento — ${booking.tag}</h3><button class="modal-close" onclick="closeModal()">&times;</button></div>
+        <div class="modal-body">
+            <div class="access-denied-icon">&#128465;</div>
+            <div class="access-denied-text">
+                Use isto só para corrigir um lançamento <b>criado por engano</b> (equipamento errado, tipo errado, duplicado).
+                A exclusão remove o registro por completo -- inclusive do histórico e da nota de aderência -- para
+                não comprometer a nota final com um lançamento que nunca deveria ter existido.<br><br>
+                Se o serviço aconteceu de verdade mas não terminou, use "Encerrar / Reprogramar" em vez de excluir.
+            </div>
+            <div class="m-field" style="margin-top:10px;"><label>Motivo da exclusão *</label><textarea id="delete-booking-just" rows="3" maxlength="200" placeholder="Explique o engano..."></textarea></div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn-secondary" onclick="closeModal()">Voltar</button>
+            <button class="btn-danger" onclick="confirmDeleteBooking('${booking.id}')">Excluir Definitivamente</button>
+        </div>
+    `);
+}
+
+async function confirmDeleteBooking(id) {
+    if (state.profileKey !== 'ADMIN') { showAccessDenied('Apenas o Admin Master pode excluir um lançamento incorreto.'); return; }
+    const idx = state.bookings.findIndex(b => b.id === id);
+    if (idx === -1) return;
+    const booking = state.bookings[idx];
+    const reason = document.getElementById('delete-booking-just').value.trim();
+    if (reason.length < 5) { toast('Informe o motivo da exclusão (mínimo 5 caracteres).', 'error'); return; }
+
+    const { error } = await sb.from('bookings').delete().eq('id', id);
+    if (error) { toast('Erro ao excluir lançamento: ' + error.message, 'error'); return; }
+    state.bookings.splice(idx, 1);
+    await addAuditEntry({
+        tag: booking.tag, acao: `${booking.type} (Excluído por engano)`, justificativa: reason,
+        om: booking.om, agendamentoData: booking.date, agendamentoHorario: `${minutesToTime(booking.startMin)}–${minutesToTime(booking.endMin)}`
+    });
+    closeModal();
+    toast('Lançamento excluído -- não conta mais para nenhuma métrica ou nota.', 'warn');
+    renderWeekGrid(); renderAtivos(); renderDashboard(); updateUpcomingBadge();
+}
+
+function closureOutcomesFor(booking) {
+    const base = [
+        { value: 'ENCERRADA', label: 'Encerrado', hint: 'Serviço concluído normalmente — o equipamento volta a ficar livre.' },
+        { value: 'REPROGRAMADA', label: 'Reprogramado', hint: 'Será remarcado para outra data — crie o novo agendamento separadamente depois de confirmar aqui.' },
+    ];
+    // Limpeza Sodexo escolhe explicitamente de quem foi a pendência -- as
+    // outras (Manutenção, Limpeza Mecanizada) nunca descontam da Sodexo,
+    // então continuam com um "Pendente" genérico só para registro.
+    if (booking.type === SODEXO_CLEANING_TYPE) {
+        return [
+            ...base,
+            { value: 'PENDENTE_VALE', label: 'Pendente Vale', hint: 'Não foi possível concluir por responsabilidade da Vale (ex: área não liberada) — não desconta da nota de Limpeza da Sodexo.' },
+            { value: 'PENDENTE_SODEXO', label: 'Pendente Sodexo', hint: 'Não foi possível concluir por responsabilidade da Sodexo — desconta da nota de Limpeza.' },
+        ];
+    }
+    return [
+        ...base,
+        { value: 'PENDENTE', label: 'Pendente', hint: 'Não foi possível concluir nem reprogramar agora.' },
+    ];
+}
 
 function closurePhotosRequired(booking, outcome) {
     // Fotos de antes/depois só embasam o BOOK de Aderência da Limpeza feita
@@ -1386,6 +1451,7 @@ function openCloseBookingModal(id) {
     if (!booking) return;
     const p = activeProfile();
     if (p.readOnly || (state.profileKey !== 'ADMIN' && !p.canBook.includes(booking.type))) { showAccessDenied('Perfil sem privilégios para encerrar este tipo de bloqueio.'); return; }
+    const outcomes = closureOutcomesFor(booking);
     openModal(`
         <div class="modal-header"><h3>Encerrar / Reprogramar — ${booking.tag}</h3><button class="modal-close" onclick="closeModal()">&times;</button></div>
         <div class="modal-body">
@@ -1395,7 +1461,7 @@ function openCloseBookingModal(id) {
             <div class="m-info-row"><span>Justificativa original</span><b>${escapeHtml(booking.justification)}</b></div>
             <div class="m-field" style="margin-top:6px;">
                 <label>Desfecho *</label>
-                <select id="close-outcome">${CLOSURE_OUTCOMES.map(o => `<option value="${o.value}">${o.label}</option>`).join('')}</select>
+                <select id="close-outcome">${outcomes.map(o => `<option value="${o.value}">${o.label}</option>`).join('')}</select>
                 <div id="close-outcome-hint" style="font-size:12px; color:var(--text-secondary); margin-top:6px;"></div>
             </div>
             <div class="m-field"><label>Observação *</label><textarea id="close-just" rows="3" maxlength="200" placeholder="Explique o desfecho deste bloqueio..."></textarea></div>
@@ -1423,7 +1489,7 @@ function openCloseBookingModal(id) {
     const outcomeHint = document.getElementById('close-outcome-hint');
     const photosWrap = document.getElementById('close-photos-wrap');
     const updateForm = () => {
-        outcomeHint.textContent = CLOSURE_OUTCOMES.find(o => o.value === outcomeSelect.value).hint;
+        outcomeHint.textContent = outcomes.find(o => o.value === outcomeSelect.value).hint;
         photosWrap.style.display = closurePhotosRequired(booking, outcomeSelect.value) ? 'block' : 'none';
     };
     outcomeSelect.addEventListener('change', updateForm);
@@ -1487,7 +1553,7 @@ async function confirmCloseBooking(id) {
     booking.closureStatus = closureStatus; booking.closureReason = reason; booking.closedAt = closedAt;
     booking.closurePhotoBefore = photoBeforeUrl; booking.closurePhotoAfter = photoAfterUrl;
 
-    const outcomeLabel = CLOSURE_OUTCOMES.find(o => o.value === outcome).label;
+    const outcomeLabel = closureOutcomesFor(booking).find(o => o.value === outcome).label;
     await addAuditEntry({
         tag: booking.tag, acao: `${booking.type} (${outcomeLabel})`, justificativa: reason,
         om: booking.om, agendamentoData: booking.date, agendamentoHorario: `${minutesToTime(booking.startMin)}–${minutesToTime(booking.endMin)}`
@@ -1913,27 +1979,43 @@ document.getElementById('btn-clear-filter').addEventListener('click', () => {
     renderCharts();
 });
 
-function sodexoCleaningScore() {
-    const { from, to } = state.reportFilter;
+// Denominador da nota: ENCERRADA + PENDENTE_VALE + PENDENTE_SODEXO (as 3
+// únicas "conclusões finais" de um bloqueio de Limpeza Sodexo). REPROGRAMADA
+// fica de fora -- o serviço só vai ganhar um desfecho definitivo quando o
+// novo agendamento, criado à parte, também for encerrado.
+function sodexoCleaningBreakdown(periodo) {
+    const from = periodo ? periodo.from : state.reportFilter.from;
+    const to = periodo ? periodo.to : state.reportFilter.to;
     const fechados = state.bookings.filter(b => {
-        if (b.type !== SODEXO_CLEANING_TYPE || !b.closureStatus) return false;
+        if (b.type !== SODEXO_CLEANING_TYPE) return false;
+        if (!['ENCERRADA', 'PENDENTE_VALE', 'PENDENTE_SODEXO'].includes(b.closureStatus)) return false;
         if (from && b.date < from) return false;
         if (to && b.date > to) return false;
         return true;
     });
-    if (!fechados.length) return null;
-    const semPendenciaSodexo = fechados.filter(b => b.closureStatus !== 'PENDENTE_SODEXO').length;
-    return Math.round((semPendenciaSodexo / fechados.length) * 1000) / 10;
+    const total = fechados.length;
+    if (!total) return null;
+    const atendido = fechados.filter(b => b.closureStatus === 'ENCERRADA').length;
+    const pendenteVale = fechados.filter(b => b.closureStatus === 'PENDENTE_VALE').length;
+    const pendenteSodexo = fechados.filter(b => b.closureStatus === 'PENDENTE_SODEXO').length;
+    const pct = n => Math.round((n / total) * 1000) / 10;
+    return {
+        total, atendido, pendenteVale, pendenteSodexo,
+        pctAtendido: pct(atendido), pctPendenteVale: pct(pendenteVale), pctPendenteSodexo: pct(pendenteSodexo),
+    };
 }
 function renderSodexoScore() {
     const valorEl = document.getElementById('kpi-sodexo-score');
     const subEl = document.getElementById('kpi-sodexo-score-sub');
     if (!valorEl) return;
-    const score = sodexoCleaningScore();
-    valorEl.textContent = score === null ? '—' : `${score}%`;
-    subEl.textContent = score === null
-        ? 'Nenhum bloqueio de Limpeza encerrado no período selecionado'
-        : 'Bloqueios de Limpeza encerrados sem pendência atribuída à Sodexo';
+    const b = sodexoCleaningBreakdown();
+    if (!b) {
+        valorEl.textContent = '—';
+        subEl.textContent = 'Nenhum bloqueio de Limpeza Sodexo encerrado no período selecionado';
+        return;
+    }
+    valorEl.textContent = `${b.pctAtendido}%`;
+    subEl.textContent = `Atendido ${b.pctAtendido}% · Pendente Vale ${b.pctPendenteVale}% (não desconta) · Pendente Sodexo ${b.pctPendenteSodexo}% — ${b.total} bloqueio(s) no período`;
 }
 
 let chartTop5 = null, chartArea = null;
@@ -2127,8 +2209,37 @@ document.getElementById('btn-print-full-report').addEventListener('click', print
 /* =========================================================
    BOOK DE ADERÊNCIA (Limpeza Sodexo — fotos de Antes/Depois)
    ========================================================= */
+// Período de medição da Vale: sempre do dia 21 de um mês ao dia 20 do
+// seguinte. Usado como valor padrão do filtro de datas do BOOK.
+function periodoMedicaoAtual() {
+    const hoje = new Date();
+    let ano = hoje.getFullYear();
+    let mes = hoje.getMonth(); // mês (0-indexado) em que o período ATUAL começou
+    if (hoje.getDate() < 21) {
+        mes -= 1;
+        if (mes < 0) { mes = 11; ano -= 1; }
+    }
+    const inicio = new Date(ano, mes, 21);
+    const fim = new Date(ano, mes + 1, 20);
+    const fmt = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+    return { from: fmt(inicio), to: fmt(fim) };
+}
+(function initBookPeriodDefaults() {
+    const def = periodoMedicaoAtual();
+    const fromEl = document.getElementById('book-from');
+    const toEl = document.getElementById('book-to');
+    if (fromEl) fromEl.value = def.from;
+    if (toEl) toEl.value = def.to;
+})();
+
+function bookPeriodoSelecionado() {
+    const from = document.getElementById('book-from').value || null;
+    const to = document.getElementById('book-to').value || null;
+    return { from, to };
+}
+
 function buildAderenciaBookHtml() {
-    const { from, to } = state.reportFilter;
+    const { from, to } = bookPeriodoSelecionado();
     const itens = state.bookings.filter(b => {
         if (b.type !== SODEXO_CLEANING_TYPE || b.closureStatus !== 'ENCERRADA') return false;
         if (from && b.date < from) return false;
@@ -2139,18 +2250,22 @@ function buildAderenciaBookHtml() {
     const periodTxt = (from || to)
         ? `Período: ${from ? formatDateBR(from) : '...'} a ${to ? formatDateBR(to) : '...'}`
         : 'Período: todo o histórico';
-    const score = sodexoCleaningScore();
+    const breakdown = sodexoCleaningBreakdown({ from, to });
+    const notaTxt = breakdown
+        ? `Nota de Limpeza — Atendido ${breakdown.pctAtendido}% · Pendente Vale ${breakdown.pctPendenteVale}% (não desconta) · Pendente Sodexo ${breakdown.pctPendenteSodexo}% (${breakdown.total} bloqueio(s) no período)`
+        : 'Nota de Limpeza: sem bloqueios encerrados/pendentes no período';
 
     const header = `
         <div style="font-size:18px; font-weight:800; border-bottom:2px solid #000; padding-bottom:10px; margin-bottom:18px;">
-            BOOK de Aderência — Limpeza (Sodexo) — ${escapeHtml(SITES[state.currentSite] || state.currentSite)}
+            BOOK de Aderência — Limpeza Sodexo — ${escapeHtml(SITES[state.currentSite] || state.currentSite)}
             <small style="display:block; font-size:11px; font-weight:400; color:#444; margin-top:4px;">
-                ${escapeHtml(periodTxt)} — Nota de Limpeza: ${score === null ? '—' : score + '%'} (${itens.length} bloqueio(s) encerrado(s) com evidência) — Gerado em ${new Date().toLocaleString('pt-BR')} por ${escapeHtml(activeProfile().user)} (${state.profileKey})
+                ${escapeHtml(periodTxt)} — ${escapeHtml(notaTxt)}<br>
+                ${itens.length} bloqueio(s) encerrado(s) com evidência fotográfica — Gerado em ${new Date().toLocaleString('pt-BR')} por ${escapeHtml(activeProfile().user)} (${state.profileKey})
             </small>
         </div>`;
 
     if (!itens.length) {
-        return header + `<div style="padding:20px; color:#444;">Nenhum bloqueio de Limpeza encerrado no período selecionado.</div>`;
+        return header + `<div style="padding:20px; color:#444;">Nenhum bloqueio de Limpeza Sodexo encerrado no período selecionado.</div>`;
     }
 
     const cards = itens.map(b => `
@@ -2163,11 +2278,11 @@ function buildAderenciaBookHtml() {
             <div style="display:flex; gap:12px;">
                 <div style="flex:1;">
                     <div style="font-size:11px; font-weight:600; margin-bottom:4px;">ANTES</div>
-                    ${b.closurePhotoBefore ? `<img src="${b.closurePhotoBefore}" style="width:100%; border-radius:6px; border:1px solid #ddd;">` : `<div style="font-size:11px; color:#999;">Sem foto</div>`}
+                    ${b.closurePhotoBefore ? `<img src="${b.closurePhotoBefore}" style="width:100%; border-radius:6px; border:1px solid #ddd;" onerror="this.outerHTML='<div style=\\'font-size:11px;color:#c00;\\'>Falha ao carregar a foto</div>'">` : `<div style="font-size:11px; color:#999;">Sem foto</div>`}
                 </div>
                 <div style="flex:1;">
                     <div style="font-size:11px; font-weight:600; margin-bottom:4px;">DEPOIS</div>
-                    ${b.closurePhotoAfter ? `<img src="${b.closurePhotoAfter}" style="width:100%; border-radius:6px; border:1px solid #ddd;">` : `<div style="font-size:11px; color:#999;">Sem foto</div>`}
+                    ${b.closurePhotoAfter ? `<img src="${b.closurePhotoAfter}" style="width:100%; border-radius:6px; border:1px solid #ddd;" onerror="this.outerHTML='<div style=\\'font-size:11px;color:#c00;\\'>Falha ao carregar a foto</div>'">` : `<div style="font-size:11px; color:#999;">Sem foto</div>`}
                 </div>
             </div>
         </div>
@@ -2179,14 +2294,25 @@ function buildAderenciaBookHtml() {
 function printAderenciaBook() {
     if (!canExportReports()) { showAccessDenied('Perfil sem privilégios para extrair o BOOK de aderência.'); return; }
     const previousView = document.querySelector('.content-container.view-active').id.replace('view-', '');
-    document.getElementById('view-book').innerHTML = buildAderenciaBookHtml();
-    document.getElementById('view-book').classList.add('view-active');
+    const container = document.getElementById('view-book');
+    container.innerHTML = buildAderenciaBookHtml();
+    container.classList.add('view-active');
     document.body.classList.add('print-book-mode');
 
-    setTimeout(() => window.print(), 80);
+    // As fotos vêm do Storage (rede) -- sem esperar elas carregarem, o
+    // window.print() dispara antes das imagens chegarem e o PDF sai com
+    // espaços em branco no lugar das fotos.
+    const imgs = Array.from(container.querySelectorAll('img'));
+    const espera = imgs.map(img => img.complete ? Promise.resolve() : new Promise(resolve => {
+        img.addEventListener('load', resolve, { once: true });
+        img.addEventListener('error', resolve, { once: true });
+    }));
+
+    Promise.all(espera).then(() => setTimeout(() => window.print(), 80));
+
     window.addEventListener('afterprint', function restoreAfterPrint() {
         window.removeEventListener('afterprint', restoreAfterPrint);
-        document.getElementById('view-book').classList.remove('view-active');
+        container.classList.remove('view-active');
         document.body.classList.remove('print-book-mode');
         switchView(previousView);
     });

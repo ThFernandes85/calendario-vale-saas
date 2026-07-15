@@ -291,6 +291,16 @@ create policy "closure_photos_admin_delete" on storage.objects for delete
 update public.bookings set type = 'Limpeza Sodexo' where type = 'Limpeza';
 
 -- ============================================================
+-- MIGRAÇÃO: move o equipamento 40MG01 da área TCLD para a área TOD
+-- (o insert de dados iniciais abaixo usa "on conflict do nothing", então
+-- não moveria um 40MG01 que já existe cadastrado em TCLD -- este UPDATE
+-- garante a correção mesmo assim. Idempotente: rodar de novo não faz nada
+-- se o equipamento já estiver em TOD.)
+-- ============================================================
+update public.equipment set area_code = 'TOD'
+ where site_key = 'MUTUCA' and tag = '40MG01' and area_code = 'TCLD';
+
+-- ============================================================
 -- DADOS INICIAIS: site Mutuca (áreas + 93 equipamentos)
 -- "on conflict do nothing" -- roda só uma vez de verdade: se o site/área/
 -- equipamento já existir (mesma chave), o insert simplesmente não faz nada,
@@ -309,12 +319,12 @@ on conflict (site_key, code) do nothing;
 
 insert into public.equipment (site_key, area_code, tag)
 select 'MUTUCA', 'TOD', unnest(array[
-  '40AL02','40EM01','40MG02','40SL01','40TC02','40TC03','40TC04','40TC05','CARREGAMENTO'
+  '40AL02','40EM01','40MG02','40SL01','40TC02','40TC03','40TC04','40TC05','CARREGAMENTO','40MG01'
 ])
 union all
 select 'MUTUCA', 'TCLD', unnest(array[
   '27TC15','27TC15A','27TC16B','27TC16A','33AL03','33TC17','27MG01','27MG02','27MG03','27MG04',
-  '33TC18','33TC19','33TC20','GROTA ZERO','33SL02','40MG01','27TC16'
+  '33TC18','33TC19','33TC20','GROTA ZERO','33SL02','27TC16'
 ])
 union all
 select 'MUTUCA', 'USINA', unnest(array[
