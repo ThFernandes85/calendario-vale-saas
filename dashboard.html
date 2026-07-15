@@ -809,6 +809,20 @@ aside.collapsed .nav-badge { top: 2px; right: 2px; }
             </div>
         </div>
 
+        <div class="card-section" id="closed-bookings-section">
+            <div class="filter-title" style="margin-bottom:12px;">Bloqueios Encerrados / Reprogramados / Pendentes</div>
+            <div class="audit-table-wrap">
+                <table class="audit-table">
+                    <thead>
+                        <tr>
+                            <th>Encerrado em</th><th>Tag</th><th>Área</th><th>Tipo</th><th>Desfecho</th><th>Observação</th><th>Ações</th>
+                        </tr>
+                    </thead>
+                    <tbody id="closed-bookings-tbody"></tbody>
+                </table>
+            </div>
+        </div>
+
         <div class="card-section" id="audit-section">
             <div class="audit-toolbar">
                 <div class="filter-title" style="margin-bottom:0;">Log de Auditoria de Ativos</div>
@@ -2036,8 +2050,46 @@ function renderSodexoScore() {
 }
 
 let chartTop5 = null, chartArea = null;
+const CLOSURE_STATUS_LABELS = {
+    ENCERRADA: 'Encerrado',
+    REPROGRAMADA: 'Reprogramado',
+    PENDENTE: 'Pendente',
+    PENDENTE_VALE: 'Pendente Vale',
+    PENDENTE_SODEXO: 'Pendente Sodexo',
+};
+
+// Lista de gerenciamento dos bloqueios já encerrados/reprogramados/pendentes
+// -- eles somem da grade do calendário assim que ganham um closureStatus
+// (para liberar o equipamento visualmente), então esta é a ÚNICA tela onde
+// dá pra encontrar um deles depois para corrigir ou excluir por engano.
+function renderClosedBookings() {
+    const tbody = document.getElementById('closed-bookings-tbody');
+    if (!tbody) return;
+    const { from, to } = state.reportFilter;
+    const isAdmin = state.profileKey === 'ADMIN';
+    const rows = state.bookings.filter(b => {
+        if (!b.closureStatus) return false;
+        if (from && b.date < from) return false;
+        if (to && b.date > to) return false;
+        return true;
+    }).sort((a, b) => (b.closedAt || '').localeCompare(a.closedAt || ''));
+
+    tbody.innerHTML = rows.map(b => `
+        <tr>
+            <td>${b.closedAt ? new Date(b.closedAt).toLocaleString('pt-BR') : '—'}</td>
+            <td><span class="tag-chip">${escapeHtml(b.tag)}</span></td>
+            <td>${escapeHtml(AREA_LABEL[b.area] || b.area || '')}</td>
+            <td>${escapeHtml(b.type)}</td>
+            <td>${escapeHtml(CLOSURE_STATUS_LABELS[b.closureStatus] || b.closureStatus)}</td>
+            <td>${escapeHtml(b.closureReason || '—')}</td>
+            <td>${isAdmin ? `<button class="btn-danger" style="padding:5px 9px; font-size:11px;" onclick="openDeleteBookingModal('${b.id}')">Excluir</button>` : '—'}</td>
+        </tr>
+    `).join('') || `<tr><td colspan="7" style="text-align:center; color:var(--text-muted);">Nenhum bloqueio encerrado, reprogramado ou pendente no período selecionado.</td></tr>`;
+}
+
 function renderCharts() {
     renderSodexoScore();
+    renderClosedBookings();
     const activeLog = getFilteredAuditLog().filter(a => TYPE_STATUS[a.acao] !== undefined);
     const perTag = {};
     activeLog.forEach(a => { perTag[a.tag] = (perTag[a.tag] || 0) + 1; });
@@ -2110,7 +2162,7 @@ function renderAudit() {
             <td>${escapeHtml(a.om || '—')}</td>
             <td>${escapeHtml(a.justificativa)}</td>
             <td>${escapeHtml(a.operador)}</td>
-            ${isAdmin ? `<td><button class="btn-danger" style="padding:5px 9px; font-size:11px;" onclick="openDeleteAuditModal('${a.id}')">Excluir</button></td>` : ''}
+            ${isAdmin ? `<td><button class="btn-danger" style="padding:5px 9px; font-size:11px;" onclick="openDeleteAuditModal('${a.id}')" title="Apaga só esta linha do histórico -- não afeta o agendamento nem a nota de Limpeza">Excluir do Histórico</button></td>` : ''}
         </tr>
     `).join('') || `<tr><td colspan="${isAdmin ? 9 : 8}" style="text-align:center; color:var(--text-muted);">Nenhum registro de auditoria no período selecionado.</td></tr>`;
 
@@ -2130,7 +2182,9 @@ function openDeleteAuditModal(id) {
                 Tem certeza que deseja excluir permanentemente este registro do histórico?<br><br>
                 <b>${escapeHtml(entry.tag)}</b> — ${escapeHtml(entry.acao)}<br>
                 ${escapeHtml(entry.justificativa)}<br><br>
-                Esta ação não pode ser desfeita e não afeta agendamentos ativos.
+                Esta ação não pode ser desfeita. <b>Isso apaga só a linha do log</b> -- o bloqueio em si e a nota de
+                Limpeza da Sodexo não mudam. Para corrigir ou excluir um bloqueio errado (e refletir na nota), use a
+                tabela "Bloqueios Encerrados / Reprogramados / Pendentes" mais acima em Relatórios.
             </div>
         </div>
         <div class="modal-footer">
