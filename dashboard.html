@@ -148,6 +148,8 @@ header {
 .filter-btn-group { display: flex; gap: 10px; flex-wrap: wrap; }
 #admin-asset-mgmt.asset-mgmt-collapsed .profile-toggle-btn svg { transform: rotate(-90deg); }
 #admin-asset-mgmt.asset-mgmt-collapsed #asset-mgmt-content { display: none; }
+#audit-section.audit-collapsed .profile-toggle-btn svg { transform: rotate(-90deg); }
+#audit-section.audit-collapsed #audit-content { display: none; }
 
 .btn-area-filter {
     background-color: #1c2533; border: 1px solid var(--border-color); color: var(--text-primary);
@@ -417,6 +419,9 @@ aside.collapsed .nav-badge { top: 2px; right: 2px; }
     body.print-report-mode #view-mapacalor { display: flex !important; }
     body.print-report-mode #view-dashboard,
     body.print-report-mode #view-relatorios { break-after: page; }
+    /* Log de Auditoria fica de fora do PDF do Relatório Completo -- ele já
+       tem seu próprio botão de impressão/exportação Excel separado. */
+    body.print-report-mode #audit-section { display: none !important; }
 
     body.print-book-mode #view-book { display: flex !important; }
 }
@@ -778,7 +783,7 @@ aside.collapsed .nav-badge { top: 2px; right: 2px; }
                 </div>
             </div>
             <div style="margin-top:14px; padding-top:14px; border-top:1px dashed var(--border-color);">
-                <button class="btn-primary" id="btn-print-full-report" style="width:100%;">Imprimir Relatório Completo (PDF) — Dashboard + Gráficos + Auditoria + Mapa de Calor</button>
+                <button class="btn-primary" id="btn-print-full-report" style="width:100%;">Imprimir Relatório Completo (PDF) — Dashboard + Gráficos + Mapa de Calor</button>
             </div>
             <div id="book-period-wrap" style="margin-top:14px; padding-top:14px; border-top:1px dashed var(--border-color); display:flex; gap:14px; align-items:flex-end; flex-wrap:wrap;">
                 <div class="agenda-field"><label>BOOK — Período de medição, De</label><input type="date" id="book-from"></div>
@@ -2158,17 +2163,22 @@ function renderAudit() {
     section.innerHTML = `
         <div class="audit-toolbar">
             <div class="filter-title" style="margin-bottom:0;">Log de Auditoria de Ativos</div>
-            <div style="display:flex; gap:10px;">
+            <div style="display:flex; gap:10px; align-items:center;">
                 <button class="btn-secondary" id="btn-print-audit">Imprimir Relatório</button>
                 <button class="btn-primary" id="btn-export-audit">Exportar Excel (.xlsx)</button>
+                <button type="button" id="btn-toggle-audit" class="profile-toggle-btn" title="Minimizar/Expandir">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
+                </button>
             </div>
         </div>
-        <div style="height:16px;"></div>
-        <div class="audit-table-wrap">
-            <table class="audit-table">
-                <thead><tr><th>Data/Hora do Registro</th><th>Data do Agendamento</th><th>Tag</th><th>Área</th><th>Ação</th><th>OM</th><th>Justificativa</th><th>Operador Responsável</th>${isAdmin ? '<th>Ações</th>' : ''}</tr></thead>
-                <tbody id="audit-tbody"></tbody>
-            </table>
+        <div id="audit-content">
+            <div style="height:16px;"></div>
+            <div class="audit-table-wrap">
+                <table class="audit-table">
+                    <thead><tr><th>Data/Hora do Registro</th><th>Data do Agendamento</th><th>Tag</th><th>Área</th><th>Ação</th><th>OM</th><th>Justificativa</th><th>Operador Responsável</th>${isAdmin ? '<th>Ações</th>' : ''}</tr></thead>
+                    <tbody id="audit-tbody"></tbody>
+                </table>
+            </div>
         </div>`;
     const tbody = document.getElementById('audit-tbody');
     const filtered = getFilteredAuditLog();
@@ -2188,6 +2198,15 @@ function renderAudit() {
 
     document.getElementById('btn-export-audit').addEventListener('click', exportAuditExcel);
     document.getElementById('btn-print-audit').addEventListener('click', () => window.print());
+    document.getElementById('btn-toggle-audit').addEventListener('click', () => {
+        applyAuditCollapse(!section.classList.contains('audit-collapsed'));
+    });
+}
+
+const LS_AUDIT_COLLAPSED = 'vale_saas_audit_collapsed_v1';
+function applyAuditCollapse(collapsed) {
+    document.getElementById('audit-section').classList.toggle('audit-collapsed', collapsed);
+    localStorage.setItem(LS_AUDIT_COLLAPSED, collapsed ? '1' : '0');
 }
 
 function openDeleteAuditModal(id) {
@@ -2853,6 +2872,7 @@ document.getElementById('btn-delete-equip').addEventListener('click', () => {
     applySidebarCollapse(localStorage.getItem(LS_SIDEBAR) === '1');
     applyUserBoxCollapse(localStorage.getItem(LS_USERBOX_COLLAPSED) === '1');
     applyAssetMgmtCollapse(localStorage.getItem(LS_ASSETMGMT_COLLAPSED) === '1');
+    applyAuditCollapse(localStorage.getItem(LS_AUDIT_COLLAPSED) === '1');
 
     const { data: { session } } = await sb.auth.getSession();
     if (session && session.user) {
