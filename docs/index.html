@@ -934,25 +934,25 @@ function areaOf(tag) { const e = ALL_EQUIP.find(x => x.tag === tag); return e ? 
    ========================================================= */
 const ROLE_META = {
     PCM: { label: 'PCM — Planej. e Controle de Manutenção', canBook: ['Manutenção Preventiva', 'Manutenção Corretiva'], readOnly: false },
-    PCO: { label: 'PCO — Planej. e Controle Operacional', canBook: ['Limpeza', 'Limpeza Mecanizada'], readOnly: false },
-    PCM_PCO: { label: 'PCM + PCO — Manutenção e Operacional', canBook: ['Manutenção Preventiva', 'Manutenção Corretiva', 'Limpeza', 'Limpeza Mecanizada'], readOnly: false },
+    PCO: { label: 'PCO — Planej. e Controle Operacional', canBook: ['Limpeza Sodexo', 'Limpeza Mecanizada'], readOnly: false },
+    PCM_PCO: { label: 'PCM + PCO — Manutenção e Operacional', canBook: ['Manutenção Preventiva', 'Manutenção Corretiva', 'Limpeza Sodexo', 'Limpeza Mecanizada'], readOnly: false },
     ENG_CONF: { label: 'Engenheiro de Confiabilidade', canBook: [], readOnly: true },
     ENG_EST: { label: 'Engenheiro Estrutural', canBook: [], readOnly: true },
-    ADMIN: { label: 'Admin Master', canBook: ['Manutenção Preventiva', 'Manutenção Corretiva', 'Limpeza', 'Limpeza Mecanizada'], readOnly: false },
+    ADMIN: { label: 'Admin Master', canBook: ['Manutenção Preventiva', 'Manutenção Corretiva', 'Limpeza Sodexo', 'Limpeza Mecanizada'], readOnly: false },
     VISITANTE: { label: 'Visitante (Somente Leitura)', canBook: [], readOnly: true }
 };
-const TYPE_STATUS = { 'Manutenção Preventiva': 'manutencao', 'Manutenção Corretiva': 'manutencao', 'Limpeza': 'limpeza', 'Limpeza Mecanizada': 'limpeza' };
+const TYPE_STATUS = { 'Manutenção Preventiva': 'manutencao', 'Manutenção Corretiva': 'manutencao', 'Limpeza Sodexo': 'limpeza', 'Limpeza Mecanizada': 'limpeza' };
 
 /* =========================================================
    ENCERRAMENTO DE BLOQUEIOS (closure_status)
    -----------------------------------------------------------
-   'Limpeza' é o único tipo executado pela própria Sodexo — é o
+   'Limpeza Sodexo' é o único tipo executado pela própria Sodexo — é o
    único cujas pendências contam contra a nota de Limpeza da
    Sodexo. 'Limpeza Mecanizada' e os tipos de Manutenção são
    prestados por outras empresas, então uma pendência nesses
    tipos vira PENDENTE_VALE (nunca PENDENTE_SODEXO).
    ========================================================= */
-const SODEXO_CLEANING_TYPE = 'Limpeza';
+const SODEXO_CLEANING_TYPE = 'Limpeza Sodexo';
 function isActiveBooking(b) { return !b.closureStatus; }
 function pendingClosureStatusFor(type) { return type === SODEXO_CLEANING_TYPE ? 'PENDENTE_SODEXO' : 'PENDENTE_VALE'; }
 
@@ -2196,7 +2196,7 @@ document.getElementById('btn-print-book').addEventListener('click', printAderenc
 /* =========================================================
    MAPA DE CALOR
    ========================================================= */
-const HEATMAP_TYPES = ['Manutenção Preventiva', 'Manutenção Corretiva', 'Limpeza', 'Limpeza Mecanizada'];
+const HEATMAP_TYPES = ['Manutenção Preventiva', 'Manutenção Corretiva', 'Limpeza Sodexo', 'Limpeza Mecanizada'];
 
 function getHeatmapAuditLog() {
     return state.auditLog.filter(a => {
@@ -2289,7 +2289,7 @@ function renderHeatmap() {
     `;
 
     const manutSorted = allRows.map(r => ({ tag: r.tag, area: r.area, count: (r.byType['Manutenção Preventiva'] || 0) + (r.byType['Manutenção Corretiva'] || 0) })).sort((a, b) => b.count - a.count);
-    const limpezaSorted = allRows.map(r => ({ tag: r.tag, area: r.area, count: (r.byType['Limpeza'] || 0) + (r.byType['Limpeza Mecanizada'] || 0) })).sort((a, b) => b.count - a.count);
+    const limpezaSorted = allRows.map(r => ({ tag: r.tag, area: r.area, count: (r.byType['Limpeza Sodexo'] || 0) + (r.byType['Limpeza Mecanizada'] || 0) })).sort((a, b) => b.count - a.count);
     const topManut = manutSorted.find(r => r.count > 0);
     const topLimpeza = limpezaSorted.find(r => r.count > 0);
 

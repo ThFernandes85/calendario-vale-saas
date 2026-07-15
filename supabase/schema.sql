@@ -209,8 +209,8 @@ create policy "bookings_insert" on public.bookings for insert
     and (
       public.is_admin()
       or (public.current_role_key() = 'PCM' and type in ('Manutenção Preventiva','Manutenção Corretiva'))
-      or (public.current_role_key() = 'PCO' and type in ('Limpeza','Limpeza Mecanizada'))
-      or (public.current_role_key() = 'PCM_PCO' and type in ('Manutenção Preventiva','Manutenção Corretiva','Limpeza','Limpeza Mecanizada'))
+      or (public.current_role_key() = 'PCO' and type in ('Limpeza Sodexo','Limpeza Mecanizada'))
+      or (public.current_role_key() = 'PCM_PCO' and type in ('Manutenção Preventiva','Manutenção Corretiva','Limpeza Sodexo','Limpeza Mecanizada'))
     )
   );
 drop policy if exists "bookings_delete" on public.bookings;
@@ -220,8 +220,8 @@ create policy "bookings_delete" on public.bookings for delete
     and (
       public.is_admin()
       or (public.current_role_key() = 'PCM' and type in ('Manutenção Preventiva','Manutenção Corretiva'))
-      or (public.current_role_key() = 'PCO' and type in ('Limpeza','Limpeza Mecanizada'))
-      or (public.current_role_key() = 'PCM_PCO' and type in ('Manutenção Preventiva','Manutenção Corretiva','Limpeza','Limpeza Mecanizada'))
+      or (public.current_role_key() = 'PCO' and type in ('Limpeza Sodexo','Limpeza Mecanizada'))
+      or (public.current_role_key() = 'PCM_PCO' and type in ('Manutenção Preventiva','Manutenção Corretiva','Limpeza Sodexo','Limpeza Mecanizada'))
     )
   );
 drop policy if exists "bookings_update" on public.bookings;
@@ -231,8 +231,8 @@ create policy "bookings_update" on public.bookings for update
     and (
       public.is_admin()
       or (public.current_role_key() = 'PCM' and type in ('Manutenção Preventiva','Manutenção Corretiva'))
-      or (public.current_role_key() = 'PCO' and type in ('Limpeza','Limpeza Mecanizada'))
-      or (public.current_role_key() = 'PCM_PCO' and type in ('Manutenção Preventiva','Manutenção Corretiva','Limpeza','Limpeza Mecanizada'))
+      or (public.current_role_key() = 'PCO' and type in ('Limpeza Sodexo','Limpeza Mecanizada'))
+      or (public.current_role_key() = 'PCM_PCO' and type in ('Manutenção Preventiva','Manutenção Corretiva','Limpeza Sodexo','Limpeza Mecanizada'))
     )
   )
   with check (
@@ -240,8 +240,8 @@ create policy "bookings_update" on public.bookings for update
     and (
       public.is_admin()
       or (public.current_role_key() = 'PCM' and type in ('Manutenção Preventiva','Manutenção Corretiva'))
-      or (public.current_role_key() = 'PCO' and type in ('Limpeza','Limpeza Mecanizada'))
-      or (public.current_role_key() = 'PCM_PCO' and type in ('Manutenção Preventiva','Manutenção Corretiva','Limpeza','Limpeza Mecanizada'))
+      or (public.current_role_key() = 'PCO' and type in ('Limpeza Sodexo','Limpeza Mecanizada'))
+      or (public.current_role_key() = 'PCM_PCO' and type in ('Manutenção Preventiva','Manutenção Corretiva','Limpeza Sodexo','Limpeza Mecanizada'))
     )
   );
 
@@ -280,6 +280,15 @@ create policy "closure_photos_select" on storage.objects for select
 drop policy if exists "closure_photos_admin_delete" on storage.objects;
 create policy "closure_photos_admin_delete" on storage.objects for delete
   using (bucket_id = 'closure-photos' and public.is_admin());
+
+-- ============================================================
+-- MIGRAÇÃO: renomeia o tipo 'Limpeza' para 'Limpeza Sodexo'
+-- (deixa claro que é a limpeza feita pela própria Sodexo, em contraste
+-- com 'Limpeza Mecanizada', prestada por outra empresa). Idempotente:
+-- depois da primeira vez que rodar, não sobra nenhuma linha 'Limpeza'
+-- para o UPDATE pegar, então rodar de novo não faz nada.
+-- ============================================================
+update public.bookings set type = 'Limpeza Sodexo' where type = 'Limpeza';
 
 -- ============================================================
 -- DADOS INICIAIS: site Mutuca (áreas + 93 equipamentos)
