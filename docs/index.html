@@ -1667,6 +1667,12 @@ async function confirmCloseBooking(id) {
     const reason = document.getElementById('close-just').value.trim();
     if (reason.length < 5) { toast('Informe uma observação para o desfecho (mínimo 5 caracteres).', 'error'); return; }
 
+    // Só a tela mobile tem o campo de data editável (close-date) -- no
+    // desktop a data não muda no encerramento, então cai no valor original.
+    const dateEl = document.getElementById('close-date');
+    const dateStr = dateEl ? dateEl.value : booking.date;
+    if (dateEl && !dateStr) { toast('Informe a data do serviço.', 'error'); return; }
+
     // Uma OM só pode ser encerrada uma vez -- se esse número já aparece em
     // OUTRO lançamento que já foi Encerrado, é sinal de duplicidade (OM
     // digitada de novo por engano) e não deixa contar duas vezes na nota.
@@ -1709,7 +1715,7 @@ async function confirmCloseBooking(id) {
     // alterada -- se a política de segurança (RLS) bloquear silenciosamente
     // a atualização, o Supabase não retorna "error", só devolve 0 linhas.
     const { data, error } = await sb.from('bookings').update({
-        closure_status: closureStatus, closure_reason: reason, closed_at: closedAt,
+        date: dateStr, closure_status: closureStatus, closure_reason: reason, closed_at: closedAt,
         closure_photo_before: photoBeforeUrl, closure_photo_after: photoAfterUrl,
         closed_by: (state.currentUser && state.profileKey !== 'VISITANTE') ? state.currentUser.id : null
     }).eq('id', id).select();
@@ -1724,6 +1730,7 @@ async function confirmCloseBooking(id) {
         return;
     }
 
+    booking.date = dateStr;
     booking.closureStatus = closureStatus; booking.closureReason = reason; booking.closedAt = closedAt;
     booking.closurePhotoBefore = photoBeforeUrl; booking.closurePhotoAfter = photoAfterUrl;
 
@@ -1900,8 +1907,13 @@ function renderMobileCloseForm(booking) {
         <button type="button" class="mobile-back" onclick="renderMobileEquipList()">&larr; Voltar</button>
         <div class="mobile-card">
             <div class="mobile-card-title">${escapeHtml(booking.tag)} — ${escapeHtml(booking.type)}</div>
-            <div class="mobile-card-sub">OM ${escapeHtml(booking.om || '—')} · ${formatDateBR(booking.date)} ${minutesToTime(booking.startMin)}–${minutesToTime(booking.endMin)}</div>
+            <div class="mobile-card-sub">OM ${escapeHtml(booking.om || '—')} · ${minutesToTime(booking.startMin)}–${minutesToTime(booking.endMin)}</div>
             <div class="m-field" style="margin-top:10px;">
+                <label>Data do Serviço *</label>
+                <input type="date" id="close-date" value="${booking.date}" max="${todayStr()}">
+                <div style="font-size:11px; color:var(--text-secondary); margin-top:4px;">Errou a data ao lançar? Corrija aqui antes de encerrar.</div>
+            </div>
+            <div class="m-field">
                 <label>Desfecho *</label>
                 <select id="close-outcome">${outcomes.map(o => `<option value="${o.value}">${o.label}</option>`).join('')}</select>
                 <div id="close-outcome-hint" style="font-size:12px; color:var(--text-secondary); margin-top:6px;"></div>
@@ -1926,6 +1938,7 @@ function renderMobileCloseForm(booking) {
             </div>
         </div>
         <button type="button" class="btn-primary mobile-submit" id="mobile-close-submit">Confirmar</button>
+        ${canDiscardOwnBooking(booking) ? `<button type="button" class="btn-secondary mobile-submit" id="mobile-close-discard-btn" style="margin-top:8px;">Descartar Este Lançamento (data/OM errada)</button>` : ''}
     `;
     const outcomeSelect = document.getElementById('close-outcome');
     const outcomeHint = document.getElementById('close-outcome-hint');
@@ -1952,6 +1965,8 @@ function renderMobileCloseForm(booking) {
         if (booking.closureStatus) { renderMobileEquipList(); return; }
         if (resultado === 'duplicate_om') renderMobileDuplicateOmScreen(booking);
     });
+    const discardBtn = document.getElementById('mobile-close-discard-btn');
+    if (discardBtn) discardBtn.addEventListener('click', () => renderMobileDiscardConfirm(booking, () => renderMobileCloseForm(booking)));
 }
 
 // Tela mostrada quando confirmCloseBooking recusa por OM duplicada -- sem
@@ -2025,11 +2040,15 @@ function renderMobileDiscardConfirm(booking, onBack) {
     document.getElementById('mobile-discard-confirm-btn').addEventListener('click', () => discardMobileBooking(booking));
 }
 
+// Autoatendimento restrito: só o próprio encarregado descartando o próprio
+// lançamento ainda aberto -- não é a mesma coisa que a exclusão geral
+// (Admin-only) de openDeleteBookingModal/confirmDeleteBooking.
+function canDiscardOwnBooking(booking) {
+    return state.profileKey === 'ENCARREGADO' && state.currentUser && booking.operatorId === state.currentUser.id && !booking.closureStatus;
+}
+
 async function discardMobileBooking(booking) {
-    // Autoatendimento restrito: só o próprio encarregado descartando o
-    // próprio lançamento ainda aberto -- não é a mesma coisa que a exclusão
-    // geral (Admin-only) de openDeleteBookingModal/confirmDeleteBooking.
-    if (state.profileKey !== 'ENCARREGADO' || booking.operatorId !== state.currentUser.id || booking.closureStatus) {
+    if (!canDiscardOwnBooking(booking)) {
         showAccessDenied('Não foi possível descartar este lançamento.');
         return;
     }
@@ -2043,8 +2062,8 @@ async function discardMobileBooking(booking) {
     const idx = state.bookings.findIndex(b => b.id === booking.id);
     if (idx !== -1) state.bookings.splice(idx, 1);
     await addAuditEntry({
-        tag: booking.tag, acao: `${booking.type} (Descartado -- OM duplicada)`,
-        justificativa: `OM ${booking.om} digitada por engano/duplicada. Descartado pelo próprio encarregado.`,
+        tag: booking.tag, acao: `${booking.type} (Descartado pelo encarregado)`,
+        justificativa: `Lançamento incorreto (OM/data digitada por engano). Descartado pelo próprio encarregado.`,
         om: booking.om, agendamentoData: booking.date, agendamentoHorario: `${minutesToTime(booking.startMin)}–${minutesToTime(booking.endMin)}`
     });
     toast('Lançamento descartado.', 'warn');
