@@ -1086,6 +1086,14 @@ const SODEXO_CLEANING_TYPE = 'Limpeza Sodexo';
 function isActiveBooking(b) { return !b.closureStatus; }
 function pendingClosureStatusFor(type) { return type === SODEXO_CLEANING_TYPE ? 'PENDENTE_SODEXO' : 'PENDENTE_VALE'; }
 
+// Mesmo equipamento pode ter vários bloqueios no mesmo horário (tarefas
+// diferentes rodando em paralelo), então o conflito não é mais por
+// horário -- é por OM: a mesma OM não pode ficar aberta duas vezes no
+// mesmo equipamento (isso sim é duplicidade/erro de lançamento).
+function activeOmConflict(tag, om) {
+    return state.bookings.find(b => isActiveBooking(b) && b.tag === tag && b.om === om);
+}
+
 function initialsOf(name) {
     return name.trim().split(/\s+/).map(p => p[0]).slice(0, 2).join('').toUpperCase();
 }
@@ -1458,8 +1466,8 @@ async function submitBooking(tag) {
     const endMin = timeToMinutes(endStr);
     if (endMin <= startMin) { toast('O horário de término deve ser depois do horário de início.', 'error'); return; }
 
-    const overlap = state.bookings.some(b => isActiveBooking(b) && b.tag === tag && b.date === dateStr && startMin < b.endMin && endMin > b.startMin);
-    if (overlap) { toast('Conflito de horário: já existe um bloqueio nesse intervalo para este equipamento.', 'error'); return; }
+    const omConflict = activeOmConflict(tag, om);
+    if (omConflict) { toast(`A OM ${om} já está em aberto para este equipamento (${formatDateBR(omConflict.date)} ${minutesToTime(omConflict.startMin)}–${minutesToTime(omConflict.endMin)}) -- verifique se não é duplicidade.`, 'error'); return; }
 
     const finalEmergencial = type === 'Manutenção Corretiva' ? emergencial : false;
     const { data, error } = await sb.from('bookings').insert({
@@ -1858,6 +1866,9 @@ async function submitMobileNewBooking(tag) {
     const startMin = timeToMinutes(startStr);
     const endMin = timeToMinutes(endStr);
     if (endMin <= startMin) { toast('O horário de término deve ser depois do horário de início.', 'error'); return; }
+
+    const omConflict = activeOmConflict(tag, om);
+    if (omConflict) { toast(`A OM ${om} já está em aberto para este equipamento (${formatDateBR(omConflict.date)} ${minutesToTime(omConflict.startMin)}–${minutesToTime(omConflict.endMin)}) -- verifique se não é duplicidade.`, 'error'); return; }
 
     const btn = document.getElementById('mobile-new-submit');
     btn.disabled = true; btn.textContent = 'Criando...';
