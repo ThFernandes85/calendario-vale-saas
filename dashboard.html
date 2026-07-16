@@ -476,6 +476,18 @@ aside.collapsed .nav-badge { top: 2px; right: 2px; }
     width: 100%; margin-top: 16px; padding: 15px; font-size: 16px; font-weight: 700; border-radius: 10px;
 }
 .mobile-empty { text-align: center; color: var(--text-muted); padding: 40px 20px; }
+.mobile-alert {
+    background: rgba(245, 158, 11, 0.1); border: 1px solid var(--color-manutencao);
+    border-radius: 12px; padding: 14px; margin-bottom: 14px;
+}
+.mobile-alert-title { font-size: 14px; font-weight: 700; color: var(--color-manutencao); }
+.mobile-alert-sub { font-size: 12px; color: var(--text-secondary); margin-top: 2px; margin-bottom: 10px; }
+.mobile-alert-list { display: flex; flex-direction: column; gap: 8px; }
+.mobile-alert-item {
+    display: flex; align-items: center; justify-content: space-between; gap: 10px; width: 100%; text-align: left;
+    padding: 10px 12px; background: var(--bg-card); border: 1px solid var(--color-manutencao); border-radius: 8px;
+    color: var(--text-primary); font-size: 13px; cursor: pointer;
+}
 </style>
 </head>
 <body>
@@ -1126,7 +1138,7 @@ function mapBookingFromDb(row) {
         id: row.id, tag: row.tag, area: row.area_code, date: row.date,
         startMin: row.start_min, endMin: row.end_min, type: row.type,
         emergencial: row.emergencial, om: row.om, justification: row.justification,
-        operator: row.operator_label, createdAt: row.created_at,
+        operator: row.operator_label, operatorId: row.operator_id, createdAt: row.created_at,
         closureStatus: row.closure_status, closureReason: row.closure_reason, closedAt: row.closed_at,
         closurePhotoBefore: row.closure_photo_before, closurePhotoAfter: row.closure_photo_after
     };
@@ -1713,6 +1725,26 @@ function renderMobileEncarregado() {
     renderMobileEquipList();
 }
 
+// OMs que o próprio encarregado logado abriu e ainda não encerrou --
+// mostradas como alerta na lista pra ele não esquecer de tirar as fotos
+// de antes/depois e fechar. Não filtra por data de propósito: um
+// esquecimento pode ter ficado aberto desde outro dia.
+function mobilePendingBookings() {
+    if (!state.currentUser) return [];
+    return state.bookings.filter(b =>
+        isActiveBooking(b) &&
+        (b.type === 'Limpeza Sodexo' || b.type === 'Limpeza Mecanizada') &&
+        b.operatorId === state.currentUser.id
+    ).sort((a, b) => a.date.localeCompare(b.date) || a.startMin - b.startMin);
+}
+
+function openMobilePendingBooking(id) {
+    const booking = state.bookings.find(b => b.id === id);
+    if (!booking) return;
+    mobileSelectedTag = booking.tag;
+    renderMobileCloseForm(booking);
+}
+
 function renderMobileEquipList() {
     mobileSelectedTag = null;
     const body = document.getElementById('mobile-encarregado-body');
@@ -1720,6 +1752,20 @@ function renderMobileEquipList() {
         body.innerHTML = `<div class="mobile-empty">Nenhum equipamento cadastrado neste site.</div>`;
         return;
     }
+    const pendentes = mobilePendingBookings();
+    const alertHtml = pendentes.length ? `
+        <div class="mobile-alert">
+            <div class="mobile-alert-title">⚠️ ${pendentes.length} OM${pendentes.length > 1 ? 's' : ''} em aberto no seu nome</div>
+            <div class="mobile-alert-sub">Encerre com as fotos de antes/depois assim que possível.</div>
+            <div class="mobile-alert-list">
+                ${pendentes.map(b => `
+                    <button type="button" class="mobile-alert-item" onclick="openMobilePendingBooking('${b.id}')">
+                        <span class="mobile-equip-tag">${escapeHtml(b.tag)}</span>
+                        <span class="mobile-equip-area">OM ${escapeHtml(b.om || '—')} · ${formatDateBR(b.date)}</span>
+                    </button>
+                `).join('')}
+            </div>
+        </div>` : '';
     const cards = ALL_EQUIP.map(eq => {
         const live = getLiveStatus(eq.tag);
         return `
@@ -1730,6 +1776,7 @@ function renderMobileEquipList() {
             </button>`;
     }).join('');
     body.innerHTML = `
+        ${alertHtml}
         <input type="text" id="mobile-equip-search" class="mobile-search" placeholder="Buscar equipamento...">
         <div id="mobile-equip-list" class="mobile-equip-list">${cards}</div>`;
     document.getElementById('mobile-equip-search').addEventListener('input', (e) => {
