@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>SaaS VALE - Monitoramento e Agendamento de Ativos</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>%F0%9F%8F%AD</text></svg>">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
@@ -2107,6 +2108,16 @@ function renderSodexoScore() {
 }
 
 let chartTop5 = null, chartTop5Limpeza = null, chartArea = null;
+
+// O layout de impressão é bem diferente do da tela (a sidebar some, a
+// largura disponível muda) -- os gráficos são criados/dimensionados
+// ANTES disso acontecer, então sem re-medir exatamente quando o navegador
+// entra no modo impressão de verdade (evento beforeprint), eles saem com
+// o tamanho calculado pra tela normal: distorcidos, vazando da caixa no PDF.
+window.addEventListener('beforeprint', () => {
+    [chartStatus, chartTop5, chartTop5Limpeza, chartArea].forEach(c => { if (c) c.resize(); });
+});
+
 const CLOSURE_STATUS_LABELS = {
     ENCERRADA: 'Encerrado',
     REPROGRAMADA: 'Reprogramado',
@@ -2369,6 +2380,13 @@ function printFullReport() {
     // Mostra as 3 seções juntas na tela (não só via CSS de impressão) para os
     // gráficos Chart.js medirem o canvas corretamente antes de desenhar.
     PRINT_REPORT_VIEWS.forEach(id => document.getElementById(id).classList.add('view-active'));
+
+    // Força o navegador a recalcular o layout AGORA, de forma síncrona --
+    // ler offsetHeight obriga isso (não depende de requestAnimationFrame,
+    // que fica parado se a aba estiver em segundo plano). Sem isso, o
+    // Chart.js mede um canvas com o tamanho antigo/ainda não atualizado e
+    // o gráfico sai distorcido, vazando da caixa no PDF.
+    void document.getElementById('view-dashboard').offsetHeight;
 
     renderDashboard();
     renderReportUserFilter();
