@@ -1755,6 +1755,11 @@ function renderMobileNewForm(tag) {
             <div class="m-field"><label>Tipo</label>
                 <select id="mobile-new-type">${p.canBook.map(t => `<option value="${t}" ${t === SODEXO_CLEANING_TYPE ? 'selected' : ''}>${t}</option>`).join('')}</select>
             </div>
+            <div class="m-field"><label>Data *</label><input type="date" id="mobile-new-date" value="${todayStr()}" max="${todayStr()}"></div>
+            <div style="display:flex; gap:12px;">
+                <div class="m-field" style="flex:1;"><label>Hora início *</label><input type="time" id="mobile-new-start" value="${minutesToTime(nowMinutes())}"></div>
+                <div class="m-field" style="flex:1;"><label>Hora fim *</label><input type="time" id="mobile-new-end" value="${minutesToTime(Math.min(nowMinutes() + 60, 23 * 60 + 59))}"></div>
+            </div>
             <div class="m-field"><label>Número da OM *</label><input type="text" id="mobile-new-om" inputmode="numeric" maxlength="12" placeholder="Ex: 123456789012"></div>
             <div class="m-field"><label>Justificativa Técnica *</label><textarea id="mobile-new-just" rows="3" maxlength="200" placeholder="Ex: Limpeza geral, remoção de material..."></textarea></div>
         </div>
@@ -1765,20 +1770,27 @@ function renderMobileNewForm(tag) {
 
 async function submitMobileNewBooking(tag) {
     const type = document.getElementById('mobile-new-type').value;
+    const dateStr = document.getElementById('mobile-new-date').value;
+    const startStr = document.getElementById('mobile-new-start').value;
+    const endStr = document.getElementById('mobile-new-end').value;
     const om = document.getElementById('mobile-new-om').value.trim();
     const justification = document.getElementById('mobile-new-just').value.trim();
     if (!canBookType(type)) { showAccessDenied(`O perfil ativo não pode agendar bloqueios do tipo "${type}".`); return; }
+    if (!dateStr) { toast('Informe a data do serviço.', 'error'); return; }
+    if (!startStr || !endStr) { toast('Informe o horário de início e de término.', 'error'); return; }
     if (!/^\d{1,12}$/.test(om)) { toast('Informe o número da OM (somente dígitos, até 12 caracteres).', 'error'); return; }
     if (justification.length < 5) { toast('Informe uma justificativa técnica válida (mínimo 5 caracteres).', 'error'); return; }
+
+    const startMin = timeToMinutes(startStr);
+    const endMin = timeToMinutes(endStr);
+    if (endMin <= startMin) { toast('O horário de término deve ser depois do horário de início.', 'error'); return; }
 
     const btn = document.getElementById('mobile-new-submit');
     btn.disabled = true; btn.textContent = 'Criando...';
 
-    const nowMin = nowMinutes();
-    const endMin = Math.min(nowMin + 60, 23 * 60 + 59);
     const { data, error } = await sb.from('bookings').insert({
-        site_key: state.currentSite, tag, area_code: areaOf(tag), date: todayStr(),
-        start_min: nowMin, end_min: endMin, type, emergencial: false, om, justification,
+        site_key: state.currentSite, tag, area_code: areaOf(tag), date: dateStr,
+        start_min: startMin, end_min: endMin, type, emergencial: false, om, justification,
         operator_id: state.currentUser.id, operator_label: `${activeProfile().user} (${state.profileKey})`
     }).select().single();
     if (error) {
