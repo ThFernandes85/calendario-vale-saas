@@ -1,6 +1,6 @@
 {
-  "name": "SaaS VALE - Monitoramento e Agendamento de Ativos",
-  "short_name": "VALE Limpeza",
+  "name": "Sodexo Limpeza",
+  "short_name": "Sodexo Limpeza",
   "description": "Encerramento de bloqueios de Limpeza com evidência fotográfica, direto do celular.",
   "start_url": "./",
   "scope": "./",
