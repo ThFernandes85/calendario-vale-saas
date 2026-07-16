@@ -150,6 +150,8 @@ header {
 #admin-asset-mgmt.asset-mgmt-collapsed #asset-mgmt-content { display: none; }
 #audit-section.audit-collapsed .profile-toggle-btn svg { transform: rotate(-90deg); }
 #audit-section.audit-collapsed #audit-content { display: none; }
+#closed-bookings-section.closed-bookings-collapsed .profile-toggle-btn svg { transform: rotate(-90deg); }
+#closed-bookings-section.closed-bookings-collapsed #closed-bookings-content { display: none; }
 
 .btn-area-filter {
     background-color: #1c2533; border: 1px solid var(--border-color); color: var(--text-primary);
@@ -190,8 +192,7 @@ header {
 .kpi-value { font-size: 34px; font-weight: 800; }
 .kpi-sub { font-size: 11.5px; color: var(--text-muted); margin-top: 6px; }
 
-.charts-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
-@media (max-width: 1150px) { .charts-grid { grid-template-columns: 1fr; } }
+.charts-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 20px; }
 .chart-box { background-color: var(--bg-card); border: 1px solid var(--border-color); border-radius: 12px; padding: 20px; height: 320px; display:flex; flex-direction:column; }
 .chart-box canvas { flex: 1; max-height: 260px; }
 .chart-box h3 { font-size: 14px; margin-bottom: 12px; font-weight: 700; }
@@ -410,6 +411,11 @@ aside.collapsed .nav-badge { top: 2px; right: 2px; }
        (botão dedicado, Relatório Completo, ou Ctrl+P direto na tela) -- ele
        já tem seu próprio "Exportar Excel" para consulta fora do app. */
     #audit-section { display: none !important; }
+    /* A lista item-a-item de bloqueios encerrados pode passar de 100 linhas
+       num período de 4 semanas -- no PDF só o resumo de OMs (que fica fora
+       de #closed-bookings-content) aparece, não a tabela inteira. */
+    #closed-bookings-content { display: none !important; }
+    #btn-toggle-closed-bookings { display: none !important; }
     body, main { overflow: visible !important; height: auto !important; }
     .content-container { display: flex !important; padding: 0; }
     .content-container:not(.view-active) { display: none !important; }
@@ -798,9 +804,9 @@ aside.collapsed .nav-badge { top: 2px; right: 2px; }
 
         <div class="kpi-grid" style="margin-bottom:18px;">
             <div class="kpi-card" style="--accent: var(--color-limpeza);">
-                <div class="kpi-label">Nota de Limpeza — Sodexo (Atendido)</div>
+                <div class="kpi-label">Nota de Aderência — Sodexo (Atendido - SLA)</div>
                 <div class="kpi-value" id="kpi-sodexo-atendido">—</div>
-                <div class="kpi-sub" id="kpi-sodexo-atendido-sub">Bloqueios de Limpeza Sodexo concluídos no período</div>
+                <div class="kpi-sub" id="kpi-sodexo-atendido-sub">Atividades de Limpeza Sodexo concluídas no período</div>
             </div>
             <div class="kpi-card" style="--accent: var(--color-operacao);">
                 <div class="kpi-label">Pendente Vale</div>
@@ -816,26 +822,39 @@ aside.collapsed .nav-badge { top: 2px; right: 2px; }
 
         <div class="charts-grid">
             <div class="chart-box">
-                <h3>Top 5 Equipamentos - Maior Taxa de Indisponibilidade</h3>
+                <h3>Top 5 Equipamentos - Maior Taxa de Indisponibilidade (Manutenção)</h3>
                 <canvas id="chart-top5"></canvas>
             </div>
             <div class="chart-box">
-                <h3>Volume de Intervenções por Área</h3>
+                <h3>Top 5 Equipamentos - Maior Volume de Limpeza</h3>
+                <canvas id="chart-top5-limpeza"></canvas>
+            </div>
+            <div class="chart-box">
+                <h3>Volume de Atividades por Área (Aderência)</h3>
                 <canvas id="chart-area"></canvas>
             </div>
         </div>
 
         <div class="card-section" id="closed-bookings-section">
-            <div class="filter-title" style="margin-bottom:12px;">Bloqueios Encerrados / Reprogramados / Pendentes</div>
-            <div class="audit-table-wrap">
-                <table class="audit-table">
-                    <thead>
-                        <tr>
-                            <th>Encerrado em</th><th>Tag</th><th>Área</th><th>Tipo</th><th>Desfecho</th><th>Observação</th><th>Ações</th>
-                        </tr>
-                    </thead>
-                    <tbody id="closed-bookings-tbody"></tbody>
-                </table>
+            <div class="filter-title-row">
+                <div class="filter-title" style="margin-bottom:0;">Bloqueios Encerrados / Reprogramados / Pendentes</div>
+                <button type="button" id="btn-toggle-closed-bookings" class="profile-toggle-btn" title="Minimizar/Expandir">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
+                </button>
+            </div>
+            <div id="closed-bookings-summary" class="kpi-grid" style="margin-top:14px;"></div>
+            <div id="closed-bookings-content">
+                <div style="height:16px;"></div>
+                <div class="audit-table-wrap">
+                    <table class="audit-table">
+                        <thead>
+                            <tr>
+                                <th>Encerrado em</th><th>Tag</th><th>Área</th><th>Tipo</th><th>Desfecho</th><th>Observação</th><th>Ações</th>
+                            </tr>
+                        </thead>
+                        <tbody id="closed-bookings-tbody"></tbody>
+                    </table>
+                </div>
             </div>
         </div>
 
@@ -1314,7 +1333,9 @@ function openBookingModal(tag, dateStr, startHour) {
     const p = activeProfile();
     if (p.readOnly || p.canBook.length === 0) { showAccessDenied(`O perfil "${p.label}" possui acesso apenas de leitura ao calendário.`); return; }
     pendingBookingDate = dateStr;
-    const options = p.canBook.map(t => `<option value="${t}">${t}</option>`).join('');
+    // Limpeza Sodexo é o lançamento mais comum no dia a dia -- já vem
+    // pré-selecionado (quando o perfil pode agendar esse tipo) pra agilizar.
+    const options = p.canBook.map(t => `<option value="${t}" ${t === SODEXO_CLEANING_TYPE ? 'selected' : ''}>${t}</option>`).join('');
     const defaultStart = `${pad(startHour)}:00`;
     const defaultEnd = minutesToTime(Math.min(startHour * 60 + 60, 23 * 60 + 59));
     openModal(`
@@ -1748,6 +1769,15 @@ document.getElementById('btn-toggle-asset-mgmt').addEventListener('click', () =>
     applyAssetMgmtCollapse(!document.getElementById('admin-asset-mgmt').classList.contains('asset-mgmt-collapsed'));
 });
 
+const LS_CLOSEDBOOKINGS_COLLAPSED = 'vale_saas_closedbookings_collapsed_v1';
+function applyClosedBookingsCollapse(collapsed) {
+    document.getElementById('closed-bookings-section').classList.toggle('closed-bookings-collapsed', collapsed);
+    localStorage.setItem(LS_CLOSEDBOOKINGS_COLLAPSED, collapsed ? '1' : '0');
+}
+document.getElementById('btn-toggle-closed-bookings').addEventListener('click', () => {
+    applyClosedBookingsCollapse(!document.getElementById('closed-bookings-section').classList.contains('closed-bookings-collapsed'));
+});
+
 /* =========================================================
    RENDER: USUÁRIO LOGADO
    ========================================================= */
@@ -2064,19 +2094,19 @@ function renderSodexoScore() {
     const b = sodexoCleaningBreakdown();
     if (!b) {
         atendidoEl.textContent = valeEl.textContent = pendenteEl.textContent = '—';
-        atendidoSub.textContent = valeSub.textContent = pendenteSub.textContent = 'Nenhum bloqueio de Limpeza Sodexo encerrado no período selecionado';
+        atendidoSub.textContent = valeSub.textContent = pendenteSub.textContent = 'Nenhuma atividade de Limpeza Sodexo encerrada no período selecionado';
         return;
     }
     atendidoEl.textContent = `${b.pctAtendido}%`;
     valeEl.textContent = `${b.pctPendenteVale}%`;
     pendenteEl.textContent = `${b.pctPendenteSodexo}%`;
-    const totalTxt = `${b.total} bloqueio(s) no período`;
-    atendidoSub.textContent = `Bloqueios de Limpeza Sodexo concluídos — ${totalTxt}`;
+    const totalTxt = `${b.total} atividade(s) no período`;
+    atendidoSub.textContent = `Atividades de Limpeza Sodexo concluídas — ${totalTxt}`;
     valeSub.textContent = `Não desconta da nota da Sodexo — ${totalTxt}`;
     pendenteSub.textContent = `Desconta da nota de Limpeza — ${totalTxt}`;
 }
 
-let chartTop5 = null, chartArea = null;
+let chartTop5 = null, chartTop5Limpeza = null, chartArea = null;
 const CLOSURE_STATUS_LABELS = {
     ENCERRADA: 'Encerrado',
     REPROGRAMADA: 'Reprogramado',
@@ -2089,7 +2119,35 @@ const CLOSURE_STATUS_LABELS = {
 // -- eles somem da grade do calendário assim que ganham um closureStatus
 // (para liberar o equipamento visualmente), então esta é a ÚNICA tela onde
 // dá pra encontrar um deles depois para corrigir ou excluir por engano.
+// Resumo em números absolutos (não %) -- fica fora de #closed-bookings-content
+// de propósito, então continua visível mesmo com a tabela minimizada ou fora
+// do PDF (uma lista de 100+ OMs por semana não cabe num relatório impresso).
+function renderClosedBookingsSummary() {
+    const el = document.getElementById('closed-bookings-summary');
+    if (!el) return;
+    const b = sodexoCleaningBreakdown();
+    const n = v => b ? v : 0;
+    el.innerHTML = `
+        <div class="kpi-card" style="--accent: var(--color-limpeza);">
+            <div class="kpi-label">OMs Programadas (Limpeza Sodexo)</div>
+            <div class="kpi-value">${n(b && b.total)}</div>
+        </div>
+        <div class="kpi-card" style="--accent: #2ed573;">
+            <div class="kpi-label">OMs Realizadas pela Sodexo</div>
+            <div class="kpi-value">${n(b && b.atendido)}</div>
+        </div>
+        <div class="kpi-card" style="--accent: var(--color-operacao);">
+            <div class="kpi-label">OMs Pendentes Vale</div>
+            <div class="kpi-value">${n(b && b.pendenteVale)}</div>
+        </div>
+        <div class="kpi-card" style="--accent: #ef4444;">
+            <div class="kpi-label">OMs Pendentes Sodexo</div>
+            <div class="kpi-value">${n(b && b.pendenteSodexo)}</div>
+        </div>`;
+}
+
 function renderClosedBookings() {
+    renderClosedBookingsSummary();
     const tbody = document.getElementById('closed-bookings-tbody');
     if (!tbody) return;
     const { from, to } = state.reportFilter;
@@ -2118,16 +2176,36 @@ function renderCharts() {
     renderSodexoScore();
     renderClosedBookings();
     const activeLog = getFilteredAuditLog().filter(a => TYPE_STATUS[a.acao] !== undefined);
-    const perTag = {};
-    activeLog.forEach(a => { perTag[a.tag] = (perTag[a.tag] || 0) + 1; });
-    const top5 = Object.entries(perTag).sort((a, b) => b[1] - a[1]).slice(0, 5);
+
+    // Indisponibilidade por manutenção é o indicador do PCM -- equipamento
+    // parado de verdade para reparo, não conta atividade de limpeza aqui.
+    const manutLog = activeLog.filter(a => TYPE_STATUS[a.acao] === 'manutencao');
+    const perTagManut = {};
+    manutLog.forEach(a => { perTagManut[a.tag] = (perTagManut[a.tag] || 0) + 1; });
+    const top5Manut = Object.entries(perTagManut).sort((a, b) => b[1] - a[1]).slice(0, 5);
 
     const ctx1 = document.getElementById('chart-top5');
     if (ctx1) {
         if (chartTop5) chartTop5.destroy();
         chartTop5 = new Chart(ctx1, {
             type: 'bar',
-            data: { labels: top5.map(t => t[0]), datasets: [{ label: 'Intervenções', data: top5.map(t => t[1]), backgroundColor: '#f59e0b', borderRadius: 5 }] },
+            data: { labels: top5Manut.map(t => t[0]), datasets: [{ label: 'Intervenções de Manutenção', data: top5Manut.map(t => t[1]), backgroundColor: '#f59e0b', borderRadius: 5 }] },
+            options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { ticks: { color: '#8a99ad' }, grid: { color: '#2b394e' } }, y: { ticks: { color: '#8a99ad', stepSize: 1 }, grid: { color: '#2b394e' }, beginAtZero: true } } }
+        });
+    }
+
+    // Espelho do gráfico acima, mas para Limpeza (Sodexo + Mecanizada).
+    const limpezaLog = activeLog.filter(a => TYPE_STATUS[a.acao] === 'limpeza');
+    const perTagLimpeza = {};
+    limpezaLog.forEach(a => { perTagLimpeza[a.tag] = (perTagLimpeza[a.tag] || 0) + 1; });
+    const top5Limpeza = Object.entries(perTagLimpeza).sort((a, b) => b[1] - a[1]).slice(0, 5);
+
+    const ctx1b = document.getElementById('chart-top5-limpeza');
+    if (ctx1b) {
+        if (chartTop5Limpeza) chartTop5Limpeza.destroy();
+        chartTop5Limpeza = new Chart(ctx1b, {
+            type: 'bar',
+            data: { labels: top5Limpeza.map(t => t[0]), datasets: [{ label: 'Atividades de Limpeza', data: top5Limpeza.map(t => t[1]), backgroundColor: '#2ed573', borderRadius: 5 }] },
             options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { ticks: { color: '#8a99ad' }, grid: { color: '#2b394e' } }, y: { ticks: { color: '#8a99ad', stepSize: 1 }, grid: { color: '#2b394e' }, beginAtZero: true } } }
         });
     }
@@ -2139,7 +2217,7 @@ function renderCharts() {
         if (chartArea) chartArea.destroy();
         chartArea = new Chart(ctx2, {
             type: 'bar',
-            data: { labels: Object.keys(perArea), datasets: [{ label: 'Intervenções', data: Object.values(perArea), backgroundColor: '#2563eb', borderRadius: 5 }] },
+            data: { labels: Object.keys(perArea), datasets: [{ label: 'Atividades', data: Object.values(perArea), backgroundColor: '#2563eb', borderRadius: 5 }] },
             options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { ticks: { color: '#8a99ad' }, grid: { color: '#2b394e' } }, y: { ticks: { color: '#8a99ad', stepSize: 1 }, grid: { color: '#2b394e' }, beginAtZero: true } } }
         });
     }
@@ -2873,6 +2951,7 @@ document.getElementById('btn-delete-equip').addEventListener('click', () => {
     applyUserBoxCollapse(localStorage.getItem(LS_USERBOX_COLLAPSED) === '1');
     applyAssetMgmtCollapse(localStorage.getItem(LS_ASSETMGMT_COLLAPSED) === '1');
     applyAuditCollapse(localStorage.getItem(LS_AUDIT_COLLAPSED) === '1');
+    applyClosedBookingsCollapse(localStorage.getItem(LS_CLOSEDBOOKINGS_COLLAPSED) === '1');
 
     const { data: { session } } = await sb.auth.getSession();
     if (session && session.user) {
