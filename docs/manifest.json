@@ -8,7 +8,6 @@
   "background_color": "#0c1017",
   "theme_color": "#0c1017",
   "icons": [
-    { "src": "assets/sodexo-icon.png", "sizes": "1563x1600", "type": "image/png", "purpose": "any" },
-    { "src": "assets/sodexo-icon.png", "sizes": "1563x1600", "type": "image/png", "purpose": "maskable" }
+    { "src": "assets/sodexo-icon.png", "sizes": "1563x1600", "type": "image/png", "purpose": "any" }
   ]
 }

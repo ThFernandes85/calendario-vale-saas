@@ -3294,6 +3294,14 @@ document.getElementById('btn-delete-equip').addEventListener('click', () => {
     openDeleteEquipModal(tag);
 });
 
+// Registra o service worker (necessário pro Chrome/Android oferecer
+// "Instalar app" de verdade em vez de só "Criar atalho").
+if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+        navigator.serviceWorker.register('sw.js').catch(() => {});
+    });
+}
+
 /* =========================================================
    INICIALIZAÇÃO
    ========================================================= */
