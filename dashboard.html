@@ -872,9 +872,14 @@ aside.collapsed .nav-badge { top: 2px; right: 2px; }
 
         <div class="kpi-grid" style="margin-bottom:18px;">
             <div class="kpi-card" style="--accent: var(--color-limpeza);">
-                <div class="kpi-label">Nota de Aderência — Sodexo (Atendido - SLA)</div>
-                <div class="kpi-value" id="kpi-sodexo-atendido">—</div>
-                <div class="kpi-sub" id="kpi-sodexo-atendido-sub">Atividades de Limpeza Sodexo concluídas no período</div>
+                <div class="kpi-label">Nota de Aderência — Sodexo</div>
+                <div class="kpi-value" id="kpi-sodexo-nota">—</div>
+                <div class="kpi-sub" id="kpi-sodexo-nota-sub">Só desconta quando encerrado como Pendente Sodexo</div>
+            </div>
+            <div class="kpi-card" style="--accent: var(--color-admin);">
+                <div class="kpi-label">Total Geral — OM Programada × OM Realizada</div>
+                <div class="kpi-value" id="kpi-sodexo-total">—</div>
+                <div class="kpi-sub" id="kpi-sodexo-total-sub">Atividades de Limpeza Sodexo no período</div>
             </div>
             <div class="kpi-card" style="--accent: var(--color-operacao);">
                 <div class="kpi-label">Pendente Vale</div>
@@ -2393,27 +2398,45 @@ function sodexoCleaningBreakdown(periodo) {
         pctAtendido: pct(atendido), pctPendenteVale: pct(pendenteVale), pctPendenteSodexo: pct(pendenteSodexo),
     };
 }
+
+// A nota "de verdade" da Sodexo: começa em 100% e só desconta quando a
+// pendência é responsabilidade da própria Sodexo. Pendente Vale (e
+// Encerrada, claro) continuam contando como cumprido -- diferente de
+// `pctAtendido`, que só considera "cumprido" o que foi Encerrada.
+function sodexoAdherenceScore(b) {
+    if (!b || !b.total) return null;
+    return Math.round(((b.total - b.pendenteSodexo) / b.total) * 1000) / 10;
+}
 function renderSodexoScore() {
-    const atendidoEl = document.getElementById('kpi-sodexo-atendido');
-    if (!atendidoEl) return;
+    const notaEl = document.getElementById('kpi-sodexo-nota');
+    if (!notaEl) return;
+    const notaSub = document.getElementById('kpi-sodexo-nota-sub');
+    const totalEl = document.getElementById('kpi-sodexo-total');
+    const totalSub = document.getElementById('kpi-sodexo-total-sub');
     const valeEl = document.getElementById('kpi-sodexo-vale');
     const pendenteEl = document.getElementById('kpi-sodexo-pendente');
-    const atendidoSub = document.getElementById('kpi-sodexo-atendido-sub');
     const valeSub = document.getElementById('kpi-sodexo-vale-sub');
     const pendenteSub = document.getElementById('kpi-sodexo-pendente-sub');
 
     const b = sodexoCleaningBreakdown();
     if (!b) {
-        atendidoEl.textContent = valeEl.textContent = pendenteEl.textContent = '—';
-        atendidoSub.textContent = valeSub.textContent = pendenteSub.textContent = 'Nenhuma atividade de Limpeza Sodexo encerrada no período selecionado';
+        notaEl.textContent = totalEl.textContent = valeEl.textContent = pendenteEl.textContent = '—';
+        notaSub.textContent = totalSub.textContent = valeSub.textContent = pendenteSub.textContent =
+            'Nenhuma atividade de Limpeza Sodexo encerrada no período selecionado';
         return;
     }
-    atendidoEl.textContent = `${b.pctAtendido}%`;
-    valeEl.textContent = `${b.pctPendenteVale}%`;
-    pendenteEl.textContent = `${b.pctPendenteSodexo}%`;
     const totalTxt = `${b.total} atividade(s) no período`;
-    atendidoSub.textContent = `Atividades de Limpeza Sodexo concluídas — ${totalTxt}`;
+
+    notaEl.textContent = `${sodexoAdherenceScore(b)}%`;
+    notaSub.textContent = `Só desconta quando encerrado como Pendente Sodexo — ${totalTxt}`;
+
+    totalEl.textContent = `${b.total} × ${b.atendido}`;
+    totalSub.textContent = `OM Programada × OM Realizada — ${totalTxt}`;
+
+    valeEl.textContent = `${b.pctPendenteVale}%`;
     valeSub.textContent = `Não desconta da nota da Sodexo — ${totalTxt}`;
+
+    pendenteEl.textContent = `${b.pctPendenteSodexo}%`;
     pendenteSub.textContent = `Desconta da nota de Limpeza — ${totalTxt}`;
 }
 
@@ -2768,8 +2791,8 @@ function buildAderenciaBookHtml() {
         : 'Período: todo o histórico';
     const breakdown = sodexoCleaningBreakdown({ from, to });
     const notaTxt = breakdown
-        ? `Nota de Limpeza — Atendido ${breakdown.pctAtendido}% · Pendente Vale ${breakdown.pctPendenteVale}% (não desconta) · Pendente Sodexo ${breakdown.pctPendenteSodexo}% (${breakdown.total} bloqueio(s) no período)`
-        : 'Nota de Limpeza: sem bloqueios encerrados/pendentes no período';
+        ? `Nota de Aderência: ${sodexoAdherenceScore(breakdown)}% — Total Geral ${breakdown.total} × Realizada ${breakdown.atendido} · Pendente Vale ${breakdown.pctPendenteVale}% (não desconta) · Pendente Sodexo ${breakdown.pctPendenteSodexo}% (${breakdown.total} atividade(s) no período)`
+        : 'Nota de Aderência: sem atividades encerradas/pendentes no período';
 
     const header = `
         <div style="font-size:18px; font-weight:800; border-bottom:2px solid #000; padding-bottom:10px; margin-bottom:18px;">
