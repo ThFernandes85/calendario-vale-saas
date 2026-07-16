@@ -1624,6 +1624,14 @@ async function uploadClosurePhoto(booking, file, tipo) {
     return data.publicUrl;
 }
 
+function pickedFile(...ids) {
+    for (const id of ids) {
+        const el = document.getElementById(id);
+        if (el && el.files && el.files[0]) return el.files[0];
+    }
+    return null;
+}
+
 async function confirmCloseBooking(id) {
     const idx = state.bookings.findIndex(b => b.id === id);
     if (idx === -1) return;
@@ -1635,8 +1643,11 @@ async function confirmCloseBooking(id) {
     if (reason.length < 5) { toast('Informe uma observação para o desfecho (mínimo 5 caracteres).', 'error'); return; }
 
     const fotosObrigatorias = closurePhotosRequired(booking, outcome);
-    const fileBefore = document.getElementById('close-photo-before').files[0] || null;
-    const fileAfter = document.getElementById('close-photo-after').files[0] || null;
+    // Desktop tem um único input (close-photo-before/-after); a tela mobile
+    // tem dois cada (câmera e galeria, ver renderMobileCloseForm) -- pega o
+    // primeiro que realmente tiver um arquivo escolhido, seja qual for a origem.
+    const fileBefore = pickedFile('close-photo-before', 'close-photo-before-camera', 'close-photo-before-galeria');
+    const fileAfter = pickedFile('close-photo-after', 'close-photo-after-camera', 'close-photo-after-galeria');
     if (fotosObrigatorias && (!fileBefore || !fileAfter)) {
         toast('Para encerrar um bloqueio de Limpeza é obrigatório anexar as fotos de antes e depois.', 'error');
         return;
@@ -1825,14 +1836,18 @@ function renderMobileCloseForm(booking) {
             <div class="m-field" id="close-photos-wrap">
                 <label id="close-photos-label">Fotos de Antes / Depois *</label>
                 <div style="display:flex; gap:12px;">
-                    <div style="flex:1;">
-                        <div style="font-size:11px; color:var(--text-secondary); margin-bottom:4px;">Antes</div>
-                        <input type="file" id="close-photo-before" accept="image/*">
-                    </div>
-                    <div style="flex:1;">
-                        <div style="font-size:11px; color:var(--text-secondary); margin-bottom:4px;">Depois</div>
-                        <input type="file" id="close-photo-after" accept="image/*">
-                    </div>
+                    ${['before', 'after'].map(side => `
+                        <div style="flex:1;">
+                            <div style="font-size:11px; color:var(--text-secondary); margin-bottom:4px;">${side === 'before' ? 'Antes' : 'Depois'}</div>
+                            <div style="display:flex; gap:6px;">
+                                <button type="button" class="btn-secondary" style="flex:1; padding:10px 4px; font-size:12px;" onclick="document.getElementById('close-photo-${side}-camera').click()">📷 Câmera</button>
+                                <button type="button" class="btn-secondary" style="flex:1; padding:10px 4px; font-size:12px;" onclick="document.getElementById('close-photo-${side}-galeria').click()">🖼️ Galeria</button>
+                            </div>
+                            <input type="file" id="close-photo-${side}-camera" accept="image/*" capture="environment" style="display:none;">
+                            <input type="file" id="close-photo-${side}-galeria" accept="image/*" style="display:none;">
+                            <div id="close-photo-${side}-status" style="font-size:11px; color:var(--text-secondary); margin-top:6px;">Nenhuma foto selecionada</div>
+                        </div>
+                    `).join('')}
                 </div>
             </div>
         </div>
@@ -1847,6 +1862,14 @@ function renderMobileCloseForm(booking) {
     };
     outcomeSelect.addEventListener('change', updateForm);
     updateForm();
+    ['before', 'after'].forEach(side => {
+        ['camera', 'galeria'].forEach(mode => {
+            document.getElementById(`close-photo-${side}-${mode}`).addEventListener('change', (e) => {
+                const status = document.getElementById(`close-photo-${side}-status`);
+                if (e.target.files[0]) status.textContent = `Selecionado: ${e.target.files[0].name}`;
+            });
+        });
+    });
     document.getElementById('mobile-close-submit').addEventListener('click', async () => {
         await confirmCloseBooking(booking.id);
         // confirmCloseBooking só grava closureStatus no objeto quando dá certo
