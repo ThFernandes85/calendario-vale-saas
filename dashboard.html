@@ -1583,6 +1583,14 @@ function closureOutcomesFor(booking) {
     ];
 }
 
+// Texto padrão da Observação no encerramento mobile -- só pro caso mais
+// comum (Encerrado), pra não obrigar o encarregado a digitar do zero toda
+// vez. Reprogramação/pendência continuam em branco de propósito, já que aí
+// a explicação real importa.
+function defaultCloseObservationFor(outcome) {
+    return outcome === 'ENCERRADA' ? 'Concluído Sodexo' : '';
+}
+
 function closurePhotosRequired(booking, outcome) {
     // Fotos de antes/depois só embasam o BOOK de Aderência da Limpeza feita
     // pela própria Sodexo -- e só fazem sentido quando o serviço foi de fato
@@ -1918,7 +1926,7 @@ function renderMobileCloseForm(booking) {
                 <select id="close-outcome">${outcomes.map(o => `<option value="${o.value}">${o.label}</option>`).join('')}</select>
                 <div id="close-outcome-hint" style="font-size:12px; color:var(--text-secondary); margin-top:6px;"></div>
             </div>
-            <div class="m-field"><label>Observação *</label><textarea id="close-just" rows="3" maxlength="200" placeholder="Explique o desfecho..."></textarea></div>
+            <div class="m-field"><label>Observação *</label><textarea id="close-just" rows="3" maxlength="200" placeholder="Explique o desfecho...">${defaultCloseObservationFor(outcomes[0].value)}</textarea></div>
             <div class="m-field" id="close-photos-wrap">
                 <label id="close-photos-label">Fotos de Antes / Depois *</label>
                 <div style="display:flex; gap:12px;">
@@ -1943,9 +1951,19 @@ function renderMobileCloseForm(booking) {
     const outcomeSelect = document.getElementById('close-outcome');
     const outcomeHint = document.getElementById('close-outcome-hint');
     const photosWrap = document.getElementById('close-photos-wrap');
+    const justField = document.getElementById('close-just');
+    // Só troca o texto padrão automaticamente enquanto o encarregado não
+    // mexeu na caixa -- assim que ele digitar algo próprio, o desfecho
+    // pode mudar à vontade sem apagar o que ele já escreveu.
+    let justAutoFilled = true;
+    justField.addEventListener('input', () => { justAutoFilled = false; });
     const updateForm = () => {
         outcomeHint.textContent = outcomes.find(o => o.value === outcomeSelect.value).hint;
         photosWrap.style.display = closurePhotosRequired(booking, outcomeSelect.value) ? 'block' : 'none';
+        if (justAutoFilled) {
+            justField.value = defaultCloseObservationFor(outcomeSelect.value);
+            justAutoFilled = true;
+        }
     };
     outcomeSelect.addEventListener('change', updateForm);
     updateForm();
