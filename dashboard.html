@@ -1868,7 +1868,7 @@ async function submitMobileNewBooking(tag) {
     if (endMin <= startMin) { toast('O horário de término deve ser depois do horário de início.', 'error'); return; }
 
     const omConflict = activeOmConflict(tag, om);
-    if (omConflict) { toast(`A OM ${om} já está em aberto para este equipamento (${formatDateBR(omConflict.date)} ${minutesToTime(omConflict.startMin)}–${minutesToTime(omConflict.endMin)}) -- verifique se não é duplicidade.`, 'error'); return; }
+    if (omConflict) { renderMobileActiveOmConflictScreen(omConflict, tag); return; }
 
     const btn = document.getElementById('mobile-new-submit');
     btn.disabled = true; btn.textContent = 'Criando...';
@@ -1972,13 +1972,45 @@ function renderMobileDuplicateOmScreen(booking) {
         </div>
         <button type="button" class="btn-danger mobile-submit" id="mobile-discard-om-btn">Descartar Este Lançamento</button>
     `;
-    document.getElementById('mobile-discard-om-btn').addEventListener('click', () => renderMobileDiscardConfirm(booking));
+    document.getElementById('mobile-discard-om-btn').addEventListener('click', () => renderMobileDiscardConfirm(booking, () => renderMobileDuplicateOmScreen(booking)));
 }
 
-function renderMobileDiscardConfirm(booking) {
+// Tela mostrada quando submitMobileNewBooking recusa a criação porque a OM
+// já está ABERTA (não encerrada) em outro lançamento do mesmo equipamento --
+// diferente da tela acima (que é sobre uma OM já ENCERRADA). Se o
+// lançamento conflitante for do próprio encarregado, oferece descartá-lo
+// ali mesmo para poder criar o novo corretamente; senão só avisa, já que
+// não pode descartar um lançamento de outra pessoa.
+function renderMobileActiveOmConflictScreen(conflictBooking, tag) {
+    const isOwn = conflictBooking.operatorId === state.currentUser.id;
     const body = document.getElementById('mobile-encarregado-body');
     body.innerHTML = `
-        <button type="button" class="mobile-back" onclick="renderMobileDuplicateOmScreen(${JSON.stringify(booking.id)})">&larr; Voltar</button>
+        <button type="button" class="mobile-back" id="mobile-active-conflict-back">&larr; Voltar</button>
+        <div class="mobile-alert">
+            <div class="mobile-alert-title">⚠️ OM ${escapeHtml(conflictBooking.om || '—')} já está em aberto</div>
+            <div class="mobile-alert-sub">
+                Esse número de OM já tem um lançamento em aberto para ${escapeHtml(conflictBooking.tag)}
+                (${formatDateBR(conflictBooking.date)} ${minutesToTime(conflictBooking.startMin)}–${minutesToTime(conflictBooking.endMin)}),
+                lançado por ${escapeHtml(conflictBooking.operator || 'outro usuário')}.
+                ${isOwn
+                    ? 'Se você digitou a OM errada por engano nesse lançamento, pode descartá-lo abaixo e criar o novo corretamente.'
+                    : 'Esse lançamento não é seu -- fale com o responsável ou com o Admin Master antes de tentar de novo.'}
+            </div>
+        </div>
+        ${isOwn ? `<button type="button" class="btn-danger mobile-submit" id="mobile-active-conflict-discard-btn">Descartar Aquele Lançamento</button>` : ''}
+    `;
+    document.getElementById('mobile-active-conflict-back').addEventListener('click', () => renderMobileNewForm(tag));
+    if (isOwn) {
+        document.getElementById('mobile-active-conflict-discard-btn').addEventListener('click', () =>
+            renderMobileDiscardConfirm(conflictBooking, () => renderMobileActiveOmConflictScreen(conflictBooking, tag))
+        );
+    }
+}
+
+function renderMobileDiscardConfirm(booking, onBack) {
+    const body = document.getElementById('mobile-encarregado-body');
+    body.innerHTML = `
+        <button type="button" class="mobile-back" id="mobile-discard-back-btn">&larr; Voltar</button>
         <div class="mobile-card">
             <div class="mobile-card-title">Confirmar exclusão</div>
             <div class="mobile-card-sub">
@@ -1989,6 +2021,7 @@ function renderMobileDiscardConfirm(booking) {
         </div>
         <button type="button" class="btn-danger mobile-submit" id="mobile-discard-confirm-btn">Sim, Descartar Definitivamente</button>
     `;
+    document.getElementById('mobile-discard-back-btn').addEventListener('click', onBack);
     document.getElementById('mobile-discard-confirm-btn').addEventListener('click', () => discardMobileBooking(booking));
 }
 
@@ -2011,7 +2044,7 @@ async function discardMobileBooking(booking) {
     if (idx !== -1) state.bookings.splice(idx, 1);
     await addAuditEntry({
         tag: booking.tag, acao: `${booking.type} (Descartado -- OM duplicada)`,
-        justificativa: `OM ${booking.om} digitada por engano, já encerrada em outro lançamento. Descartado pelo próprio encarregado.`,
+        justificativa: `OM ${booking.om} digitada por engano/duplicada. Descartado pelo próprio encarregado.`,
         om: booking.om, agendamentoData: booking.date, agendamentoHorario: `${minutesToTime(booking.startMin)}–${minutesToTime(booking.endMin)}`
     });
     toast('Lançamento descartado.', 'warn');
