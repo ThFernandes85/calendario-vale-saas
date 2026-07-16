@@ -1667,7 +1667,7 @@ async function confirmCloseBooking(id) {
     );
     if (jaEncerrada) {
         toast(`OM ${booking.om} já foi encerrada antes (${jaEncerrada.tag}, ${formatDateBR(jaEncerrada.date)}) -- verifique se não é duplicidade.`, 'error');
-        return;
+        return 'duplicate_om';
     }
 
     const fotosObrigatorias = closurePhotosRequired(booking, outcome);
@@ -1934,12 +1934,77 @@ function renderMobileCloseForm(booking) {
         });
     });
     document.getElementById('mobile-close-submit').addEventListener('click', async () => {
-        await confirmCloseBooking(booking.id);
+        const resultado = await confirmCloseBooking(booking.id);
         // confirmCloseBooking só grava closureStatus no objeto quando dá certo
         // (as validações/erros retornam antes disso) -- é assim que sabemos
         // se foi pra voltar à lista ou deixar o encarregado corrigir o formulário.
-        if (booking.closureStatus) renderMobileEquipList();
+        if (booking.closureStatus) { renderMobileEquipList(); return; }
+        if (resultado === 'duplicate_om') renderMobileDuplicateOmScreen(booking);
     });
+}
+
+// Tela mostrada quando confirmCloseBooking recusa por OM duplicada -- sem
+// isso o encarregado ficava travado com um lançamento aberto que ele nunca
+// vai conseguir encerrar de verdade (a OM certa já foi encerrada em outro
+// lugar). Só dá pra descartar o PRÓPRIO lançamento, ainda aberto.
+function renderMobileDuplicateOmScreen(booking) {
+    const body = document.getElementById('mobile-encarregado-body');
+    body.innerHTML = `
+        <button type="button" class="mobile-back" onclick="renderMobileEquipList()">&larr; Voltar</button>
+        <div class="mobile-alert">
+            <div class="mobile-alert-title">⚠️ OM ${escapeHtml(booking.om || '—')} já foi encerrada antes</div>
+            <div class="mobile-alert-sub">
+                Esse número de OM já está em outro lançamento encerrado no sistema. Se você digitou a OM errada
+                por engano neste lançamento (${escapeHtml(booking.tag)}, ${formatDateBR(booking.date)}), pode
+                descartá-lo abaixo. Se não tiver certeza, volte e avise o Admin Master antes de descartar.
+            </div>
+        </div>
+        <button type="button" class="btn-danger mobile-submit" id="mobile-discard-om-btn">Descartar Este Lançamento</button>
+    `;
+    document.getElementById('mobile-discard-om-btn').addEventListener('click', () => renderMobileDiscardConfirm(booking));
+}
+
+function renderMobileDiscardConfirm(booking) {
+    const body = document.getElementById('mobile-encarregado-body');
+    body.innerHTML = `
+        <button type="button" class="mobile-back" onclick="renderMobileDuplicateOmScreen(${JSON.stringify(booking.id)})">&larr; Voltar</button>
+        <div class="mobile-card">
+            <div class="mobile-card-title">Confirmar exclusão</div>
+            <div class="mobile-card-sub">
+                Isso remove o lançamento de ${escapeHtml(booking.tag)} (OM ${escapeHtml(booking.om || '—')},
+                ${formatDateBR(booking.date)}) por completo -- não pode ser desfeito. Use só se a OM foi digitada
+                errada por engano.
+            </div>
+        </div>
+        <button type="button" class="btn-danger mobile-submit" id="mobile-discard-confirm-btn">Sim, Descartar Definitivamente</button>
+    `;
+    document.getElementById('mobile-discard-confirm-btn').addEventListener('click', () => discardMobileBooking(booking));
+}
+
+async function discardMobileBooking(booking) {
+    // Autoatendimento restrito: só o próprio encarregado descartando o
+    // próprio lançamento ainda aberto -- não é a mesma coisa que a exclusão
+    // geral (Admin-only) de openDeleteBookingModal/confirmDeleteBooking.
+    if (state.profileKey !== 'ENCARREGADO' || booking.operatorId !== state.currentUser.id || booking.closureStatus) {
+        showAccessDenied('Não foi possível descartar este lançamento.');
+        return;
+    }
+    const btn = document.getElementById('mobile-discard-confirm-btn');
+    if (btn) { btn.disabled = true; btn.textContent = 'Descartando...'; }
+
+    const { data, error } = await sb.from('bookings').delete().eq('id', booking.id).select();
+    if (error) { toast('Erro ao descartar: ' + error.message, 'error'); if (btn) { btn.disabled = false; btn.textContent = 'Sim, Descartar Definitivamente'; } return; }
+    if (!data || data.length === 0) { toast('Não foi possível descartar: nenhum registro foi afetado.', 'error'); if (btn) { btn.disabled = false; btn.textContent = 'Sim, Descartar Definitivamente'; } return; }
+
+    const idx = state.bookings.findIndex(b => b.id === booking.id);
+    if (idx !== -1) state.bookings.splice(idx, 1);
+    await addAuditEntry({
+        tag: booking.tag, acao: `${booking.type} (Descartado -- OM duplicada)`,
+        justificativa: `OM ${booking.om} digitada por engano, já encerrada em outro lançamento. Descartado pelo próprio encarregado.`,
+        om: booking.om, agendamentoData: booking.date, agendamentoHorario: `${minutesToTime(booking.startMin)}–${minutesToTime(booking.endMin)}`
+    });
+    toast('Lançamento descartado.', 'warn');
+    renderMobileEquipList();
 }
 
 /* =========================================================

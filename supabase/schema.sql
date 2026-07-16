@@ -236,7 +236,10 @@ create policy "bookings_delete" on public.bookings for delete
       public.is_admin()
       or (public.current_role_key() = 'PCM' and type in ('Manutenção Preventiva','Manutenção Corretiva'))
       or (public.current_role_key() = 'PCO' and type in ('Limpeza Sodexo','Limpeza Mecanizada'))
-      or (public.current_role_key() = 'ENCARREGADO' and type in ('Limpeza Sodexo','Limpeza Mecanizada'))
+      -- ENCARREGADO só exclui o PRÓPRIO lançamento (autoatendimento de OM
+      -- duplicada no app mobile) -- diferente de PCM/PCO/Admin, que podem
+      -- excluir qualquer um do tipo que administram.
+      or (public.current_role_key() = 'ENCARREGADO' and type in ('Limpeza Sodexo','Limpeza Mecanizada') and operator_id = auth.uid())
       or (public.current_role_key() = 'PCM_PCO' and type in ('Manutenção Preventiva','Manutenção Corretiva','Limpeza Sodexo','Limpeza Mecanizada'))
     )
   );
