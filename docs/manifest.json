@@ -1,0 +1,13 @@
+{
+  "name": "SaaS VALE - Monitoramento e Agendamento de Ativos",
+  "short_name": "VALE Limpeza",
+  "description": "Encerramento de bloqueios de Limpeza com evidência fotográfica, direto do celular.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#0c1017",
+  "theme_color": "#0c1017",
+  "icons": [
+    { "src": "assets/logo-icone.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}

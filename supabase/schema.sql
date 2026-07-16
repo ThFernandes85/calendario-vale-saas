@@ -43,11 +43,25 @@ create table if not exists public.profiles (
   id uuid primary key references auth.users(id) on delete cascade,
   name text not null,
   email text not null,
-  role text not null check (role in ('ADMIN','PCM','PCO','PCM_PCO','ENG_CONF','ENG_EST')),
+  role text not null check (role in ('ADMIN','PCM','PCO','PCM_PCO','ENG_CONF','ENG_EST','ENCARREGADO')),
   can_export boolean not null default false,
   active boolean not null default true,
   created_at timestamptz default now()
 );
+-- Libera a role ENCARREGADO em bancos criados antes dela existir (tabela já
+-- existente não ganha a nova lista do "check" acima sozinha).
+do $$
+begin
+  if exists (
+    select 1 from pg_constraint c
+    join pg_class t on t.oid = c.conrelid
+    where c.conname = 'profiles_role_check' and t.relname = 'profiles'
+  ) then
+    alter table public.profiles drop constraint profiles_role_check;
+  end if;
+  alter table public.profiles add constraint profiles_role_check
+    check (role in ('ADMIN','PCM','PCO','PCM_PCO','ENG_CONF','ENG_EST','ENCARREGADO'));
+end $$;
 
 -- ---------- PROFILE_SITES (quais sites cada perfil acessa) ----------
 create table if not exists public.profile_sites (
@@ -210,6 +224,7 @@ create policy "bookings_insert" on public.bookings for insert
       public.is_admin()
       or (public.current_role_key() = 'PCM' and type in ('Manutenção Preventiva','Manutenção Corretiva'))
       or (public.current_role_key() = 'PCO' and type in ('Limpeza Sodexo','Limpeza Mecanizada'))
+      or (public.current_role_key() = 'ENCARREGADO' and type in ('Limpeza Sodexo','Limpeza Mecanizada'))
       or (public.current_role_key() = 'PCM_PCO' and type in ('Manutenção Preventiva','Manutenção Corretiva','Limpeza Sodexo','Limpeza Mecanizada'))
     )
   );
@@ -221,6 +236,7 @@ create policy "bookings_delete" on public.bookings for delete
       public.is_admin()
       or (public.current_role_key() = 'PCM' and type in ('Manutenção Preventiva','Manutenção Corretiva'))
       or (public.current_role_key() = 'PCO' and type in ('Limpeza Sodexo','Limpeza Mecanizada'))
+      or (public.current_role_key() = 'ENCARREGADO' and type in ('Limpeza Sodexo','Limpeza Mecanizada'))
       or (public.current_role_key() = 'PCM_PCO' and type in ('Manutenção Preventiva','Manutenção Corretiva','Limpeza Sodexo','Limpeza Mecanizada'))
     )
   );
@@ -232,6 +248,7 @@ create policy "bookings_update" on public.bookings for update
       public.is_admin()
       or (public.current_role_key() = 'PCM' and type in ('Manutenção Preventiva','Manutenção Corretiva'))
       or (public.current_role_key() = 'PCO' and type in ('Limpeza Sodexo','Limpeza Mecanizada'))
+      or (public.current_role_key() = 'ENCARREGADO' and type in ('Limpeza Sodexo','Limpeza Mecanizada'))
       or (public.current_role_key() = 'PCM_PCO' and type in ('Manutenção Preventiva','Manutenção Corretiva','Limpeza Sodexo','Limpeza Mecanizada'))
     )
   )
@@ -241,6 +258,7 @@ create policy "bookings_update" on public.bookings for update
       public.is_admin()
       or (public.current_role_key() = 'PCM' and type in ('Manutenção Preventiva','Manutenção Corretiva'))
       or (public.current_role_key() = 'PCO' and type in ('Limpeza Sodexo','Limpeza Mecanizada'))
+      or (public.current_role_key() = 'ENCARREGADO' and type in ('Limpeza Sodexo','Limpeza Mecanizada'))
       or (public.current_role_key() = 'PCM_PCO' and type in ('Manutenção Preventiva','Manutenção Corretiva','Limpeza Sodexo','Limpeza Mecanizada'))
     )
   );

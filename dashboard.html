@@ -5,6 +5,11 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>SaaS VALE - Monitoramento e Agendamento de Ativos</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>%F0%9F%8F%AD</text></svg>">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="assets/logo-icone.svg">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#0c1017">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
@@ -433,6 +438,43 @@ aside.collapsed .nav-badge { top: 2px; right: 2px; }
 
     body.print-book-mode #view-book { display: flex !important; }
 }
+
+/* ---- TELA MOBILE: ENCARREGADO ---- */
+#mobile-encarregado-screen {
+    display: none; flex-direction: column; height: 100vh; background: var(--bg-main);
+}
+.mobile-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 14px 16px; border-bottom: 1px solid var(--border-color); background: var(--bg-sidebar);
+    flex: none;
+}
+#mobile-encarregado-body { flex: 1; overflow-y: auto; padding: 16px; }
+.mobile-search {
+    width: 100%; padding: 12px 14px; margin-bottom: 12px; font-size: 15px;
+    background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 10px; color: var(--text-primary);
+}
+.mobile-equip-list { display: flex; flex-direction: column; gap: 10px; }
+.mobile-equip-card {
+    display: flex; align-items: center; gap: 12px; width: 100%; text-align: left;
+    padding: 16px; background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 12px;
+    color: var(--text-primary); font-size: 15px; cursor: pointer; min-height: 56px;
+}
+.mobile-equip-card:active { background: var(--bg-hover); }
+.mobile-equip-tag { font-weight: 700; flex: 1; }
+.mobile-equip-area { font-size: 12px; color: var(--text-secondary); text-transform: uppercase; }
+.mobile-back {
+    background: none; border: none; color: var(--text-secondary); font-size: 14px;
+    padding: 8px 0; margin-bottom: 10px; cursor: pointer;
+}
+.mobile-card {
+    background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 12px; padding: 18px;
+}
+.mobile-card-title { font-size: 16px; font-weight: 700; color: #fff; margin-bottom: 4px; }
+.mobile-card-sub { font-size: 13px; color: var(--text-secondary); margin-bottom: 14px; }
+.mobile-submit {
+    width: 100%; margin-top: 16px; padding: 15px; font-size: 16px; font-weight: 700; border-radius: 10px;
+}
+.mobile-empty { text-align: center; color: var(--text-muted); padding: 40px 20px; }
 </style>
 </head>
 <body>
@@ -513,6 +555,18 @@ aside.collapsed .nav-badge { top: 2px; right: 2px; }
         <button type="button" class="btn-secondary" id="btn-guest-login">Entrar como Visitante (Somente Leitura)</button>
         <div class="login-hint" style="display:none;"></div>
     </div>
+</div>
+
+<!-- TELA MOBILE: ENCARREGADO (fluxo simplificado, só Limpeza -- sem o shell desktop) -->
+<div id="mobile-encarregado-screen" style="display:none;">
+    <div class="mobile-header">
+        <div>
+            <div style="font-size:15px; font-weight:700; color:#fff;">Limpeza · <span id="mobile-site-label"></span></div>
+            <div style="font-size:12px; color:var(--text-secondary);" id="mobile-user-label"></div>
+        </div>
+        <button type="button" class="btn-secondary" id="btn-mobile-logout">Sair</button>
+    </div>
+    <div id="mobile-encarregado-body"></div>
 </div>
 
 <!-- SIDEBAR ESQUERDA -->
@@ -993,7 +1047,11 @@ const ROLE_META = {
     ENG_CONF: { label: 'Engenheiro de Confiabilidade', canBook: [], readOnly: true },
     ENG_EST: { label: 'Engenheiro Estrutural', canBook: [], readOnly: true },
     ADMIN: { label: 'Admin Master', canBook: ['Manutenção Preventiva', 'Manutenção Corretiva', 'Limpeza Sodexo', 'Limpeza Mecanizada'], readOnly: false },
-    VISITANTE: { label: 'Visitante (Somente Leitura)', canBook: [], readOnly: true }
+    VISITANTE: { label: 'Visitante (Somente Leitura)', canBook: [], readOnly: true },
+    // Perfil de campo, mobile-only: tela simplificada própria (fora do
+    // shell desktop), só pra encerrar/lançar Limpeza com foto -- ver
+    // `renderMobileEncarregado()` e o branch em `loginAs()`.
+    ENCARREGADO: { label: 'Encarregado (Limpeza · Mobile)', canBook: ['Limpeza Sodexo', 'Limpeza Mecanizada'], readOnly: false }
 };
 const TYPE_STATUS = { 'Manutenção Preventiva': 'manutencao', 'Manutenção Corretiva': 'manutencao', 'Limpeza Sodexo': 'limpeza', 'Limpeza Mecanizada': 'limpeza' };
 
@@ -1583,7 +1641,7 @@ async function confirmCloseBooking(id) {
         return;
     }
 
-    const confirmBtn = document.querySelector('#modal-box .modal-footer .btn-primary');
+    const confirmBtn = document.querySelector('#modal-box .modal-footer .btn-primary') || document.getElementById('mobile-close-submit');
     if (confirmBtn) { confirmBtn.disabled = true; confirmBtn.textContent = 'Enviando...'; }
 
     let photoBeforeUrl = booking.closurePhotoBefore || null;
@@ -1632,6 +1690,160 @@ async function confirmCloseBooking(id) {
 }
 
 /* =========================================================
+   MOBILE: ENCARREGADO (tela simplificada, fora do shell desktop --
+   só serve pra criar/encerrar Limpeza com evidência fotográfica em campo)
+   ========================================================= */
+let mobileSelectedTag = null;
+
+function renderMobileEncarregado() {
+    document.getElementById('mobile-site-label').textContent = SITES[state.currentSite] || state.currentSite;
+    document.getElementById('mobile-user-label').textContent = activeProfile().user;
+    renderMobileEquipList();
+}
+
+function renderMobileEquipList() {
+    mobileSelectedTag = null;
+    const body = document.getElementById('mobile-encarregado-body');
+    if (!ALL_EQUIP.length) {
+        body.innerHTML = `<div class="mobile-empty">Nenhum equipamento cadastrado neste site.</div>`;
+        return;
+    }
+    const cards = ALL_EQUIP.map(eq => {
+        const live = getLiveStatus(eq.tag);
+        return `
+            <button type="button" class="mobile-equip-card" onclick="openMobileEquip('${eq.tag}')">
+                <span class="status-dot st-${live.status}"></span>
+                <span class="mobile-equip-tag">${escapeHtml(eq.tag)}</span>
+                <span class="mobile-equip-area">${escapeHtml(AREA_LABEL[eq.area] || eq.area || '')}</span>
+            </button>`;
+    }).join('');
+    body.innerHTML = `
+        <input type="text" id="mobile-equip-search" class="mobile-search" placeholder="Buscar equipamento...">
+        <div id="mobile-equip-list" class="mobile-equip-list">${cards}</div>`;
+    document.getElementById('mobile-equip-search').addEventListener('input', (e) => {
+        const q = e.target.value.trim().toUpperCase();
+        document.querySelectorAll('#mobile-equip-list .mobile-equip-card').forEach(card => {
+            card.style.display = card.textContent.toUpperCase().includes(q) ? 'flex' : 'none';
+        });
+    });
+}
+
+function openMobileEquip(tag) {
+    mobileSelectedTag = tag;
+    // Só considera bloqueios de Limpeza -- é tudo que o encarregado pode
+    // criar/encerrar por aqui (Manutenção continua exclusiva do PCM no shell desktop).
+    const aberto = state.bookings.find(b =>
+        b.tag === tag && isActiveBooking(b) && (b.type === 'Limpeza Sodexo' || b.type === 'Limpeza Mecanizada')
+    );
+    if (aberto) {
+        renderMobileCloseForm(aberto);
+    } else {
+        renderMobileNewForm(tag);
+    }
+}
+
+function renderMobileNewForm(tag) {
+    const p = activeProfile();
+    const area = areaOf(tag);
+    const body = document.getElementById('mobile-encarregado-body');
+    body.innerHTML = `
+        <button type="button" class="mobile-back" onclick="renderMobileEquipList()">&larr; Voltar</button>
+        <div class="mobile-card">
+            <div class="mobile-card-title">${escapeHtml(tag)} — ${escapeHtml(AREA_LABEL[area] || area || '')}</div>
+            <div class="mobile-card-sub">Nenhum lançamento em aberto para este equipamento. Crie um novo para poder encerrar.</div>
+            <div class="m-field"><label>Tipo</label>
+                <select id="mobile-new-type">${p.canBook.map(t => `<option value="${t}" ${t === SODEXO_CLEANING_TYPE ? 'selected' : ''}>${t}</option>`).join('')}</select>
+            </div>
+            <div class="m-field"><label>Número da OM *</label><input type="text" id="mobile-new-om" inputmode="numeric" maxlength="12" placeholder="Ex: 123456789012"></div>
+            <div class="m-field"><label>Justificativa Técnica *</label><textarea id="mobile-new-just" rows="3" maxlength="200" placeholder="Ex: Limpeza geral, remoção de material..."></textarea></div>
+        </div>
+        <button type="button" class="btn-primary mobile-submit" id="mobile-new-submit">Criar e Continuar</button>
+    `;
+    document.getElementById('mobile-new-submit').addEventListener('click', () => submitMobileNewBooking(tag));
+}
+
+async function submitMobileNewBooking(tag) {
+    const type = document.getElementById('mobile-new-type').value;
+    const om = document.getElementById('mobile-new-om').value.trim();
+    const justification = document.getElementById('mobile-new-just').value.trim();
+    if (!canBookType(type)) { showAccessDenied(`O perfil ativo não pode agendar bloqueios do tipo "${type}".`); return; }
+    if (!/^\d{1,12}$/.test(om)) { toast('Informe o número da OM (somente dígitos, até 12 caracteres).', 'error'); return; }
+    if (justification.length < 5) { toast('Informe uma justificativa técnica válida (mínimo 5 caracteres).', 'error'); return; }
+
+    const btn = document.getElementById('mobile-new-submit');
+    btn.disabled = true; btn.textContent = 'Criando...';
+
+    const nowMin = nowMinutes();
+    const endMin = Math.min(nowMin + 60, 23 * 60 + 59);
+    const { data, error } = await sb.from('bookings').insert({
+        site_key: state.currentSite, tag, area_code: areaOf(tag), date: todayStr(),
+        start_min: nowMin, end_min: endMin, type, emergencial: false, om, justification,
+        operator_id: state.currentUser.id, operator_label: `${activeProfile().user} (${state.profileKey})`
+    }).select().single();
+    if (error) {
+        toast('Erro ao criar lançamento: ' + error.message, 'error');
+        btn.disabled = false; btn.textContent = 'Criar e Continuar';
+        return;
+    }
+
+    const booking = mapBookingFromDb(data);
+    state.bookings.push(booking);
+    await addAuditEntry({
+        tag, acao: type, justificativa: justification, dataHora: booking.createdAt,
+        om, agendamentoData: booking.date, agendamentoHorario: `${minutesToTime(booking.startMin)}–${minutesToTime(booking.endMin)}`
+    });
+    renderMobileCloseForm(booking);
+}
+
+function renderMobileCloseForm(booking) {
+    const outcomes = closureOutcomesFor(booking);
+    const body = document.getElementById('mobile-encarregado-body');
+    body.innerHTML = `
+        <button type="button" class="mobile-back" onclick="renderMobileEquipList()">&larr; Voltar</button>
+        <div class="mobile-card">
+            <div class="mobile-card-title">${escapeHtml(booking.tag)} — ${escapeHtml(booking.type)}</div>
+            <div class="mobile-card-sub">OM ${escapeHtml(booking.om || '—')} · ${formatDateBR(booking.date)} ${minutesToTime(booking.startMin)}–${minutesToTime(booking.endMin)}</div>
+            <div class="m-field" style="margin-top:10px;">
+                <label>Desfecho *</label>
+                <select id="close-outcome">${outcomes.map(o => `<option value="${o.value}">${o.label}</option>`).join('')}</select>
+                <div id="close-outcome-hint" style="font-size:12px; color:var(--text-secondary); margin-top:6px;"></div>
+            </div>
+            <div class="m-field"><label>Observação *</label><textarea id="close-just" rows="3" maxlength="200" placeholder="Explique o desfecho..."></textarea></div>
+            <div class="m-field" id="close-photos-wrap">
+                <label id="close-photos-label">Fotos de Antes / Depois *</label>
+                <div style="display:flex; gap:12px;">
+                    <div style="flex:1;">
+                        <div style="font-size:11px; color:var(--text-secondary); margin-bottom:4px;">Antes</div>
+                        <input type="file" id="close-photo-before" accept="image/*" capture="environment">
+                    </div>
+                    <div style="flex:1;">
+                        <div style="font-size:11px; color:var(--text-secondary); margin-bottom:4px;">Depois</div>
+                        <input type="file" id="close-photo-after" accept="image/*" capture="environment">
+                    </div>
+                </div>
+            </div>
+        </div>
+        <button type="button" class="btn-primary mobile-submit" id="mobile-close-submit">Confirmar</button>
+    `;
+    const outcomeSelect = document.getElementById('close-outcome');
+    const outcomeHint = document.getElementById('close-outcome-hint');
+    const photosWrap = document.getElementById('close-photos-wrap');
+    const updateForm = () => {
+        outcomeHint.textContent = outcomes.find(o => o.value === outcomeSelect.value).hint;
+        photosWrap.style.display = closurePhotosRequired(booking, outcomeSelect.value) ? 'block' : 'none';
+    };
+    outcomeSelect.addEventListener('change', updateForm);
+    updateForm();
+    document.getElementById('mobile-close-submit').addEventListener('click', async () => {
+        await confirmCloseBooking(booking.id);
+        // confirmCloseBooking só grava closureStatus no objeto quando dá certo
+        // (as validações/erros retornam antes disso) -- é assim que sabemos
+        // se foi pra voltar à lista ou deixar o encarregado corrigir o formulário.
+        if (booking.closureStatus) renderMobileEquipList();
+    });
+}
+
+/* =========================================================
    LOGIN / LOGOUT
    ========================================================= */
 let refreshInterval = null;
@@ -1666,13 +1878,26 @@ async function loginAs(user, options) {
     if (!SITES[state.currentSite]) state.currentSite = Object.keys(SITES)[0] || 'MUTUCA';
     await ensureAccessibleSite();
     document.getElementById('login-screen').style.display = 'none';
+    if (logEvent) {
+        await addAuditEntry({ tag: '—', acao: 'Login', justificativa: 'Acesso ao sistema autenticado.' });
+    }
+
+    // ENCARREGADO nunca vê o shell desktop (sidebar/calendário/relatórios)
+    // -- só a tela mobile simplificada de Limpeza.
+    if (user.role === 'ENCARREGADO') {
+        document.getElementById('mobile-encarregado-screen').style.display = 'flex';
+        renderMobileEncarregado();
+        if (refreshInterval) clearInterval(refreshInterval);
+        refreshInterval = setInterval(() => {
+            if (mobileSelectedTag === null) renderMobileEquipList();
+        }, 60000);
+        return;
+    }
+
     document.querySelector('aside').style.display = 'flex';
     document.querySelector('main').style.display = 'flex';
     renderSiteSelect();
     renderAssetMgmtPanel();
-    if (logEvent) {
-        await addAuditEntry({ tag: '—', acao: 'Login', justificativa: 'Acesso ao sistema autenticado.' });
-    }
     onProfileChanged();
     switchView('calendario');
     updateUpcomingBadge();
@@ -1696,7 +1921,9 @@ async function logout() {
     document.getElementById('login-screen').style.display = 'flex';
     document.querySelector('aside').style.display = 'none';
     document.querySelector('main').style.display = 'none';
+    document.getElementById('mobile-encarregado-screen').style.display = 'none';
 }
+document.getElementById('btn-mobile-logout').addEventListener('click', logout);
 document.getElementById('btn-logout').addEventListener('click', logout);
 document.getElementById('login-form').addEventListener('submit', async e => {
     e.preventDefault();
