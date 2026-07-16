@@ -922,7 +922,7 @@ aside.collapsed .nav-badge { top: 2px; right: 2px; }
                     <table class="audit-table">
                         <thead>
                             <tr>
-                                <th>Encerrado em</th><th>Tag</th><th>Área</th><th>Tipo</th><th>Desfecho</th><th>Observação</th><th>Ações</th>
+                                <th>Encerrado em</th><th>OM</th><th>Tag</th><th>Área</th><th>Data do Serviço</th><th>Tipo</th><th>Desfecho</th><th>Observação</th><th>Ações</th>
                             </tr>
                         </thead>
                         <tbody id="closed-bookings-tbody"></tbody>
@@ -1658,6 +1658,17 @@ async function confirmCloseBooking(id) {
     const outcome = document.getElementById('close-outcome').value;
     const reason = document.getElementById('close-just').value.trim();
     if (reason.length < 5) { toast('Informe uma observação para o desfecho (mínimo 5 caracteres).', 'error'); return; }
+
+    // Uma OM só pode ser encerrada uma vez -- se esse número já aparece em
+    // OUTRO lançamento que já foi Encerrado, é sinal de duplicidade (OM
+    // digitada de novo por engano) e não deixa contar duas vezes na nota.
+    const jaEncerrada = booking.om && state.bookings.find(b =>
+        b.id !== id && b.om === booking.om && b.closureStatus === 'ENCERRADA'
+    );
+    if (jaEncerrada) {
+        toast(`OM ${booking.om} já foi encerrada antes (${jaEncerrada.tag}, ${formatDateBR(jaEncerrada.date)}) -- verifique se não é duplicidade.`, 'error');
+        return;
+    }
 
     const fotosObrigatorias = closurePhotosRequired(booking, outcome);
     // Desktop tem um único input (close-photo-before/-after); a tela mobile
@@ -2506,14 +2517,16 @@ function renderClosedBookings() {
     tbody.innerHTML = rows.map(b => `
         <tr>
             <td>${b.closedAt ? new Date(b.closedAt).toLocaleString('pt-BR') : '—'}</td>
+            <td>${escapeHtml(b.om || '—')}</td>
             <td><span class="tag-chip">${escapeHtml(b.tag)}</span></td>
             <td>${escapeHtml(AREA_LABEL[b.area] || b.area || '')}</td>
+            <td>${formatDateBR(b.date)}</td>
             <td>${escapeHtml(b.type)}</td>
             <td>${escapeHtml(CLOSURE_STATUS_LABELS[b.closureStatus] || b.closureStatus)}</td>
             <td>${escapeHtml(b.closureReason || '—')}</td>
             <td>${isAdmin ? `<button class="btn-danger" style="padding:5px 9px; font-size:11px;" onclick="openDeleteBookingModal('${b.id}')">Excluir</button>` : '—'}</td>
         </tr>
-    `).join('') || `<tr><td colspan="7" style="text-align:center; color:var(--text-muted);">Nenhum bloqueio encerrado, reprogramado ou pendente no período selecionado.</td></tr>`;
+    `).join('') || `<tr><td colspan="9" style="text-align:center; color:var(--text-muted);">Nenhum bloqueio encerrado, reprogramado ou pendente no período selecionado.</td></tr>`;
 }
 
 function renderCharts() {
