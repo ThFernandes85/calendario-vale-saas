@@ -3184,9 +3184,9 @@ function openUserModal(id) {
                 <label class="m-checkbox"><input type="checkbox" id="um-export" style="width:auto;" ${editing ? (editing.canExport ? 'checked' : '') : 'checked'}> Permitir exportação de relatórios (Excel/CSV) e filtro por período</label>
             </div>
             <div class="m-field" id="um-sites-wrap">
-                <label>Sites com Acesso</label>
-                <div style="display:flex; flex-direction:column; gap:6px; margin-top:4px;">
-                    ${Object.keys(SITES).map(k => `<label class="m-checkbox"><input type="checkbox" class="um-site-cb" value="${k}" style="width:auto;" ${editing ? ((editing.sites || []).includes(k) ? 'checked' : '') : (k === state.currentSite ? 'checked' : '')}> ${escapeHtml(SITES[k])}</label>`).join('')}
+                <label id="um-sites-label">Sites com Acesso</label>
+                <div id="um-sites-list" style="display:flex; flex-direction:column; gap:6px; margin-top:4px;">
+                    ${renderSiteAccessOptions(false, editing ? (editing.sites || []) : (state.currentSite ? [state.currentSite] : []))}
                 </div>
             </div>
             <div class="m-field"><label class="m-checkbox"><input type="checkbox" id="um-active" style="width:auto;" ${(!editing || editing.active) ? 'checked' : ''}> Conta ativa</label></div>
@@ -3199,11 +3199,30 @@ function openUserModal(id) {
     const roleSelect = document.getElementById('um-role');
     const toggleAdminOnlyFields = () => {
         const isAdminRole = roleSelect.value === 'ADMIN';
+        // ENCARREGADO é sempre de UM site só (é o encarregado de campo daquela
+        // unidade) -- vira seleção única (rádio) pra não dar de deixar dois
+        // sites marcados por engano e o celular acabar caindo no site errado.
+        const isSingleSite = roleSelect.value === 'ENCARREGADO';
         document.getElementById('um-export-wrap').style.display = isAdminRole ? 'none' : 'block';
         document.getElementById('um-sites-wrap').style.display = isAdminRole ? 'none' : 'block';
+        document.getElementById('um-sites-label').textContent = isSingleSite ? 'Site (o encarregado só pode ter um)' : 'Sites com Acesso';
+        const currentlyChecked = [...document.querySelectorAll('.um-site-cb:checked')].map(cb => cb.value);
+        document.getElementById('um-sites-list').innerHTML = renderSiteAccessOptions(isSingleSite, currentlyChecked);
     };
     roleSelect.addEventListener('change', toggleAdminOnlyFields);
     toggleAdminOnlyFields();
+}
+
+// Compartilhado entre criar/editar usuário -- gera rádio (um site só, usado
+// pelo ENCARREGADO) ou checkbox (múltiplos sites, demais perfis). Mesma
+// classe `um-site-cb` nos dois casos pra saveUser() ler com o mesmo seletor.
+function renderSiteAccessOptions(isSingleSite, selectedSites) {
+    const selected = isSingleSite ? selectedSites.slice(0, 1) : selectedSites;
+    return Object.keys(SITES).map(k => `
+        <label class="m-checkbox">
+            <input type="${isSingleSite ? 'radio' : 'checkbox'}" class="um-site-cb" name="${isSingleSite ? 'um-site-radio' : `um-site-cb-${k}`}" value="${k}" style="width:auto;" ${selected.includes(k) ? 'checked' : ''}>
+            ${escapeHtml(SITES[k])}
+        </label>`).join('');
 }
 
 async function saveUser(id) {
@@ -3215,6 +3234,7 @@ async function saveUser(id) {
     const sites = [...document.querySelectorAll('.um-site-cb:checked')].map(cb => cb.value);
 
     if (!name || !email) { toast('Preencha nome e e-mail.', 'error'); return; }
+    if (role === 'ENCARREGADO' && sites.length === 0) { toast('Selecione o site deste encarregado.', 'error'); return; }
     if (role !== 'ADMIN' && sites.length === 0) { toast('Selecione ao menos um site para este usuário (ou ele não conseguirá acessar nada).', 'warn'); }
 
     if (!id) {
