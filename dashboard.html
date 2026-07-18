@@ -1748,7 +1748,11 @@ async function confirmCloseBooking(id) {
         om: booking.om, agendamentoData: booking.date, agendamentoHorario: `${minutesToTime(booking.startMin)}–${minutesToTime(booking.endMin)}`
     });
     closeModal();
-    toast(`Bloqueio marcado como "${outcomeLabel}" — equipamento liberado na agenda.`, 'warn');
+    if (outcome === 'ENCERRADA') {
+        toast('OM encerrada com sucesso — Atividade realizada.', 'success');
+    } else {
+        toast(`Bloqueio marcado como "${outcomeLabel}" — equipamento liberado na agenda.`, 'warn');
+    }
     renderWeekGrid(); renderAtivos(); renderDashboard(); renderCharts(); updateUpcomingBadge();
 }
 
