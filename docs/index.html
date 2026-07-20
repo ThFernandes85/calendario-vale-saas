@@ -897,7 +897,7 @@ aside.collapsed .nav-badge { top: 2px; right: 2px; }
         </div>
 
         <div class="charts-grid">
-            <div class="chart-box">
+            <div class="chart-box" id="chart-box-manut">
                 <h3>Top 5 Equipamentos - Maior Taxa de Indisponibilidade (Manutenção)</h3>
                 <canvas id="chart-top5"></canvas>
             </div>
@@ -1117,6 +1117,10 @@ function activeProfile() {
 }
 function canBookType(type) { const p = activeProfile(); return !p.readOnly && p.canBook.includes(type); }
 function canExportReports() { return activeProfile().canExport; }
+// Gráfico de Indisponibilidade (Manutenção) é indicador de PCM -- fica fora
+// até para o Admin Master, a pedido explícito, pra não poluir o dashboard
+// de quem não lida com Manutenção no dia a dia.
+function canSeeAvailabilityChart() { return state.profileKey === 'PCM' || state.profileKey === 'PCM_PCO'; }
 
 /* =========================================================
    HELPERS DE DATA/HORA
@@ -2276,6 +2280,8 @@ function onProfileChanged() {
         <div style="margin-top:6px;"><span class="perm-tag ${p.canExport ? 'perm-yes' : 'perm-no'}">${p.canExport ? 'Exporta Relatórios' : 'Sem Exportação'}</span></div>
     `;
     document.querySelector('[data-view="usuarios"]').style.display = state.profileKey === 'ADMIN' ? 'flex' : 'none';
+    const chartBoxManut = document.getElementById('chart-box-manut');
+    if (chartBoxManut) chartBoxManut.style.display = canSeeAvailabilityChart() ? 'flex' : 'none';
     renderSiteSelect();
     renderAssetMgmtPanel();
     renderAgendaEquipSelect();
@@ -2695,8 +2701,8 @@ function renderCharts() {
     const top5Manut = Object.entries(perTagManut).sort((a, b) => b[1] - a[1]).slice(0, 5);
 
     const ctx1 = document.getElementById('chart-top5');
-    if (ctx1) {
-        if (chartTop5) chartTop5.destroy();
+    if (chartTop5) { chartTop5.destroy(); chartTop5 = null; }
+    if (ctx1 && canSeeAvailabilityChart()) {
         chartTop5 = new Chart(ctx1, {
             type: 'bar',
             data: { labels: top5Manut.map(t => t[0]), datasets: [{ label: 'Intervenções de Manutenção', data: top5Manut.map(t => t[1]), backgroundColor: '#f59e0b', borderRadius: 5 }] },
