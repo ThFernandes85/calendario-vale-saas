@@ -3174,14 +3174,23 @@ function printAderenciaBook() {
 
     // As fotos vêm do Storage (rede) -- sem esperar elas carregarem, o
     // window.print() dispara antes das imagens chegarem e o PDF sai com
-    // espaços em branco no lugar das fotos.
+    // espaços em branco no lugar das fotos. Só esperar o evento 'load' não
+    // basta num BOOK com muitas fotos de uma vez: 'load' significa que o
+    // arquivo chegou pela rede, não que o navegador já terminou de
+    // DECODIFICAR e PINTAR ela na tela -- com dezenas/centenas de fotos
+    // decodificando ao mesmo tempo, algumas ficavam prontas na rede mas
+    // ainda não pintadas no instante exato em que o print tirava o retrato
+    // da página, saindo em branco mesmo sem erro nenhum. img.decode()
+    // garante que a decodificação terminou de verdade antes de imprimir.
     const imgs = Array.from(container.querySelectorAll('img'));
-    const espera = imgs.map(img => img.complete ? Promise.resolve() : new Promise(resolve => {
-        img.addEventListener('load', resolve, { once: true });
+    const espera = imgs.map(img => new Promise(resolve => {
+        const done = () => (img.decode ? img.decode().catch(() => {}) : Promise.resolve()).then(resolve);
+        if (img.complete) { done(); return; }
+        img.addEventListener('load', done, { once: true });
         img.addEventListener('error', resolve, { once: true });
     }));
 
-    Promise.all(espera).then(() => setTimeout(() => window.print(), 80));
+    Promise.all(espera).then(() => setTimeout(() => window.print(), 150));
 
     window.addEventListener('afterprint', function restoreAfterPrint() {
         window.removeEventListener('afterprint', restoreAfterPrint);
