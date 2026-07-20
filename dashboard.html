@@ -1712,6 +1712,14 @@ async function confirmCloseBooking(id) {
         toast('Para encerrar um bloqueio de Limpeza é obrigatório anexar as fotos de antes e depois.', 'error');
         return;
     }
+    // Câmera do celular às vezes devolve um arquivo vazio/corrompido (app
+    // fechado no meio da captura, falha de permissão etc.) -- sem checar
+    // isso, o upload "dava certo" (sem erro do Supabase) só que salvava uma
+    // foto em branco, e o bloqueio fechava sem ninguém perceber o problema.
+    if ((fileBefore && fileBefore.size === 0) || (fileAfter && fileAfter.size === 0)) {
+        toast('Uma das fotos veio vazia/corrompida -- tire a foto novamente antes de encerrar.', 'error');
+        return;
+    }
 
     const confirmBtn = document.querySelector('#modal-box .modal-footer .btn-primary') || document.getElementById('mobile-close-submit');
     if (confirmBtn) { confirmBtn.disabled = true; confirmBtn.textContent = 'Enviando...'; }
