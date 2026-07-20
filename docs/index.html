@@ -2952,6 +2952,13 @@ function bookPeriodoSelecionado() {
     return { from, to };
 }
 
+// Chamado tanto por onerror (falha de rede/URL) quanto por onload quando a
+// imagem "carrega" mas vem vazia/corrompida (naturalWidth 0) -- sem isso, uma
+// foto vazia aparecia como uma caixa em branco no BOOK, sem nenhuma explicação.
+function handleBookImgFail(el) {
+    el.outerHTML = '<div style="font-size:11px;color:#c00;">Falha ao carregar a foto</div>';
+}
+
 function buildAderenciaBookHtml() {
     const { from, to } = bookPeriodoSelecionado();
     const itens = state.bookings.filter(b => {
@@ -2992,11 +2999,11 @@ function buildAderenciaBookHtml() {
             <div style="display:flex; gap:12px;">
                 <div style="flex:1;">
                     <div style="font-size:11px; font-weight:600; margin-bottom:4px;">ANTES</div>
-                    ${b.closurePhotoBefore ? `<img src="${b.closurePhotoBefore}" style="width:280px; height:280px; object-fit:cover; border-radius:6px; border:1px solid #ddd;" onerror="this.outerHTML='<div style=\\'font-size:11px;color:#c00;\\'>Falha ao carregar a foto</div>'">` : `<div style="font-size:11px; color:#999;">Sem foto</div>`}
+                    ${b.closurePhotoBefore ? `<img src="${b.closurePhotoBefore}" style="width:280px; height:280px; object-fit:cover; border-radius:6px; border:1px solid #ddd;" onerror="handleBookImgFail(this)" onload="if(this.naturalWidth===0) handleBookImgFail(this)">` : `<div style="font-size:11px; color:#999;">Sem foto</div>`}
                 </div>
                 <div style="flex:1;">
                     <div style="font-size:11px; font-weight:600; margin-bottom:4px;">DEPOIS</div>
-                    ${b.closurePhotoAfter ? `<img src="${b.closurePhotoAfter}" style="width:280px; height:280px; object-fit:cover; border-radius:6px; border:1px solid #ddd;" onerror="this.outerHTML='<div style=\\'font-size:11px;color:#c00;\\'>Falha ao carregar a foto</div>'">` : `<div style="font-size:11px; color:#999;">Sem foto</div>`}
+                    ${b.closurePhotoAfter ? `<img src="${b.closurePhotoAfter}" style="width:280px; height:280px; object-fit:cover; border-radius:6px; border:1px solid #ddd;" onerror="handleBookImgFail(this)" onload="if(this.naturalWidth===0) handleBookImgFail(this)">` : `<div style="font-size:11px; color:#999;">Sem foto</div>`}
                 </div>
             </div>
         </div>
