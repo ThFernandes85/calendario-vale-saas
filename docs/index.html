@@ -656,6 +656,10 @@ aside.collapsed .nav-badge { top: 2px; right: 2px; }
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
                 <span class="nav-label">Usuários &amp; Acessos</span>
             </button>
+            <button class="nav-item" data-view="importacao" title="Importação em Massa" style="display:none;">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                <span class="nav-label">Importação em Massa</span>
+            </button>
         </nav>
     </div>
 
@@ -1028,6 +1032,60 @@ aside.collapsed .nav-badge { top: 2px; right: 2px; }
                         </tr>
                     </thead>
                     <tbody id="users-tbody"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- VIEW: IMPORTAÇÃO EM MASSA (somente Admin Master) -->
+    <div class="content-container" id="view-importacao">
+        <div>
+            <h2 style="font-size: 22px; margin-bottom: 6px; font-weight: 600;">Importação em Massa</h2>
+            <p style="color: var(--text-secondary); font-size: 14px;">
+                Suba uma planilha (.xlsx) com os lançamentos e as fotos correspondentes de uma vez só. Se a OM já existir
+                em um bloqueio aberto, ele é encerrado com esses dados; se já existir encerrado, só as fotos são
+                corrigidas; se não existir, um bloqueio novo é criado e já encerrado.
+            </p>
+        </div>
+
+        <div class="card-section">
+            <div class="filter-title" style="margin-bottom:12px;">1. Selecione os arquivos</div>
+            <div class="m-field">
+                <label>Planilha (.xlsx) — colunas: TAG, OM, DATA, HORA_INICIO, HORA_FIM, TIPO, RESPONSAVEL, OBSERVACAO, FOTO_ANTES, FOTO_DEPOIS</label>
+                <input type="file" id="import-xlsx-file" accept=".xlsx,.xls">
+            </div>
+            <div class="m-field">
+                <label>Fotos (selecione todas de uma vez — os nomes de arquivo precisam bater com FOTO_ANTES/FOTO_DEPOIS da planilha)</label>
+                <input type="file" id="import-photos-files" accept="image/*" multiple>
+            </div>
+            <button class="btn-primary" id="btn-import-analyze">Analisar Planilha</button>
+        </div>
+
+        <div class="card-section" id="import-preview-section" style="display:none;">
+            <div class="filter-title-row">
+                <div class="filter-title" style="margin-bottom:0;">2. Confira antes de importar</div>
+            </div>
+            <div id="import-preview-summary" style="font-size:13px; color:var(--text-secondary); margin:10px 0;"></div>
+            <div class="audit-table-wrap">
+                <table class="audit-table">
+                    <thead>
+                        <tr><th>Linha</th><th>TAG</th><th>OM</th><th>Data</th><th>Ação</th><th>Status</th></tr>
+                    </thead>
+                    <tbody id="import-preview-tbody"></tbody>
+                </table>
+            </div>
+            <button class="btn-primary" id="btn-import-confirm" style="margin-top:14px;" disabled>Confirmar e Importar</button>
+        </div>
+
+        <div class="card-section" id="import-results-section" style="display:none;">
+            <div class="filter-title" style="margin-bottom:12px;">3. Resultado</div>
+            <div id="import-results-summary" style="font-size:13px; margin-bottom:10px;"></div>
+            <div class="audit-table-wrap">
+                <table class="audit-table">
+                    <thead>
+                        <tr><th>Linha</th><th>TAG</th><th>OM</th><th>Resultado</th></tr>
+                    </thead>
+                    <tbody id="import-results-tbody"></tbody>
                 </table>
             </div>
         </div>
@@ -2291,6 +2349,7 @@ function onProfileChanged() {
         <div style="margin-top:6px;"><span class="perm-tag ${p.canExport ? 'perm-yes' : 'perm-no'}">${p.canExport ? 'Exporta Relatórios' : 'Sem Exportação'}</span></div>
     `;
     document.querySelector('[data-view="usuarios"]').style.display = state.profileKey === 'ADMIN' ? 'flex' : 'none';
+    document.querySelector('[data-view="importacao"]').style.display = state.profileKey === 'ADMIN' ? 'flex' : 'none';
     const chartBoxManut = document.getElementById('chart-box-manut');
     if (chartBoxManut) chartBoxManut.style.display = canSeeAvailabilityChart() ? 'flex' : 'none';
     renderSiteSelect();
@@ -2308,10 +2367,12 @@ const VIEW_META = {
     calendario: { title: 'Calendário de Processos', sub: 'Agenda interativa de ocupação dos equipamentos' },
     relatorios: { title: 'Relatórios & Auditoria', sub: 'Indicadores operacionais e trilha de auditoria' },
     mapacalor: { title: 'Mapa de Calor', sub: 'Indicadores de manutenção e limpeza por equipamento' },
-    usuarios: { title: 'Usuários & Acessos', sub: 'Gestão de contas e permissões (Admin Master)' }
+    usuarios: { title: 'Usuários & Acessos', sub: 'Gestão de contas e permissões (Admin Master)' },
+    importacao: { title: 'Importação em Massa', sub: 'Lançamento em lote via planilha + fotos (Admin Master)' }
 };
 function switchView(view) {
     if (view === 'usuarios' && state.profileKey !== 'ADMIN') { showAccessDenied('Apenas o Admin Master pode gerenciar usuários.'); return; }
+    if (view === 'importacao' && state.profileKey !== 'ADMIN') { showAccessDenied('Apenas o Admin Master pode fazer importação em massa.'); return; }
     document.querySelectorAll('.nav-item').forEach(b => b.classList.toggle('active', b.dataset.view === view));
     document.querySelectorAll('.content-container').forEach(c => c.classList.toggle('view-active', c.id === 'view-' + view));
     document.getElementById('header-title').textContent = VIEW_META[view].title;
@@ -2322,6 +2383,7 @@ function switchView(view) {
     if (view === 'usuarios') loadProfiles().then(renderUsersView);
     if (view === 'calendario') renderWeekGrid();
     if (view === 'mapacalor') renderHeatmap();
+    if (view === 'importacao') resetImportUi();
 }
 document.querySelectorAll('.nav-item').forEach(btn => btn.addEventListener('click', () => switchView(btn.dataset.view)));
 
@@ -3047,6 +3109,250 @@ function printAderenciaBook() {
     });
 }
 document.getElementById('btn-print-book').addEventListener('click', printAderenciaBook);
+
+/* =========================================================
+   IMPORTAÇÃO EM MASSA (Admin Master) -- planilha + fotos de uma vez,
+   pra recuperar OMs com foto quebrada ou lançar um lote retroativo sem
+   passar pela tela de encerramento uma a uma.
+   ========================================================= */
+const IMPORT_TYPES = ['Limpeza Sodexo', 'Limpeza Mecanizada', 'Manutenção Preventiva', 'Manutenção Corretiva'];
+let importParsedRows = [];
+let importPhotoFiles = {};
+
+function resetImportUi() {
+    const xlsxInput = document.getElementById('import-xlsx-file');
+    const photosInput = document.getElementById('import-photos-files');
+    if (xlsxInput) xlsxInput.value = '';
+    if (photosInput) photosInput.value = '';
+    importParsedRows = [];
+    importPhotoFiles = {};
+    document.getElementById('import-preview-section').style.display = 'none';
+    document.getElementById('import-results-section').style.display = 'none';
+}
+
+function parseImportDate(value) {
+    if (value instanceof Date && !isNaN(value)) return `${value.getFullYear()}-${pad(value.getMonth() + 1)}-${pad(value.getDate())}`;
+    const s = String(value == null ? '' : value).trim();
+    let m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+    if (m) return `${m[3]}-${pad(m[2])}-${pad(m[1])}`;
+    m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+    if (m) return `${m[1]}-${pad(m[2])}-${pad(m[3])}`;
+    return null;
+}
+
+function parseImportTime(value) {
+    if (value instanceof Date && !isNaN(value)) return `${pad(value.getHours())}:${pad(value.getMinutes())}`;
+    if (typeof value === 'number') {
+        const totalMin = Math.round(value * 24 * 60) % (24 * 60);
+        return `${pad(Math.floor(totalMin / 60))}:${pad(totalMin % 60)}`;
+    }
+    const s = String(value == null ? '' : value).trim();
+    const m = s.match(/^(\d{1,2}):(\d{2})$/);
+    if (m) return `${pad(m[1])}:${m[2]}`;
+    return null;
+}
+
+// Decide o que fazer com a linha: cria (OM nova), encerra (OM já aberta) ou
+// só corrige as fotos (OM já encerrada) -- não mexe em REPROGRAMADA/PENDENTE,
+// já que aí um desfecho diferente foi uma decisão manual de alguém.
+function validateImportRow(row, idx) {
+    const tag = String(row.TAG || '').trim().toUpperCase();
+    const om = String(row.OM || '').trim();
+    const tipo = String(row.TIPO || SODEXO_CLEANING_TYPE).trim();
+    const responsavel = String(row.RESPONSAVEL || '').trim();
+    const observacao = String(row.OBSERVACAO || '').trim() || defaultCloseObservationFor('ENCERRADA');
+    const fotoAntesName = String(row.FOTO_ANTES || '').trim();
+    const fotoDepoisName = String(row.FOTO_DEPOIS || '').trim();
+    const result = { idx, tag, om, tipo, responsavel, observacao, fotoAntesName, fotoDepoisName, error: null, action: null, targetBookingId: null, date: null, startMin: null, endMin: null };
+
+    if (!tag) { result.error = 'TAG não informada.'; return result; }
+    if (!ALL_EQUIP.some(e => e.tag === tag)) { result.error = `Equipamento "${tag}" não encontrado neste site.`; return result; }
+    if (!/^\d{1,12}$/.test(om)) { result.error = 'OM inválida (só dígitos, até 12 caracteres).'; return result; }
+    if (!IMPORT_TYPES.includes(tipo)) { result.error = `Tipo "${tipo}" desconhecido.`; return result; }
+
+    const dateStr = parseImportDate(row.DATA);
+    if (!dateStr) { result.error = 'Data inválida (use dd/mm/aaaa).'; return result; }
+    result.date = dateStr;
+
+    const startStr = parseImportTime(row.HORA_INICIO);
+    const endStr = parseImportTime(row.HORA_FIM);
+    if (!startStr || !endStr) { result.error = 'Hora início/fim inválida (use hh:mm).'; return result; }
+    const startMin = timeToMinutes(startStr);
+    const endMin = timeToMinutes(endStr);
+    if (endMin <= startMin) { result.error = 'Hora fim deve ser depois da hora início.'; return result; }
+    result.startMin = startMin; result.endMin = endMin;
+
+    if (tipo === SODEXO_CLEANING_TYPE) {
+        if (!fotoAntesName || !fotoDepoisName) { result.error = 'Faltam os nomes de FOTO_ANTES/FOTO_DEPOIS na planilha.'; return result; }
+        if (!importPhotoFiles[fotoAntesName]) { result.error = `Arquivo "${fotoAntesName}" não foi selecionado.`; return result; }
+        if (!importPhotoFiles[fotoDepoisName]) { result.error = `Arquivo "${fotoDepoisName}" não foi selecionado.`; return result; }
+        if (importPhotoFiles[fotoAntesName].size === 0 || importPhotoFiles[fotoDepoisName].size === 0) { result.error = 'Uma das fotos selecionadas está vazia (0 bytes) -- tire de novo.'; return result; }
+    }
+
+    const existing = state.bookings.find(b => b.om === om);
+    if (!existing) {
+        result.action = 'create-and-close';
+    } else if (existing.closureStatus === 'ENCERRADA') {
+        result.action = 'update-photos';
+        result.targetBookingId = existing.id;
+    } else if (!existing.closureStatus) {
+        result.action = 'close-existing';
+        result.targetBookingId = existing.id;
+    } else {
+        result.error = `OM já existe com desfecho "${CLOSURE_STATUS_LABELS[existing.closureStatus] || existing.closureStatus}" -- corrija manualmente.`;
+        return result;
+    }
+    return result;
+}
+
+async function analyzeImportSpreadsheet() {
+    const xlsxInput = document.getElementById('import-xlsx-file');
+    const photosInput = document.getElementById('import-photos-files');
+    const xlsxFile = xlsxInput.files[0];
+    if (!xlsxFile) { toast('Selecione a planilha (.xlsx).', 'error'); return; }
+
+    importPhotoFiles = {};
+    Array.from(photosInput.files).forEach(f => { importPhotoFiles[f.name] = f; });
+
+    let rows;
+    try {
+        const buf = await xlsxFile.arrayBuffer();
+        const wb = XLSX.read(buf, { type: 'array', cellDates: true });
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        rows = XLSX.utils.sheet_to_json(ws, { defval: '' });
+    } catch (e) {
+        toast('Não foi possível ler a planilha: ' + e.message, 'error');
+        return;
+    }
+    if (!rows.length) { toast('A planilha está vazia.', 'error'); return; }
+
+    const seenOms = {};
+    importParsedRows = rows.map((row, idx) => {
+        const result = validateImportRow(row, idx);
+        if (!result.error) {
+            if (seenOms[result.om] !== undefined) {
+                result.error = `OM duplicada dentro da própria planilha (já aparece na linha ${seenOms[result.om] + 2}).`;
+            } else {
+                seenOms[result.om] = idx;
+            }
+        }
+        return result;
+    });
+    renderImportPreview();
+}
+
+const IMPORT_ACTION_LABELS = { 'create-and-close': 'Criar novo (já encerrado)', 'close-existing': 'Encerrar bloqueio existente', 'update-photos': 'Corrigir fotos de bloqueio já encerrado' };
+
+function renderImportPreview() {
+    document.getElementById('import-preview-section').style.display = 'block';
+    document.getElementById('import-results-section').style.display = 'none';
+    const validCount = importParsedRows.filter(r => !r.error).length;
+    const errorCount = importParsedRows.length - validCount;
+    document.getElementById('import-preview-summary').textContent =
+        `${importParsedRows.length} linha(s) na planilha — ${validCount} pronta(s) para importar, ${errorCount} com erro (não serão importadas).`;
+    document.getElementById('import-preview-tbody').innerHTML = importParsedRows.map(r => `
+        <tr>
+            <td>${r.idx + 2}</td>
+            <td>${escapeHtml(r.tag || '—')}</td>
+            <td>${escapeHtml(r.om || '—')}</td>
+            <td>${r.date ? formatDateBR(r.date) : '—'}</td>
+            <td>${r.error ? '—' : IMPORT_ACTION_LABELS[r.action]}</td>
+            <td>${r.error ? `<span style="color:#ef4444;">${escapeHtml(r.error)}</span>` : '<span style="color:#2ed573;">OK</span>'}</td>
+        </tr>
+    `).join('');
+    document.getElementById('btn-import-confirm').disabled = validCount === 0;
+}
+
+// Processa uma linha por vez (não em paralelo) de propósito -- subir 50+
+// fotos ao mesmo tempo pro Storage é o tipo de coisa que gera falha
+// silenciosa/timeout, o mesmo problema que essa tela existe pra corrigir.
+async function processImportRow(r) {
+    let booking;
+    if (r.action === 'create-and-close') {
+        const { data, error } = await sb.from('bookings').insert({
+            site_key: state.currentSite, tag: r.tag, area_code: areaOf(r.tag), date: r.date,
+            start_min: r.startMin, end_min: r.endMin, type: r.tipo, emergencial: false, om: r.om,
+            justification: r.observacao || 'Importado em massa',
+            operator_id: state.currentUser.id, operator_label: r.responsavel ? `${r.responsavel} (Importado)` : `${activeProfile().user} (${state.profileKey})`
+        }).select().single();
+        if (error) throw new Error('Erro ao criar: ' + error.message);
+        booking = mapBookingFromDb(data);
+    } else {
+        booking = state.bookings.find(b => b.id === r.targetBookingId);
+        if (!booking) throw new Error('Bloqueio de destino não encontrado (pode ter sido removido).');
+    }
+
+    let photoBeforeUrl = booking.closurePhotoBefore || null;
+    let photoAfterUrl = booking.closurePhotoAfter || null;
+    if (r.fotoAntesName && importPhotoFiles[r.fotoAntesName]) {
+        photoBeforeUrl = await uploadClosurePhoto(booking, importPhotoFiles[r.fotoAntesName], 'antes');
+        if (!photoBeforeUrl) throw new Error('Falha ao enviar foto de antes.');
+    }
+    if (r.fotoDepoisName && importPhotoFiles[r.fotoDepoisName]) {
+        photoAfterUrl = await uploadClosurePhoto(booking, importPhotoFiles[r.fotoDepoisName], 'depois');
+        if (!photoAfterUrl) throw new Error('Falha ao enviar foto de depois.');
+    }
+
+    if (r.action === 'update-photos') {
+        const { error } = await sb.from('bookings').update({ closure_photo_before: photoBeforeUrl, closure_photo_after: photoAfterUrl }).eq('id', booking.id);
+        if (error) throw new Error('Erro ao corrigir fotos: ' + error.message);
+        await addAuditEntry({
+            tag: booking.tag, acao: `${booking.type} (Fotos corrigidas -- importação em massa)`, justificativa: r.observacao,
+            om: booking.om, agendamentoData: booking.date, agendamentoHorario: `${minutesToTime(booking.startMin)}–${minutesToTime(booking.endMin)}`
+        });
+        return 'Fotos corrigidas.';
+    }
+
+    const { error } = await sb.from('bookings').update({
+        date: r.date, closure_status: 'ENCERRADA', closure_reason: r.observacao, closed_at: new Date().toISOString(),
+        closure_photo_before: photoBeforeUrl, closure_photo_after: photoAfterUrl, closed_by: state.currentUser.id
+    }).eq('id', booking.id);
+    if (error) throw new Error('Erro ao encerrar: ' + error.message);
+    await addAuditEntry({
+        tag: booking.tag, acao: `${booking.type} (Encerrado -- importação em massa)`, justificativa: r.observacao,
+        om: booking.om, agendamentoData: r.date, agendamentoHorario: `${minutesToTime(r.startMin)}–${minutesToTime(r.endMin)}`
+    });
+    return r.action === 'create-and-close' ? 'Criado e encerrado.' : 'Encerrado.';
+}
+
+function renderImportResults(results) {
+    document.getElementById('import-results-section').style.display = 'block';
+    const okCount = results.filter(r => r.ok).length;
+    document.getElementById('import-results-summary').innerHTML =
+        `<b>${okCount} de ${results.length}</b> linha(s) importada(s) com sucesso.` +
+        (okCount < results.length ? ` <span style="color:#ef4444;">${results.length - okCount} falharam -- confira abaixo.</span>` : '');
+    document.getElementById('import-results-tbody').innerHTML = results.map(r => `
+        <tr>
+            <td>${r.idx + 2}</td>
+            <td>${escapeHtml(r.tag)}</td>
+            <td>${escapeHtml(r.om)}</td>
+            <td style="color:${r.ok ? '#2ed573' : '#ef4444'};">${escapeHtml(r.message)}</td>
+        </tr>
+    `).join('');
+}
+
+async function runImportConfirmed() {
+    const btn = document.getElementById('btn-import-confirm');
+    btn.disabled = true; btn.textContent = 'Importando...';
+    const rowsToProcess = importParsedRows.filter(r => !r.error);
+    const results = [];
+    for (const r of rowsToProcess) {
+        try {
+            const message = await processImportRow(r);
+            results.push({ ...r, ok: true, message });
+        } catch (e) {
+            results.push({ ...r, ok: false, message: e.message || 'Erro desconhecido.' });
+        }
+        renderImportResults(results);
+    }
+    btn.disabled = false; btn.textContent = 'Confirmar e Importar';
+    await loadPersisted();
+    renderWeekGrid(); renderAtivos(); renderDashboard();
+    if (document.querySelector('.content-container.view-active').id === 'view-relatorios') renderCharts();
+}
+
+document.getElementById('btn-import-analyze').addEventListener('click', analyzeImportSpreadsheet);
+document.getElementById('btn-import-confirm').addEventListener('click', runImportConfirmed);
 
 /* =========================================================
    MAPA DE CALOR
