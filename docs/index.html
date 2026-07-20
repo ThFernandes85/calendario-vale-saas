@@ -431,6 +431,9 @@ aside.collapsed .nav-badge { top: 2px; right: 2px; }
     /* Sem isso, um gráfico que cai bem na quebra de página é serrado ao meio
        -- força ele inteiro pra próxima página em vez de cortar. */
     .chart-box { break-inside: avoid; page-break-inside: avoid; }
+    /* Indisponibilidade (Manutenção) é indicador interno do PCM -- não sai
+       no PDF/impressão de forma alguma, nem quando quem gera é o próprio PCM. */
+    #chart-box-manut { display: none !important; }
 
     body.print-report-mode .print-report-banner { display: block !important; font-size: 18px; font-weight: 800; border-bottom: 2px solid #000; padding-bottom: 10px; margin-bottom: 18px; }
     body.print-report-mode .print-report-banner small { display: block; font-size: 11px; font-weight: 400; color: #444; margin-top: 4px; }
