@@ -786,6 +786,18 @@ aside.collapsed .nav-badge { top: 2px; right: 2px; }
                 <div style="height:14px;"></div>
                 <div class="agenda-toolbar">
                     <div class="agenda-field">
+                        <label>Equipamento a Renomear</label>
+                        <select id="rename-equip-tag" style="min-width:200px;"></select>
+                    </div>
+                    <div class="agenda-field">
+                        <label>Novo Nome (Tag)</label>
+                        <input type="text" id="rename-equip-new-tag" placeholder="ex: 99TC01" style="min-width:160px;">
+                    </div>
+                    <button class="btn-primary" id="btn-rename-equip" style="align-self:flex-end;">Renomear Equipamento</button>
+                </div>
+                <div style="height:14px;"></div>
+                <div class="agenda-toolbar">
+                    <div class="agenda-field">
                         <label>Equipamento a Excluir</label>
                         <select id="del-equip-tag" style="min-width:200px;"></select>
                     </div>
@@ -3802,6 +3814,12 @@ function renderAssetMgmtPanel() {
             `<optgroup label="${escapeHtml(AREA_LABEL[area] || area)}">${DATABASE[area].map(tag => `<option value="${tag}">${tag} (${escapeHtml(AREA_LABEL[area] || area)})</option>`).join('')}</optgroup>`
         ).join('');
     }
+    const renameTagSel = document.getElementById('rename-equip-tag');
+    if (renameTagSel) {
+        renameTagSel.innerHTML = Object.keys(DATABASE).map(area =>
+            `<optgroup label="${escapeHtml(AREA_LABEL[area] || area)}">${DATABASE[area].map(tag => `<option value="${tag}">${tag} (${escapeHtml(AREA_LABEL[area] || area)})</option>`).join('')}</optgroup>`
+        ).join('');
+    }
 }
 
 async function moveEquipment(tag, newArea) {
@@ -3825,6 +3843,42 @@ document.getElementById('btn-move-equip').addEventListener('click', async () => 
     const newArea = document.getElementById('move-equip-area').value;
     if (!tag || !newArea) { toast('Selecione o equipamento e a área de destino.', 'error'); return; }
     await moveEquipment(tag, newArea);
+});
+
+// Renomear corrige a tag em `equipment` e propaga pro histórico já gravado
+// (bookings/audit_log) -- sem isso, os agendamentos e a auditoria antigos
+// ficariam presos no nome velho, como se fossem de um equipamento diferente
+// do que existe agora no cadastro.
+async function renameEquipment(oldTag, newTagRaw) {
+    const newTag = newTagRaw.trim().toUpperCase();
+    if (!newTag) { toast('Informe o novo nome do equipamento.', 'error'); return; }
+    if (newTag === oldTag) { toast('O novo nome é igual ao atual.', 'warn'); return; }
+    if (ALL_EQUIP.some(e => e.tag === newTag)) { toast('Já existe um equipamento com essa tag no complexo.', 'error'); return; }
+    const item = ALL_EQUIP.find(e => e.tag === oldTag);
+    if (!item) { toast('Equipamento não encontrado.', 'error'); return; }
+
+    const { error } = await sb.from('equipment').update({ tag: newTag }).eq('site_key', state.currentSite).eq('tag', oldTag);
+    if (error) { toast('Erro ao renomear equipamento: ' + error.message, 'error'); return; }
+    await sb.from('bookings').update({ tag: newTag }).eq('site_key', state.currentSite).eq('tag', oldTag);
+    await sb.from('audit_log').update({ tag: newTag }).eq('site_key', state.currentSite).eq('tag', oldTag);
+
+    DATABASE[item.area] = DATABASE[item.area].map(t => t === oldTag ? newTag : t);
+    item.tag = newTag;
+    state.bookings.forEach(b => { if (b.tag === oldTag) b.tag = newTag; });
+    state.auditLog.forEach(a => { if (a.tag === oldTag) a.tag = newTag; });
+    if (state.agendaTag === oldTag) state.agendaTag = newTag;
+
+    toast(`Equipamento renomeado de "${oldTag}" para "${newTag}" com sucesso.`);
+    renderAssetMgmtPanel();
+    renderAtivos(); renderAgendaEquipSelect(); renderDashboard(); renderWeekGrid(); renderAudit();
+}
+document.getElementById('btn-rename-equip').addEventListener('click', async () => {
+    if (state.profileKey !== 'ADMIN') { showAccessDenied('Apenas o Admin Master pode renomear equipamentos.'); return; }
+    const oldTag = document.getElementById('rename-equip-tag').value;
+    const newTag = document.getElementById('rename-equip-new-tag').value;
+    if (!oldTag) { toast('Selecione o equipamento a renomear.', 'error'); return; }
+    await renameEquipment(oldTag, newTag);
+    document.getElementById('rename-equip-new-tag').value = '';
 });
 
 document.getElementById('btn-add-area').addEventListener('click', async () => {
