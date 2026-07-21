@@ -2755,11 +2755,11 @@ function renderSodexoScore() {
     totalEl.textContent = `${b.total} × ${b.atendido}`;
     totalSub.textContent = `OM Programada × OM Realizada — ${totalTxt}`;
 
-    valeEl.textContent = `${b.pctPendenteVale}%`;
-    valeSub.textContent = `Não desconta da nota da Sodexo — ${totalTxt}`;
+    valeEl.textContent = `${b.pendenteVale} (${b.pctPendenteVale}%)`;
+    valeSub.textContent = `${b.pendenteVale} OM(s) pendente(s) Vale — não desconta da nota da Sodexo — ${totalTxt}`;
 
-    pendenteEl.textContent = `${b.pctPendenteSodexo}%`;
-    pendenteSub.textContent = `Desconta da nota de Limpeza — ${totalTxt}`;
+    pendenteEl.textContent = `${b.pendenteSodexo} (${b.pctPendenteSodexo}%)`;
+    pendenteSub.textContent = `${b.pendenteSodexo} OM(s) pendente(s) Sodexo — desconta da nota de Limpeza — ${totalTxt}`;
 }
 
 let chartTop5 = null, chartTop5Limpeza = null, chartArea = null;
