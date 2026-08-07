@@ -1056,17 +1056,28 @@ aside.collapsed .nav-badge { top: 2px; right: 2px; }
             <p style="color: var(--text-secondary); font-size: 14px;">
                 Suba uma planilha (.xlsx) com os lançamentos e as fotos correspondentes de uma vez só. Se a OM já existir
                 em um bloqueio aberto, ele é encerrado com esses dados; se já existir encerrado, só as fotos são
-                corrigidas; se não existir, um bloqueio novo é criado e já encerrado.
+                corrigidas; se não existir, um bloqueio novo é criado e já encerrado. Ou marque "Só programar" para
+                lançar a programação semanal da Sodexo (OM, equipamento, data, horas) sem fotos -- cada bloqueio fica
+                aberto na agenda até alguém encerrar manualmente com as fotos de antes/depois.
             </p>
         </div>
 
         <div class="card-section">
             <div class="filter-title" style="margin-bottom:12px;">1. Selecione os arquivos</div>
             <div class="m-field">
-                <label>Planilha (.xlsx) — colunas: TAG, OM, DATA, HORA_INICIO, HORA_FIM, TIPO, RESPONSAVEL, OBSERVACAO, FOTO_ANTES, FOTO_DEPOIS</label>
-                <input type="file" id="import-xlsx-file" accept=".xlsx,.xls">
+                <label class="m-checkbox">
+                    <input type="checkbox" id="import-schedule-only-mode" style="width:auto;">
+                    Só programar (sem fotos) — planilha da Sodexo, fotos e encerramento ficam para depois
+                </label>
+                <div style="font-size:12px; color:var(--text-secondary); margin-top:4px;">
+                    Cria os bloqueios de Limpeza Sodexo já na agenda, ainda abertos -- cada um é encerrado manualmente depois, com as fotos de antes/depois.
+                </div>
             </div>
             <div class="m-field">
+                <label id="import-xlsx-label">Planilha (.xlsx) — colunas: TAG, OM, DATA, HORA_INICIO, HORA_FIM, TIPO, RESPONSAVEL, OBSERVACAO, FOTO_ANTES, FOTO_DEPOIS</label>
+                <input type="file" id="import-xlsx-file" accept=".xlsx,.xls">
+            </div>
+            <div class="m-field" id="import-photos-wrap">
                 <label>Fotos (selecione todas de uma vez — os nomes de arquivo precisam bater com FOTO_ANTES/FOTO_DEPOIS da planilha)</label>
                 <input type="file" id="import-photos-files" accept="image/*" multiple>
             </div>
@@ -1081,7 +1092,7 @@ aside.collapsed .nav-badge { top: 2px; right: 2px; }
             <div class="audit-table-wrap">
                 <table class="audit-table">
                     <thead>
-                        <tr><th>Linha</th><th>TAG</th><th>OM</th><th>Data</th><th>Ação</th><th>Status</th></tr>
+                        <tr><th>Linha</th><th>TAG</th><th>OM</th><th>Data</th><th>Horário</th><th>Ação</th><th>Status</th></tr>
                     </thead>
                     <tbody id="import-preview-tbody"></tbody>
                 </table>
@@ -3308,14 +3319,69 @@ function validateImportRow(row, idx) {
     return result;
 }
 
+// Modo "só programar": a planilha da Sodexo não traz HORA_INICIO/HORA_FIM,
+// só a duração (homem-hora) -- o horário de início/fim é calculado depois,
+// em assignSequentialTimes, não aqui linha a linha.
+function validateScheduleOnlyRow(row, idx) {
+    const tag = String(row.TAG || '').trim().toUpperCase();
+    const om = String(row.OM || '').trim();
+    const observacao = String(row.DESCRICAO || '').trim() || defaultCloseObservationFor('ENCERRADA');
+    const result = {
+        idx, tag, om, tipo: SODEXO_CLEANING_TYPE, responsavel: '', observacao,
+        fotoAntesName: '', fotoDepoisName: '', error: null, action: null, targetBookingId: null,
+        date: null, startMin: null, endMin: null, horas: null
+    };
+
+    if (!tag) { result.error = 'TAG não informada.'; return result; }
+    if (!ALL_EQUIP.some(e => e.tag === tag)) { result.error = `Equipamento "${tag}" não encontrado neste site.`; return result; }
+    if (!/^\d{1,12}$/.test(om)) { result.error = 'OM inválida (só dígitos, até 12 caracteres).'; return result; }
+
+    const dateStr = parseImportDate(row.DATA);
+    if (!dateStr) { result.error = 'Data inválida (use dd/mm/aaaa).'; return result; }
+    result.date = dateStr;
+
+    const horasRaw = String(row.HORAS == null ? '' : row.HORAS).trim().replace(',', '.');
+    const horas = parseFloat(horasRaw);
+    if (!horasRaw || isNaN(horas) || horas <= 0 || horas > 24) { result.error = 'HORAS inválida (número maior que 0, ex: 3 ou 2,5).'; return result; }
+    result.horas = horas;
+
+    if (state.bookings.some(b => b.om === om)) { result.error = `OM ${om} já existe no sistema -- não é possível programar de novo.`; return result; }
+
+    result.action = 'create-only';
+    return result;
+}
+
+// Sem horário de início na planilha, cada OM do mesmo dia é encadeada em
+// sequência a partir das 08:00 (a primeira do dia começa lá, a próxima
+// começa onde a anterior terminou) -- respeita a ordem das linhas na planilha.
+function assignSequentialTimes(rows) {
+    const byDate = {};
+    rows.forEach(r => {
+        if (r.error || r.action !== 'create-only') return;
+        (byDate[r.date] = byDate[r.date] || []).push(r);
+    });
+    Object.values(byDate).forEach(group => {
+        group.sort((a, b) => a.idx - b.idx);
+        let cursor = 8 * 60;
+        group.forEach(r => {
+            const durMin = Math.round(r.horas * 60);
+            const end = cursor + durMin;
+            if (end > 24 * 60) { r.error = 'Sequência de horas do dia ultrapassa 24h -- revise a planilha.'; return; }
+            r.startMin = cursor; r.endMin = end;
+            cursor = end;
+        });
+    });
+}
+
 async function analyzeImportSpreadsheet() {
     const xlsxInput = document.getElementById('import-xlsx-file');
     const photosInput = document.getElementById('import-photos-files');
+    const scheduleOnly = document.getElementById('import-schedule-only-mode').checked;
     const xlsxFile = xlsxInput.files[0];
     if (!xlsxFile) { toast('Selecione a planilha (.xlsx).', 'error'); return; }
 
     importPhotoFiles = {};
-    Array.from(photosInput.files).forEach(f => { importPhotoFiles[f.name] = f; });
+    if (!scheduleOnly) Array.from(photosInput.files).forEach(f => { importPhotoFiles[f.name] = f; });
 
     let rows;
     try {
@@ -3331,7 +3397,7 @@ async function analyzeImportSpreadsheet() {
 
     const seenOms = {};
     importParsedRows = rows.map((row, idx) => {
-        const result = validateImportRow(row, idx);
+        const result = scheduleOnly ? validateScheduleOnlyRow(row, idx) : validateImportRow(row, idx);
         if (!result.error) {
             if (seenOms[result.om] !== undefined) {
                 result.error = `OM duplicada dentro da própria planilha (já aparece na linha ${seenOms[result.om] + 2}).`;
@@ -3341,10 +3407,11 @@ async function analyzeImportSpreadsheet() {
         }
         return result;
     });
+    if (scheduleOnly) assignSequentialTimes(importParsedRows);
     renderImportPreview();
 }
 
-const IMPORT_ACTION_LABELS = { 'create-and-close': 'Criar novo (já encerrado)', 'close-existing': 'Encerrar bloqueio existente', 'update-photos': 'Corrigir fotos de bloqueio já encerrado' };
+const IMPORT_ACTION_LABELS = { 'create-and-close': 'Criar novo (já encerrado)', 'close-existing': 'Encerrar bloqueio existente', 'update-photos': 'Corrigir fotos de bloqueio já encerrado', 'create-only': 'Programar (aguardando fotos/encerramento)' };
 
 function renderImportPreview() {
     document.getElementById('import-preview-section').style.display = 'block';
@@ -3359,6 +3426,7 @@ function renderImportPreview() {
             <td>${escapeHtml(r.tag || '—')}</td>
             <td>${escapeHtml(r.om || '—')}</td>
             <td>${r.date ? formatDateBR(r.date) : '—'}</td>
+            <td>${r.startMin != null && r.endMin != null ? `${minutesToTime(r.startMin)}–${minutesToTime(r.endMin)}` : '—'}</td>
             <td>${r.error ? '—' : IMPORT_ACTION_LABELS[r.action]}</td>
             <td>${r.error ? `<span style="color:#ef4444;">${escapeHtml(r.error)}</span>` : '<span style="color:#2ed573;">OK</span>'}</td>
         </tr>
@@ -3370,6 +3438,25 @@ function renderImportPreview() {
 // fotos ao mesmo tempo pro Storage é o tipo de coisa que gera falha
 // silenciosa/timeout, o mesmo problema que essa tela existe pra corrigir.
 async function processImportRow(r) {
+    // Modo "só programar": cria o bloqueio já na agenda, em aberto -- sem
+    // fotos, sem encerrar. Alguém fecha manualmente depois, equipamento por
+    // equipamento, com as fotos de antes/depois (fluxo normal de encerramento).
+    if (r.action === 'create-only') {
+        const { data, error } = await sb.from('bookings').insert({
+            site_key: state.currentSite, tag: r.tag, area_code: areaOf(r.tag), date: r.date,
+            start_min: r.startMin, end_min: r.endMin, type: r.tipo, emergencial: false, om: r.om,
+            justification: r.observacao || 'Programado em massa -- Sodexo',
+            operator_id: state.currentUser.id, operator_label: `${activeProfile().user} (${state.profileKey})`
+        }).select().single();
+        if (error) throw new Error('Erro ao criar: ' + error.message);
+        const booking = mapBookingFromDb(data);
+        await addAuditEntry({
+            tag: booking.tag, acao: `${booking.type} (Programado -- importação em massa)`, justificativa: r.observacao,
+            om: booking.om, agendamentoData: booking.date, agendamentoHorario: `${minutesToTime(booking.startMin)}–${minutesToTime(booking.endMin)}`
+        });
+        return 'Programado (aguardando fotos e encerramento).';
+    }
+
     let booking;
     if (r.action === 'create-and-close') {
         const { data, error } = await sb.from('bookings').insert({
@@ -3456,6 +3543,14 @@ async function runImportConfirmed() {
 
 document.getElementById('btn-import-analyze').addEventListener('click', analyzeImportSpreadsheet);
 document.getElementById('btn-import-confirm').addEventListener('click', runImportConfirmed);
+
+document.getElementById('import-schedule-only-mode').addEventListener('change', (e) => {
+    const scheduleOnly = e.target.checked;
+    document.getElementById('import-photos-wrap').style.display = scheduleOnly ? 'none' : 'block';
+    document.getElementById('import-xlsx-label').textContent = scheduleOnly
+        ? 'Planilha (.xlsx) — colunas: TAG, OM, DATA, HORAS, DESCRICAO (sem horário de início -- cada OM do dia é encadeada a partir das 08:00)'
+        : 'Planilha (.xlsx) — colunas: TAG, OM, DATA, HORA_INICIO, HORA_FIM, TIPO, RESPONSAVEL, OBSERVACAO, FOTO_ANTES, FOTO_DEPOIS';
+});
 
 /* =========================================================
    MAPA DE CALOR
