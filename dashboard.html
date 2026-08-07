@@ -3321,7 +3321,7 @@ function validateImportRow(row, idx) {
 
 // Modo "só programar": a planilha da Sodexo não traz HORA_INICIO/HORA_FIM,
 // só a duração (homem-hora) -- o horário de início/fim é calculado depois,
-// em assignSequentialTimes, não aqui linha a linha.
+// em assignDefaultStartTimes, não aqui linha a linha.
 function validateScheduleOnlyRow(row, idx) {
     const tag = String(row.TAG || '').trim().toUpperCase();
     const om = String(row.OM || '').trim();
@@ -3351,25 +3351,19 @@ function validateScheduleOnlyRow(row, idx) {
     return result;
 }
 
-// Sem horário de início na planilha, cada OM do mesmo dia é encadeada em
-// sequência a partir das 08:00 (a primeira do dia começa lá, a próxima
-// começa onde a anterior terminou) -- respeita a ordem das linhas na planilha.
-function assignSequentialTimes(rows) {
-    const byDate = {};
+// Cada OM do dia é um equipamento (turma/frente) diferente trabalhando em
+// paralelo -- não uma pessoa só encadeando tarefa após tarefa. Por isso
+// todas começam no mesmo horário padrão (08:00), cada uma durando só a sua
+// própria HH, em vez de empilhadas na mesma linha do tempo (o que estourava
+// 24h já com poucas OMs de 6h+ no mesmo dia).
+function assignDefaultStartTimes(rows) {
+    const DEFAULT_START = 8 * 60;
     rows.forEach(r => {
         if (r.error || r.action !== 'create-only') return;
-        (byDate[r.date] = byDate[r.date] || []).push(r);
-    });
-    Object.values(byDate).forEach(group => {
-        group.sort((a, b) => a.idx - b.idx);
-        let cursor = 8 * 60;
-        group.forEach(r => {
-            const durMin = Math.round(r.horas * 60);
-            const end = cursor + durMin;
-            if (end > 24 * 60) { r.error = 'Sequência de horas do dia ultrapassa 24h -- revise a planilha.'; return; }
-            r.startMin = cursor; r.endMin = end;
-            cursor = end;
-        });
+        const durMin = Math.round(r.horas * 60);
+        const end = DEFAULT_START + durMin;
+        if (end > 24 * 60) { r.error = 'HH dessa OM, somada ao início padrão (08:00), ultrapassa 24h -- revise a planilha.'; return; }
+        r.startMin = DEFAULT_START; r.endMin = end;
     });
 }
 
@@ -3407,7 +3401,7 @@ async function analyzeImportSpreadsheet() {
         }
         return result;
     });
-    if (scheduleOnly) assignSequentialTimes(importParsedRows);
+    if (scheduleOnly) assignDefaultStartTimes(importParsedRows);
     renderImportPreview();
 }
 
@@ -3548,7 +3542,7 @@ document.getElementById('import-schedule-only-mode').addEventListener('change', 
     const scheduleOnly = e.target.checked;
     document.getElementById('import-photos-wrap').style.display = scheduleOnly ? 'none' : 'block';
     document.getElementById('import-xlsx-label').textContent = scheduleOnly
-        ? 'Planilha (.xlsx) — colunas: TAG, OM, DATA, HORAS, DESCRICAO (sem horário de início -- cada OM do dia é encadeada a partir das 08:00)'
+        ? 'Planilha (.xlsx) — colunas: TAG, OM, DATA, HORAS, DESCRICAO (sem horário de início -- toda OM do dia começa às 08:00, em paralelo)'
         : 'Planilha (.xlsx) — colunas: TAG, OM, DATA, HORA_INICIO, HORA_FIM, TIPO, RESPONSAVEL, OBSERVACAO, FOTO_ANTES, FOTO_DEPOIS';
 });
 
