@@ -1946,16 +1946,17 @@ function renderMobileEncarregado() {
     renderMobileEquipList();
 }
 
-// OMs que o próprio encarregado logado abriu e ainda não encerrou --
-// mostradas como alerta na lista pra ele não esquecer de tirar as fotos
-// de antes/depois e fechar. Não filtra por data de propósito: um
-// esquecimento pode ter ficado aberto desde outro dia.
+// Todas as OMs de Limpeza em aberto no site do encarregado logado -- não só
+// as que ele mesmo criou. Depois da importação em massa "Só programar", as
+// OMs nascem em nome de quem subiu a planilha (o Admin), não de um
+// encarregado específico -- qualquer um da unidade precisa conseguir achar
+// e encerrar qualquer uma delas, não só a sua própria. Não filtra por data
+// de propósito: um esquecimento pode ter ficado aberto desde outro dia.
 function mobilePendingBookings() {
     if (!state.currentUser) return [];
     return state.bookings.filter(b =>
         isActiveBooking(b) &&
-        (b.type === 'Limpeza Sodexo' || b.type === 'Limpeza Mecanizada') &&
-        b.operatorId === state.currentUser.id
+        (b.type === 'Limpeza Sodexo' || b.type === 'Limpeza Mecanizada')
     ).sort((a, b) => a.date.localeCompare(b.date) || a.startMin - b.startMin);
 }
 
@@ -1974,17 +1975,21 @@ function renderMobileEquipList() {
         return;
     }
     const pendentes = mobilePendingBookings();
+    const PENDENTES_VISIVEIS = 15;
+    const pendentesVisiveis = pendentes.slice(0, PENDENTES_VISIVEIS);
+    const pendentesRestantes = pendentes.length - pendentesVisiveis.length;
     const alertHtml = pendentes.length ? `
         <div class="mobile-alert">
-            <div class="mobile-alert-title">⚠️ ${pendentes.length} OM${pendentes.length > 1 ? 's' : ''} em aberto no seu nome</div>
-            <div class="mobile-alert-sub">Encerre com as fotos de antes/depois assim que possível.</div>
+            <div class="mobile-alert-title">⚠️ ${pendentes.length} OM${pendentes.length > 1 ? 's' : ''} em aberto neste site</div>
+            <div class="mobile-alert-sub">Qualquer encarregado pode encerrar -- toque na OM e anexe as fotos de antes/depois.</div>
             <div class="mobile-alert-list">
-                ${pendentes.map(b => `
+                ${pendentesVisiveis.map(b => `
                     <button type="button" class="mobile-alert-item" onclick="openMobilePendingBooking('${b.id}')">
                         <span class="mobile-equip-tag">${escapeHtml(b.tag)}</span>
                         <span class="mobile-equip-area">OM ${escapeHtml(b.om || '—')} · ${formatDateBR(b.date)}</span>
                     </button>
                 `).join('')}
+                ${pendentesRestantes > 0 ? `<div style="font-size:12px; color:var(--text-secondary); text-align:center; padding:4px;">+ ${pendentesRestantes} outra(s) -- use a busca de equipamento abaixo</div>` : ''}
             </div>
         </div>` : '';
     const cards = ALL_EQUIP.map(eq => {
