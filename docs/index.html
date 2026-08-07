@@ -494,6 +494,11 @@ aside.collapsed .nav-badge { top: 2px; right: 2px; }
     padding: 10px 12px; background: var(--bg-card); border: 1px solid var(--color-manutencao); border-radius: 8px;
     color: var(--text-primary); font-size: 13px; cursor: pointer;
 }
+.mobile-alert-item-overdue { border-color: var(--color-critico); background: rgba(239, 68, 68, 0.12); }
+.mobile-overdue-badge {
+    font-size: 10px; font-weight: 700; color: #fff; background: var(--color-critico);
+    border-radius: 5px; padding: 2px 6px; white-space: nowrap;
+}
 </style>
 </head>
 <body>
@@ -713,6 +718,11 @@ aside.collapsed .nav-badge { top: 2px; right: 2px; }
                 <div class="kpi-label">Em Limpeza</div>
                 <div class="kpi-value" id="kpi-limpeza">0</div>
                 <div class="kpi-sub">Bloqueios ativos da PCO</div>
+            </div>
+            <div class="kpi-card" style="--accent: var(--color-critico);">
+                <div class="kpi-label">OMs em Atraso</div>
+                <div class="kpi-value" id="kpi-atraso">0</div>
+                <div class="kpi-sub" id="kpi-atraso-sub">Em aberto há 3+ dias da data do serviço</div>
             </div>
         </div>
 
@@ -1172,6 +1182,19 @@ const TYPE_STATUS = { 'Manutenção Preventiva': 'manutencao', 'Manutenção Cor
 const SODEXO_CLEANING_TYPE = 'Limpeza Sodexo';
 function isActiveBooking(b) { return !b.closureStatus; }
 function pendingClosureStatusFor(type) { return type === SODEXO_CLEANING_TYPE ? 'PENDENTE_SODEXO' : 'PENDENTE_VALE'; }
+
+// Bloqueio "atrasado" -- ainda aberto 3 dias ou mais depois da própria data
+// de serviço. Serve pra destacar quem corre risco de ficar esquecido, tanto
+// no alerta mobile do encarregado quanto no KPI do dashboard desktop.
+const OVERDUE_THRESHOLD_DAYS = 3;
+function daysSinceServiceDate(booking) {
+    const today = new Date(todayStr() + 'T00:00:00');
+    const svcDate = new Date(booking.date + 'T00:00:00');
+    return Math.round((today - svcDate) / 86400000);
+}
+function isOverdueBooking(booking) {
+    return isActiveBooking(booking) && daysSinceServiceDate(booking) >= OVERDUE_THRESHOLD_DAYS;
+}
 
 // Mesmo equipamento pode ter vários bloqueios no mesmo horário (tarefas
 // diferentes rodando em paralelo), então o conflito não é mais por
@@ -1954,6 +1977,8 @@ function renderMobileEncarregado() {
 // de propósito: um esquecimento pode ter ficado aberto desde outro dia.
 function mobilePendingBookings() {
     if (!state.currentUser) return [];
+    // Data mais antiga primeiro -- já é a mesma ordem de "mais atrasada
+    // primeiro", já que atraso é medido a partir dessa mesma data.
     return state.bookings.filter(b =>
         isActiveBooking(b) &&
         (b.type === 'Limpeza Sodexo' || b.type === 'Limpeza Mecanizada')
@@ -1978,17 +2003,24 @@ function renderMobileEquipList() {
     const PENDENTES_VISIVEIS = 15;
     const pendentesVisiveis = pendentes.slice(0, PENDENTES_VISIVEIS);
     const pendentesRestantes = pendentes.length - pendentesVisiveis.length;
+    const atrasadasCount = pendentes.filter(b => daysSinceServiceDate(b) >= OVERDUE_THRESHOLD_DAYS).length;
     const alertHtml = pendentes.length ? `
         <div class="mobile-alert">
-            <div class="mobile-alert-title">⚠️ ${pendentes.length} OM${pendentes.length > 1 ? 's' : ''} em aberto neste site</div>
+            <div class="mobile-alert-title">⚠️ ${pendentes.length} OM${pendentes.length > 1 ? 's' : ''} em aberto neste site${atrasadasCount ? ` (${atrasadasCount} atrasada${atrasadasCount > 1 ? 's' : ''})` : ''}</div>
             <div class="mobile-alert-sub">Qualquer encarregado pode encerrar -- toque na OM e anexe as fotos de antes/depois.</div>
             <div class="mobile-alert-list">
-                ${pendentesVisiveis.map(b => `
-                    <button type="button" class="mobile-alert-item" onclick="openMobilePendingBooking('${b.id}')">
+                ${pendentesVisiveis.map(b => {
+                    const dias = daysSinceServiceDate(b);
+                    const atrasada = dias >= OVERDUE_THRESHOLD_DAYS;
+                    return `
+                    <button type="button" class="mobile-alert-item${atrasada ? ' mobile-alert-item-overdue' : ''}" onclick="openMobilePendingBooking('${b.id}')">
                         <span class="mobile-equip-tag">${escapeHtml(b.tag)}</span>
-                        <span class="mobile-equip-area">OM ${escapeHtml(b.om || '—')} · ${formatDateBR(b.date)}</span>
+                        <span class="mobile-equip-area" style="display:flex; align-items:center; gap:6px;">
+                            OM ${escapeHtml(b.om || '—')} · ${formatDateBR(b.date)}
+                            ${atrasada ? `<span class="mobile-overdue-badge">${dias}d atrasada</span>` : ''}
+                        </span>
                     </button>
-                `).join('')}
+                `; }).join('')}
                 ${pendentesRestantes > 0 ? `<div style="font-size:12px; color:var(--text-secondary); text-align:center; padding:4px;">+ ${pendentesRestantes} outra(s) -- use a busca de equipamento abaixo</div>` : ''}
             </div>
         </div>` : '';
@@ -2657,6 +2689,12 @@ function renderDashboard() {
     document.getElementById('kpi-livres').textContent = counts.livre;
     document.getElementById('kpi-manutencao').textContent = counts.manutencao + counts.critico;
     document.getElementById('kpi-limpeza').textContent = counts.limpeza;
+
+    const atrasadas = state.bookings.filter(isOverdueBooking);
+    document.getElementById('kpi-atraso').textContent = atrasadas.length;
+    document.getElementById('kpi-atraso-sub').textContent = atrasadas.length
+        ? `Em aberto há ${OVERDUE_THRESHOLD_DAYS}+ dias da data do serviço`
+        : 'Nenhuma OM em atraso no momento';
 
     const recent = document.getElementById('dashboard-recent');
     recent.innerHTML = state.auditLog.slice(0, 8).map(a => `
