@@ -925,6 +925,11 @@ aside.collapsed .nav-badge { top: 2px; right: 2px; }
             </div>
         </div>
 
+        <div class="chart-box" style="margin-bottom:18px;">
+            <h3>Evolução da Nota de Aderência — Sodexo (últimos 6 períodos)</h3>
+            <canvas id="chart-aderencia-historico"></canvas>
+        </div>
+
         <div class="charts-grid">
             <div class="chart-box" id="chart-box-manut">
                 <h3>Top 5 Equipamentos - Maior Taxa de Indisponibilidade (Manutenção)</h3>
@@ -2828,7 +2833,7 @@ function renderSodexoScore() {
     pendenteSub.textContent = `${b.pendenteSodexo} OM(s) pendente(s) Sodexo — desconta da nota de Limpeza — ${totalTxt}`;
 }
 
-let chartTop5 = null, chartTop5Limpeza = null, chartArea = null;
+let chartTop5 = null, chartTop5Limpeza = null, chartArea = null, chartAderenciaHistorico = null;
 
 // O layout de impressão é bem diferente do da tela (a sidebar some, a
 // largura disponível muda) -- os gráficos são criados/dimensionados
@@ -2836,7 +2841,7 @@ let chartTop5 = null, chartTop5Limpeza = null, chartArea = null;
 // entra no modo impressão de verdade (evento beforeprint), eles saem com
 // o tamanho calculado pra tela normal: distorcidos, vazando da caixa no PDF.
 window.addEventListener('beforeprint', () => {
-    [chartStatus, chartTop5, chartTop5Limpeza, chartArea].forEach(c => { if (c) c.resize(); });
+    [chartStatus, chartTop5, chartTop5Limpeza, chartArea, chartAderenciaHistorico].forEach(c => { if (c) c.resize(); });
 });
 
 const CLOSURE_STATUS_LABELS = {
@@ -2909,9 +2914,48 @@ function renderClosedBookings() {
     `).join('') || `<tr><td colspan="9" style="text-align:center; color:var(--text-muted);">Nenhum bloqueio encerrado, reprogramado ou pendente no período selecionado.</td></tr>`;
 }
 
+// Nota de aderência mês a mês, não só do período filtrado -- de um número
+// isolado não dá pra saber se a Sodexo está melhorando ou piorando; de uma
+// linha do tempo dá. Ignora ciclos sem nenhuma atividade de Limpeza Sodexo
+// (linha quebrada -- não é 0%, é "sem dado").
+function renderAderenciaHistoricoChart() {
+    const ctx = document.getElementById('chart-aderencia-historico');
+    if (!ctx) return;
+    const periodos = lastNMeasurementPeriods(6);
+    const labels = periodos.map(p => p.label);
+    const notas = periodos.map(p => {
+        const b = sodexoCleaningBreakdown(p);
+        return b ? sodexoAdherenceScore(b) : null;
+    });
+    if (chartAderenciaHistorico) chartAderenciaHistorico.destroy();
+    chartAderenciaHistorico = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels,
+            datasets: [{
+                label: 'Nota de Aderência (%)', data: notas, spanGaps: false,
+                borderColor: '#2563eb', backgroundColor: 'rgba(37,99,235,0.12)',
+                fill: true, tension: 0.3, pointRadius: 4, pointBackgroundColor: '#2563eb',
+            }],
+        },
+        options: {
+            responsive: true, maintainAspectRatio: false,
+            plugins: {
+                legend: { display: false },
+                tooltip: { callbacks: { label: (ctx) => ctx.parsed.y == null ? 'Sem atividade no período' : `${ctx.parsed.y}%` } },
+            },
+            scales: {
+                x: { ticks: { color: '#8a99ad' }, grid: { color: '#2b394e' } },
+                y: { min: 0, max: 100, ticks: { color: '#8a99ad', callback: (v) => v + '%' }, grid: { color: '#2b394e' } },
+            },
+        },
+    });
+}
+
 function renderCharts() {
     renderSodexoScore();
     renderClosedBookings();
+    renderAderenciaHistoricoChart();
     const activeLog = getFilteredAuditLog().filter(a => TYPE_STATUS[a.acao] !== undefined);
 
     // Indisponibilidade por manutenção é o indicador do PCM -- equipamento
@@ -3142,8 +3186,9 @@ document.getElementById('btn-print-full-report').addEventListener('click', print
    BOOK DE ADERÊNCIA (Limpeza Sodexo — fotos de Antes/Depois)
    ========================================================= */
 // Período de medição da Vale: sempre do dia 21 de um mês ao dia 20 do
-// seguinte. Usado como valor padrão do filtro de datas do BOOK.
-function periodoMedicaoAtual() {
+// seguinte. Usado como valor padrão do filtro de datas do BOOK, e também
+// pra reconstruir períodos passados (histórico da nota de aderência).
+function measurementPeriodOffset(monthsBack) {
     const hoje = new Date();
     let ano = hoje.getFullYear();
     let mes = hoje.getMonth(); // mês (0-indexado) em que o período ATUAL começou
@@ -3151,10 +3196,20 @@ function periodoMedicaoAtual() {
         mes -= 1;
         if (mes < 0) { mes = 11; ano -= 1; }
     }
+    mes -= (monthsBack || 0);
+    while (mes < 0) { mes += 12; ano -= 1; }
     const inicio = new Date(ano, mes, 21);
     const fim = new Date(ano, mes + 1, 20);
     const fmt = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-    return { from: fmt(inicio), to: fmt(fim) };
+    return { from: fmt(inicio), to: fmt(fim), label: inicio.toLocaleDateString('pt-BR', { month: 'short', year: '2-digit' }) };
+}
+function periodoMedicaoAtual() { return measurementPeriodOffset(0); }
+// Últimos N períodos de medição, do mais antigo pro mais recente (ordem de
+// exibição natural num gráfico de linha do tempo).
+function lastNMeasurementPeriods(n) {
+    const arr = [];
+    for (let i = n - 1; i >= 0; i--) arr.push(measurementPeriodOffset(i));
+    return arr;
 }
 (function initBookPeriodDefaults() {
     const def = periodoMedicaoAtual();
