@@ -3372,6 +3372,26 @@ function assignDefaultStartTimes(rows) {
     });
 }
 
+// Mais de 40 OMs abertas no mesmo dia é mais do que a equipe consegue dar
+// conta de encerrar de verdade -- acima disso, o excedente (a partir da 41ª
+// linha daquele dia, na ordem da planilha) vira erro, pra forçar dividir em
+// lotes menores em vez de afogar a equipe de campo.
+const MAX_SCHEDULE_ONLY_PER_DAY = 40;
+function enforceDailyLimit(rows) {
+    const byDate = {};
+    rows.forEach(r => {
+        if (r.error || r.action !== 'create-only') return;
+        (byDate[r.date] = byDate[r.date] || []).push(r);
+    });
+    Object.entries(byDate).forEach(([date, group]) => {
+        if (group.length <= MAX_SCHEDULE_ONLY_PER_DAY) return;
+        group.sort((a, b) => a.idx - b.idx);
+        group.slice(MAX_SCHEDULE_ONLY_PER_DAY).forEach(r => {
+            r.error = `Mais de ${MAX_SCHEDULE_ONLY_PER_DAY} OMs para ${formatDateBR(date)} -- divida em lotes menores.`;
+        });
+    });
+}
+
 async function analyzeImportSpreadsheet() {
     const xlsxInput = document.getElementById('import-xlsx-file');
     const photosInput = document.getElementById('import-photos-files');
@@ -3406,7 +3426,7 @@ async function analyzeImportSpreadsheet() {
         }
         return result;
     });
-    if (scheduleOnly) assignDefaultStartTimes(importParsedRows);
+    if (scheduleOnly) { assignDefaultStartTimes(importParsedRows); enforceDailyLimit(importParsedRows); }
     renderImportPreview();
 }
 
