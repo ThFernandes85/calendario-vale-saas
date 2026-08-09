@@ -3832,11 +3832,11 @@ function assignDefaultStartTimes(rows) {
     });
 }
 
-// Mais de 40 OMs abertas no mesmo dia é mais do que a equipe consegue dar
-// conta de encerrar de verdade -- acima disso, o excedente (a partir da 41ª
+// Mais de 50 OMs abertas no mesmo dia é mais do que a equipe consegue dar
+// conta de encerrar de verdade -- acima disso, o excedente (a partir da 51ª
 // linha daquele dia, na ordem da planilha) vira erro, pra forçar dividir em
 // lotes menores em vez de afogar a equipe de campo.
-const MAX_SCHEDULE_ONLY_PER_DAY = 40;
+const MAX_SCHEDULE_ONLY_PER_DAY = 50;
 function enforceDailyLimit(rows) {
     const byDate = {};
     rows.forEach(r => {
