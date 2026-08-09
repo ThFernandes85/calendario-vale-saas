@@ -2056,8 +2056,29 @@ async function reconcileOfflineQueueFlags() {
     try {
         const queue = await offlineQueueGetAll();
         queue.forEach(rec => {
-            const booking = state.bookings.find(b => b.id === rec.bookingId);
-            if (booking && !booking.closureStatus) booking.pendingOfflineSync = true;
+            if (rec.kind === 'create') {
+                let booking = state.bookings.find(b => b.id === rec.bookingId);
+                if (!booking) {
+                    // O app fechou/recarregou antes de sincronizar -- state.bookings
+                    // veio limpo do servidor (que nunca chegou a saber dessa OM), então
+                    // reconstrói o lançamento local a partir do que ficou guardado na fila.
+                    booking = {
+                        id: rec.bookingId, tag: rec.tag, area: rec.area, date: rec.dateStr,
+                        startMin: rec.startMin, endMin: rec.endMin, type: rec.type, emergencial: false,
+                        om: rec.om, justification: rec.justification,
+                        operatorId: state.currentUser ? state.currentUser.id : null,
+                        operator: `${activeProfile().user} (${state.profileKey})`,
+                        createdAt: new Date(rec.createdAt).toISOString(),
+                        closureStatus: null, closureReason: null, closedAt: null,
+                        closurePhotoBefore: null, closurePhotoAfter: null,
+                    };
+                    state.bookings.push(booking);
+                }
+                booking.pendingOfflineCreate = true;
+            } else {
+                const booking = state.bookings.find(b => b.id === rec.bookingId);
+                if (booking && !booking.closureStatus) booking.pendingOfflineSync = true;
+            }
         });
         return queue.length;
     } catch (e) { return 0; }
@@ -2074,7 +2095,7 @@ async function queueClosureOffline(booking) {
     }
     const { outcome, reason, dateStr, fileBefore, fileAfter } = v;
     const record = {
-        id: 'offline_' + booking.id + '_' + Date.now(),
+        id: 'offline_' + booking.id + '_' + Date.now(), kind: 'close',
         bookingId: booking.id, outcome, reason, dateStr,
         photoBefore: fileBefore || null, photoAfter: fileAfter || null,
         createdAt: Date.now(),
@@ -2085,20 +2106,81 @@ async function queueClosureOffline(booking) {
     renderMobileEquipList();
 }
 
+// Guarda a CRIAÇÃO de um lançamento novo no celular quando não há conexão --
+// entra na lista/agenda local na hora, com um id temporário, e só vira um
+// registro de verdade no servidor quando a fila for sincronizada.
+async function queueNewBookingOffline(tag, v) {
+    const { type, dateStr, startMin, endMin, om, justification } = v;
+    const tempId = 'offline_new_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
+    const booking = {
+        id: tempId, tag, area: areaOf(tag), date: dateStr, startMin, endMin, type,
+        emergencial: false, om, justification,
+        operatorId: state.currentUser.id, operator: `${activeProfile().user} (${state.profileKey})`,
+        createdAt: new Date().toISOString(), closureStatus: null, closureReason: null, closedAt: null,
+        closurePhotoBefore: null, closurePhotoAfter: null, pendingOfflineCreate: true,
+    };
+    state.bookings.push(booking);
+    await offlineQueueAdd({
+        id: tempId + '_create', kind: 'create', bookingId: tempId,
+        tag, area: areaOf(tag), om, type, dateStr, startMin, endMin, justification,
+        createdAt: Date.now(),
+    });
+    toast('Sem conexão -- OM guardada no celular. Será criada sozinha quando a internet voltar.', 'warn');
+    renderMobileCloseForm(booking);
+}
+
 // Roda quando o app percebe conexão de novo (evento 'online') e também
 // toda vez que a tela mobile é aberta -- silenciosa (não mostra erro se
 // ainda estiver sem sinal de verdade), só avisa quando algo é enviado.
+// Criações vão primeiro (pra trocar o id temporário pelo real ANTES de
+// qualquer encerramento na fila que dependa desse mesmo lançamento).
 let offlineSyncInProgress = false;
 async function trySyncOfflineQueue() {
     if (offlineSyncInProgress || !navigator.onLine) return;
     offlineSyncInProgress = true;
     try {
-        const queue = await offlineQueueGetAll();
         let syncedCount = 0;
-        for (const record of queue) {
+        const creates = (await offlineQueueGetAll()).filter(r => r.kind === 'create');
+        for (const record of creates) {
+            const tempBooking = state.bookings.find(b => b.id === record.bookingId);
+            if (!tempBooking) { await offlineQueueRemove(record.id); continue; }
+
+            const { data, error } = await sb.from('bookings').insert({
+                site_key: state.currentSite, tag: record.tag, area_code: record.area, date: record.dateStr,
+                start_min: record.startMin, end_min: record.endMin, type: record.type, emergencial: false,
+                om: record.om, justification: record.justification,
+                operator_id: state.currentUser.id, operator_label: `${activeProfile().user} (${state.profileKey})`
+            }).select().single();
+            if (error) break; // ainda sem sinal de verdade -- para tudo, tenta de novo na próxima
+
+            const realBooking = mapBookingFromDb(data);
+            const idx = state.bookings.findIndex(b => b.id === tempBooking.id);
+            if (idx !== -1) state.bookings[idx] = realBooking;
+            await addAuditEntry({
+                tag: record.tag, acao: record.type, justificativa: record.justification, dataHora: realBooking.createdAt,
+                om: record.om, agendamentoData: realBooking.date, agendamentoHorario: `${minutesToTime(realBooking.startMin)}–${minutesToTime(realBooking.endMin)}`
+            });
+            await offlineQueueRemove(record.id);
+            syncedCount++;
+
+            // Qualquer encerramento já na fila apontando pro id temporário
+            // passa a apontar pro id real recém-criado.
+            const relacionados = (await offlineQueueGetAll()).filter(r => r.kind === 'close' && r.bookingId === tempBooking.id);
+            for (const rel of relacionados) {
+                rel.bookingId = realBooking.id;
+                await offlineQueueAdd(rel);
+            }
+        }
+
+        const closes = (await offlineQueueGetAll()).filter(r => r.kind === 'close');
+        for (const record of closes) {
             const booking = state.bookings.find(b => b.id === record.bookingId);
             if (!booking) { await offlineQueueRemove(record.id); continue; }
             if (booking.closureStatus) { await offlineQueueRemove(record.id); booking.pendingOfflineSync = false; continue; }
+            // A criação desse mesmo lançamento ainda não foi pra frente (ficou
+            // sem sinal lá no laço de cima) -- não dá pra encerrar no servidor
+            // algo que ainda não existe lá. Deixa pra próxima tentativa.
+            if (booking.pendingOfflineCreate) continue;
 
             let photoBeforeUrl = booking.closurePhotoBefore || null;
             let photoAfterUrl = booking.closurePhotoAfter || null;
@@ -2135,6 +2217,7 @@ async function trySyncOfflineQueue() {
             await offlineQueueRemove(record.id);
             syncedCount++;
         }
+
         if (syncedCount > 0) {
             toast(`${syncedCount} lançamento(s) sincronizado(s) automaticamente.`, 'success');
             // Só re-renderiza a lista se o encarregado estiver mesmo nela --
@@ -2210,7 +2293,7 @@ function renderMobileEquipList() {
     // Lançamentos guardados neste aparelho esperando internet -- só existem
     // no dispositivo que os criou (IndexedDB é local), então nunca aparecem
     // pra outro encarregado logado num celular diferente.
-    const aguardandoEnvio = state.bookings.filter(b => b.pendingOfflineSync);
+    const aguardandoEnvio = state.bookings.filter(b => b.pendingOfflineSync || b.pendingOfflineCreate);
     const offlineAlertHtml = aguardandoEnvio.length ? `
         <div class="mobile-alert mobile-alert-offline">
             <div class="mobile-alert-title">📡 ${aguardandoEnvio.length} lançamento(s) aguardando envio</div>
@@ -2284,7 +2367,7 @@ function openMobileEquip(tag) {
     const aberto = state.bookings.find(b =>
         b.tag === tag && isActiveBooking(b) && (b.type === 'Limpeza Sodexo' || b.type === 'Limpeza Mecanizada')
     );
-    if (aberto && aberto.pendingOfflineSync) {
+    if (aberto && (aberto.pendingOfflineSync || aberto.pendingOfflineCreate)) {
         renderMobileOfflineStatus(aberto);
     } else if (aberto) {
         renderMobileCloseForm(aberto);
@@ -2299,21 +2382,23 @@ function openMobileEquip(tag) {
 // escolhidas não ficam disponíveis de novo pra recolocar nos campos).
 function renderMobileOfflineStatus(booking) {
     const body = document.getElementById('mobile-encarregado-body');
+    const descricao = booking.pendingOfflineCreate
+        ? `A OM ${escapeHtml(booking.om || '—')} foi criada neste celular e está guardada aqui -- será lançada de verdade no
+           sistema assim que a internet voltar. Não precisa preencher de novo.`
+        : `OM ${escapeHtml(booking.om || '—')} já foi preenchida com as fotos e está guardada neste celular --
+           será enviada sozinha assim que a internet voltar. Não precisa preencher de novo.`;
     body.innerHTML = `
         <button type="button" class="mobile-back" onclick="renderMobileEquipList()">&larr; Voltar</button>
         <div class="mobile-alert mobile-alert-offline">
             <div class="mobile-alert-title">📡 ${escapeHtml(booking.tag)} — aguardando envio</div>
-            <div class="mobile-alert-sub">
-                OM ${escapeHtml(booking.om || '—')} já foi preenchida com as fotos e está guardada neste celular --
-                será enviada sozinha assim que a internet voltar. Não precisa preencher de novo.
-            </div>
+            <div class="mobile-alert-sub">${descricao}</div>
         </div>
         <button type="button" class="btn-secondary mobile-submit" id="mobile-offline-sync-btn">🔄 Tentar enviar agora</button>
     `;
     document.getElementById('mobile-offline-sync-btn').addEventListener('click', async (e) => {
         e.target.disabled = true; e.target.textContent = 'Tentando...';
         await trySyncOfflineQueue();
-        if (booking.pendingOfflineSync) {
+        if (booking.pendingOfflineSync || booking.pendingOfflineCreate) {
             toast('Ainda sem conexão -- vai tentar de novo automaticamente quando voltar.', 'warn');
             e.target.disabled = false; e.target.textContent = '🔄 Tentar enviar agora';
         } else {
@@ -2347,25 +2432,42 @@ function renderMobileNewForm(tag) {
     document.getElementById('mobile-new-submit').addEventListener('click', () => submitMobileNewBooking(tag));
 }
 
-async function submitMobileNewBooking(tag) {
+// Validação pura do formulário de novo lançamento -- mesma ideia de
+// validateClosureForm, compartilhada entre o caminho online normal e a
+// fila offline (queueNewBookingOffline).
+function validateNewBookingForm(tag) {
     const type = document.getElementById('mobile-new-type').value;
     const dateStr = document.getElementById('mobile-new-date').value;
     const startStr = document.getElementById('mobile-new-start').value;
     const endStr = document.getElementById('mobile-new-end').value;
     const om = document.getElementById('mobile-new-om').value.trim();
     const justification = document.getElementById('mobile-new-just').value.trim();
-    if (!canBookType(type)) { showAccessDenied(`O perfil ativo não pode agendar bloqueios do tipo "${type}".`); return; }
-    if (!dateStr) { toast('Informe a data do serviço.', 'error'); return; }
-    if (!startStr || !endStr) { toast('Informe o horário de início e de término.', 'error'); return; }
-    if (!/^\d{1,12}$/.test(om)) { toast('Informe o número da OM (somente dígitos, até 12 caracteres).', 'error'); return; }
-    if (justification.length < 5) { toast('Informe uma justificativa técnica válida (mínimo 5 caracteres).', 'error'); return; }
+    if (!canBookType(type)) return { ok: false, accessDenied: true, type };
+    if (!dateStr) return { ok: false, message: 'Informe a data do serviço.' };
+    if (!startStr || !endStr) return { ok: false, message: 'Informe o horário de início e de término.' };
+    if (!/^\d{1,12}$/.test(om)) return { ok: false, message: 'Informe o número da OM (somente dígitos, até 12 caracteres).' };
+    if (justification.length < 5) return { ok: false, message: 'Informe uma justificativa técnica válida (mínimo 5 caracteres).' };
 
     const startMin = timeToMinutes(startStr);
     const endMin = timeToMinutes(endStr);
-    if (endMin <= startMin) { toast('O horário de término deve ser depois do horário de início.', 'error'); return; }
+    if (endMin <= startMin) return { ok: false, message: 'O horário de término deve ser depois do horário de início.' };
 
     const omConflict = activeOmConflict(tag, om);
-    if (omConflict) { renderMobileActiveOmConflictScreen(omConflict, tag); return; }
+    if (omConflict) return { ok: false, omConflict };
+
+    return { ok: true, type, dateStr, startMin, endMin, om, justification };
+}
+
+async function submitMobileNewBooking(tag) {
+    const v = validateNewBookingForm(tag);
+    if (!v.ok) {
+        if (v.accessDenied) { showAccessDenied(`O perfil ativo não pode agendar bloqueios do tipo "${v.type}".`); return; }
+        if (v.omConflict) { renderMobileActiveOmConflictScreen(v.omConflict, tag); return; }
+        toast(v.message, 'error');
+        return;
+    }
+    if (!navigator.onLine) { await queueNewBookingOffline(tag, v); return; }
+    const { type, dateStr, startMin, endMin, om, justification } = v;
 
     const btn = document.getElementById('mobile-new-submit');
     btn.disabled = true; btn.textContent = 'Criando...';
@@ -2459,8 +2561,12 @@ function renderMobileCloseForm(booking) {
     });
     document.getElementById('mobile-close-submit').addEventListener('click', async () => {
         // Sem sinal, nem tenta a rede -- validaria, "travaria" tentando subir a
-        // foto e só falharia depois de um tempo. Guarda direto no celular.
-        if (!navigator.onLine) { await queueClosureOffline(booking); return; }
+        // foto e só falharia depois de um tempo. Guarda direto no celular. O
+        // mesmo vale se a CRIAÇÃO desse lançamento ainda não sincronizou (id
+        // só existe neste aparelho) -- tentar encerrar via servidor agora
+        // falharia (nenhuma linha pra atualizar), então cai na fila também,
+        // e o encadeamento criação→encerramento se resolve sozinho depois.
+        if (!navigator.onLine || booking.pendingOfflineCreate) { await queueClosureOffline(booking); return; }
         const resultado = await confirmCloseBooking(booking.id);
         // confirmCloseBooking só grava closureStatus no objeto quando dá certo
         // (as validações/erros retornam antes disso) -- é assim que sabemos
