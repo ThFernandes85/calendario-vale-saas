@@ -3854,12 +3854,14 @@ document.getElementById('btn-print-book').addEventListener('click', printAderenc
 /* =========================================================
    LIMPEZA DE STORAGE -- libera fotos de antes/depois de períodos de medição
    já expirados (BOOK já extraído há pelo menos 1 dia), pra não acumular
-   Storage indefinidamente. Mantém sempre o período atual + 1 anterior
-   intactos; só o registro da OM (data, status, nota) permanece no
-   histórico -- é só a foto em si que sai do Storage. Nunca roda sozinha:
-   sempre aparece como alerta, com prévia e confirmação manual do Admin.
+   Storage indefinidamente. Só o período ATUAL (em andamento) fica sempre
+   protegido -- assim que ele vence (um novo período começa) e já tem o BOOK
+   extraído, já fica elegível pra limpeza. Só o registro da OM (data, status,
+   nota) permanece no histórico -- é só a foto em si que sai do Storage.
+   Nunca roda sozinha: sempre aparece como alerta, com prévia e confirmação
+   manual do Admin.
    ========================================================= */
-const BOOK_CLEANUP_RETENTION_PERIODS = 2; // período atual + 1 anterior ficam sempre intactos
+const BOOK_CLEANUP_RETENTION_PERIODS = 1; // só o período atual fica sempre protegido
 
 function storagePathFromPublicUrl(url) {
     if (!url) return null;
