@@ -855,6 +855,10 @@ aside.collapsed .nav-badge { top: 2px; right: 2px; }
                     <button class="today-btn" id="btn-this-week">Semana Atual</button>
                     <button id="btn-next-week" title="Próxima semana">&#8594;</button>
                 </div>
+                <div class="agenda-field">
+                    <label>&nbsp;</label>
+                    <button id="btn-cancel-day" style="background:#ef4444; color:#fff; border:none; border-radius:8px; padding:9px 14px; font-size:13px; font-weight:600; cursor:pointer;">Cancelar Todos do Dia</button>
+                </div>
                 <div class="agenda-legend" style="margin-left:auto;">
                     <div class="lg-item"><span class="status-dot st-livre"></span>Livre</div>
                     <div class="lg-item"><span class="status-dot st-manutencao"></span>Manutenção</div>
@@ -1683,6 +1687,102 @@ async function confirmDeleteBooking(id) {
     toast('Lançamento excluído -- não conta mais para nenhuma métrica ou nota.', 'warn');
     renderWeekGrid(); renderAtivos(); renderDashboard(); renderCharts(); updateUpcomingBadge();
 }
+
+// Mesma ideia do excluir individual, só que pro dia inteiro de uma vez --
+// pensado pra desfazer rápido um lote de importação em massa lançado com o
+// site/planilha errada, sem precisar abrir bloqueio por bloqueio.
+function cancelDayMatches(dateStr) {
+    return state.bookings.filter(b => b.date === dateStr).sort((a, b) => a.startMin - b.startMin);
+}
+
+function openCancelDayModal() {
+    if (state.profileKey !== 'ADMIN') { showAccessDenied('Apenas o Admin Master pode cancelar agendamentos em massa.'); return; }
+    openModal(`
+        <div class="modal-header"><h3>Cancelar Todos os Agendamentos do Dia</h3><button class="modal-close" onclick="closeModal()">&times;</button></div>
+        <div class="modal-body">
+            <div class="access-denied-icon">&#128465;</div>
+            <div class="access-denied-text">
+                Isso exclui <b>todos</b> os agendamentos de ${escapeHtml(SITES[state.currentSite] || state.currentSite)} na data
+                escolhida -- de qualquer equipamento, qualquer status (em aberto, encerrado, pendente). A exclusão
+                remove os registros por completo, inclusive do histórico e da nota de aderência, e não pode ser
+                desfeita. Use para corrigir um lote lançado por engano (ex: importação em massa no site errado).
+            </div>
+            <div class="m-field" style="margin-top:10px;"><label>Data</label><input type="date" id="cancel-day-date" value="${todayStr()}"></div>
+            <div class="m-field" style="margin-top:10px;">
+                <label>Agendamentos que serão excluídos</label>
+                <div id="cancel-day-list" style="max-height:220px; overflow-y:auto; border:1px solid var(--border-color); border-radius:8px; padding:8px; font-size:12.5px;"></div>
+            </div>
+            <div class="m-field" style="margin-top:10px;"><label>Motivo do cancelamento em massa *</label><textarea id="cancel-day-just" rows="3" maxlength="200" placeholder="Ex: importação em massa lançada no site errado..."></textarea></div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn-secondary" onclick="closeModal()">Voltar</button>
+            <button class="btn-danger" id="cancel-day-confirm-btn" disabled>Cancelar Todos Definitivamente</button>
+        </div>
+    `);
+    document.getElementById('cancel-day-date').addEventListener('input', updateCancelDayList);
+    document.getElementById('cancel-day-just').addEventListener('input', updateCancelDayConfirmState);
+    document.getElementById('cancel-day-confirm-btn').addEventListener('click', confirmCancelDay);
+    updateCancelDayList();
+}
+
+function updateCancelDayList() {
+    const dateStr = document.getElementById('cancel-day-date').value;
+    const list = dateStr ? cancelDayMatches(dateStr) : [];
+    const box = document.getElementById('cancel-day-list');
+    box.innerHTML = list.length ? list.map(b => `
+        <div style="padding:4px 0; border-bottom:1px solid var(--border-color);">
+            <b>${escapeHtml(b.tag)}</b> — OM ${escapeHtml(b.om || '—')} — ${minutesToTime(b.startMin)}–${minutesToTime(b.endMin)} —
+            ${escapeHtml(b.type)}${b.closureStatus ? ` (${CLOSURE_STATUS_LABELS[b.closureStatus] || b.closureStatus})` : ' (em aberto)'}
+        </div>
+    `).join('') : `<div style="color:var(--text-muted);">Nenhum agendamento nessa data para ${escapeHtml(SITES[state.currentSite] || state.currentSite)}.</div>`;
+    updateCancelDayConfirmState();
+}
+
+function updateCancelDayConfirmState() {
+    const dateStr = document.getElementById('cancel-day-date').value;
+    const reason = document.getElementById('cancel-day-just').value.trim();
+    const count = dateStr ? cancelDayMatches(dateStr).length : 0;
+    const btn = document.getElementById('cancel-day-confirm-btn');
+    btn.disabled = count === 0 || reason.length < 5;
+    btn.textContent = count > 0 ? `Cancelar ${count} Agendamento(s) Definitivamente` : 'Cancelar Todos Definitivamente';
+}
+
+async function confirmCancelDay() {
+    if (state.profileKey !== 'ADMIN') { showAccessDenied('Apenas o Admin Master pode cancelar agendamentos em massa.'); return; }
+    const dateStr = document.getElementById('cancel-day-date').value;
+    const reason = document.getElementById('cancel-day-just').value.trim();
+    if (!dateStr) { toast('Escolha uma data.', 'error'); return; }
+    if (reason.length < 5) { toast('Informe o motivo do cancelamento (mínimo 5 caracteres).', 'error'); return; }
+    const targets = cancelDayMatches(dateStr);
+    if (!targets.length) { toast('Nenhum agendamento nessa data.', 'error'); return; }
+
+    const btn = document.getElementById('cancel-day-confirm-btn');
+    btn.disabled = true; btn.textContent = 'Cancelando...';
+
+    // Sequencial, igual à importação em massa -- evita disparar dezenas de
+    // deletes em paralelo e mascarar falhas de RLS/rede uma na outra.
+    let okCount = 0, failCount = 0;
+    for (const booking of targets) {
+        const { data, error } = await sb.from('bookings').delete().eq('id', booking.id).select();
+        if (error || !data || data.length === 0) { failCount++; continue; }
+        const idx = state.bookings.findIndex(b => b.id === booking.id);
+        if (idx !== -1) state.bookings.splice(idx, 1);
+        await addAuditEntry({
+            tag: booking.tag, acao: `${booking.type} (Excluído -- cancelamento em massa do dia)`, justificativa: reason,
+            om: booking.om, agendamentoData: booking.date, agendamentoHorario: `${minutesToTime(booking.startMin)}–${minutesToTime(booking.endMin)}`
+        });
+        okCount++;
+    }
+
+    closeModal();
+    if (failCount === 0) {
+        toast(`${okCount} agendamento(s) de ${formatDateBR(dateStr)} cancelado(s) definitivamente.`, 'warn');
+    } else {
+        toast(`${okCount} cancelado(s), ${failCount} falharam (verifique suas permissões) -- confira o dia novamente.`, 'error');
+    }
+    renderWeekGrid(); renderAtivos(); renderDashboard(); renderCharts(); updateUpcomingBadge();
+}
+document.getElementById('btn-cancel-day').addEventListener('click', openCancelDayModal);
 
 function closureOutcomesFor(booking) {
     const base = [
@@ -2963,6 +3063,8 @@ const SHIFTS = [
 const WEEKDAY_NAMES = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
 
 function renderWeekGrid() {
+    const cancelDayBtn = document.getElementById('btn-cancel-day');
+    if (cancelDayBtn) cancelDayBtn.style.display = state.profileKey === 'ADMIN' ? '' : 'none';
     const tag = state.agendaTag;
     const grid = document.getElementById('week-grid');
     if (!tag) {
