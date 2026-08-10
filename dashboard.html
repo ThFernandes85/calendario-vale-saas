@@ -3701,10 +3701,24 @@ function handleBookImgFail(el) {
     el.outerHTML = '<div style="font-size:11px;color:#c00;">Falha ao carregar a foto</div>';
 }
 
+// Cores do selo de status de cada card do BOOK -- mesma paleta usada no
+// resto do app (âmbar = pendência que não desconta, vermelho = pendência
+// que desconta da nota, verde = concluído).
+const BOOK_STATUS_BADGE = {
+    ENCERRADA: { bg: 'rgba(46,213,115,0.15)', fg: '#1a8a4a', label: 'Encerrado' },
+    PENDENTE_VALE: { bg: 'rgba(245,158,11,0.15)', fg: '#b45309', label: 'Pendente Vale' },
+    PENDENTE_SODEXO: { bg: 'rgba(239,68,68,0.15)', fg: '#b91c1c', label: 'Pendente Sodexo' },
+};
+
 function buildAderenciaBookHtml() {
     const { from, to } = bookPeriodoSelecionado();
+    // O BOOK precisa trazer não só o que foi concluído (ENCERRADA), mas
+    // também as pendências (Pendente Vale / Pendente Sodexo) -- são elas
+    // que a empresa precisa visualizar e controlar, mesmo sem foto de
+    // antes/depois, já que o serviço não chegou a acontecer.
     const itens = state.bookings.filter(b => {
-        if (b.type !== SODEXO_CLEANING_TYPE || b.closureStatus !== 'ENCERRADA') return false;
+        if (b.type !== SODEXO_CLEANING_TYPE) return false;
+        if (!['ENCERRADA', 'PENDENTE_VALE', 'PENDENTE_SODEXO'].includes(b.closureStatus)) return false;
         if (from && b.date < from) return false;
         if (to && b.date > to) return false;
         return true;
@@ -3718,26 +3732,35 @@ function buildAderenciaBookHtml() {
         ? `Nota de Aderência: ${sodexoAdherenceScore(breakdown)}% — Total Geral ${breakdown.total} × Realizada ${breakdown.atendido} · Pendente Vale ${breakdown.pctPendenteVale}% (não desconta) · Pendente Sodexo ${breakdown.pctPendenteSodexo}% (${breakdown.total} atividade(s) no período)`
         : 'Nota de Aderência: sem atividades encerradas/pendentes no período';
 
+    const encerradaCount = itens.filter(b => b.closureStatus === 'ENCERRADA').length;
+    const pendenteCount = itens.length - encerradaCount;
+
     const header = `
         <div style="font-size:18px; font-weight:800; border-bottom:2px solid #000; padding-bottom:10px; margin-bottom:18px;">
             BOOK de Aderência — Limpeza Sodexo — ${escapeHtml(SITES[state.currentSite] || state.currentSite)}
             <small style="display:block; font-size:11px; font-weight:400; color:#444; margin-top:4px;">
                 ${escapeHtml(periodTxt)} — ${escapeHtml(notaTxt)}<br>
-                ${itens.length} bloqueio(s) encerrado(s) com evidência fotográfica — Gerado em ${new Date().toLocaleString('pt-BR')} por ${escapeHtml(activeProfile().user)} (${state.profileKey})
+                ${itens.length} bloqueio(s) no período — ${encerradaCount} encerrado(s) com evidência fotográfica, ${pendenteCount} pendente(s) —
+                Gerado em ${new Date().toLocaleString('pt-BR')} por ${escapeHtml(activeProfile().user)} (${state.profileKey})
             </small>
         </div>`;
 
     if (!itens.length) {
-        return header + `<div style="padding:20px; color:#444;">Nenhum bloqueio de Limpeza Sodexo encerrado no período selecionado.</div>`;
+        return header + `<div style="padding:20px; color:#444;">Nenhum bloqueio de Limpeza Sodexo encerrado ou pendente no período selecionado.</div>`;
     }
 
-    const cards = itens.map(b => `
+    const cards = itens.map(b => {
+        const badge = BOOK_STATUS_BADGE[b.closureStatus] || { bg: '#eee', fg: '#444', label: b.closureStatus };
+        return `
         <div style="border:1px solid #ccc; border-radius:8px; padding:16px; margin-bottom:16px; break-inside:avoid;">
-            <div style="font-weight:700; font-size:14px; margin-bottom:4px;">${escapeHtml(b.tag)} — ${escapeHtml(AREA_LABEL[b.area] || b.area)}</div>
+            <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:4px;">
+                <div style="font-weight:700; font-size:14px;">${escapeHtml(b.tag)} — ${escapeHtml(AREA_LABEL[b.area] || b.area)}</div>
+                <div style="font-size:10.5px; font-weight:700; padding:3px 8px; border-radius:10px; background:${badge.bg}; color:${badge.fg};">${escapeHtml(badge.label)}</div>
+            </div>
             <div style="font-size:12px; color:#444; margin-bottom:10px;">
                 ${formatDateBR(b.date)} · ${minutesToTime(b.startMin)}–${minutesToTime(b.endMin)} · OM ${escapeHtml(b.om || '—')} · Responsável: ${escapeHtml(b.operator)}
             </div>
-            <div style="font-size:12px; margin-bottom:10px;"><b>Observação de encerramento:</b> ${escapeHtml(b.closureReason || '—')}</div>
+            <div style="font-size:12px; margin-bottom:10px;"><b>Observação:</b> ${escapeHtml(b.closureReason || '—')}</div>
             <div style="display:flex; gap:12px;">
                 <div style="flex:1;">
                     <div style="font-size:11px; font-weight:600; margin-bottom:4px;">ANTES</div>
@@ -3749,7 +3772,8 @@ function buildAderenciaBookHtml() {
                 </div>
             </div>
         </div>
-    `).join('');
+    `;
+    }).join('');
 
     return header + cards;
 }
