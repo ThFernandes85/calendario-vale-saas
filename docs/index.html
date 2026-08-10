@@ -907,6 +907,7 @@ aside.collapsed .nav-badge { top: 2px; right: 2px; }
             <div style="margin-top:10px;">
                 <button class="btn-secondary" id="btn-print-book" style="width:100%;">Gerar BOOK de Aderência (PDF) — Limpeza Sodexo com fotos de Antes/Depois</button>
             </div>
+            <div id="book-cleanup-alert"></div>
         </div>
 
         <div class="kpi-grid" style="margin-bottom:18px;">
@@ -3447,6 +3448,7 @@ function renderCharts() {
     renderSodexoScore();
     renderClosedBookings();
     renderAderenciaHistoricoChart();
+    renderBookCleanupAlert();
     const activeLog = getFilteredAuditLog().filter(a => TYPE_STATUS[a.acao] !== undefined);
 
     // Indisponibilidade por manutenção é o indicador do PCM -- equipamento
@@ -3808,6 +3810,18 @@ function printAderenciaBook() {
     container.classList.add('view-active');
     document.body.classList.add('print-book-mode');
 
+    // Marca no histórico que o BOOK desse período foi extraído -- é essa
+    // marca (com pelo menos 1 dia de idade) que faz o alerta de limpeza de
+    // Storage aparecer depois, em renderBookCleanupAlert/findCleanablePeriods.
+    const { from: bookFrom, to: bookTo } = bookPeriodoSelecionado();
+    if (bookFrom && bookTo) {
+        addAuditEntry({
+            acao: 'BOOK de Aderência gerado',
+            justificativa: `Período ${formatDateBR(bookFrom)} a ${formatDateBR(bookTo)}`,
+            agendamentoData: bookTo
+        });
+    }
+
     // As fotos vêm do Storage (rede) -- sem esperar elas carregarem, o
     // window.print() dispara antes das imagens chegarem e o PDF sai com
     // espaços em branco no lugar das fotos. Só esperar o evento 'load' não
@@ -3836,6 +3850,124 @@ function printAderenciaBook() {
     });
 }
 document.getElementById('btn-print-book').addEventListener('click', printAderenciaBook);
+
+/* =========================================================
+   LIMPEZA DE STORAGE -- libera fotos de antes/depois de períodos de medição
+   já expirados (BOOK já extraído há pelo menos 1 dia), pra não acumular
+   Storage indefinidamente. Mantém sempre o período atual + 1 anterior
+   intactos; só o registro da OM (data, status, nota) permanece no
+   histórico -- é só a foto em si que sai do Storage. Nunca roda sozinha:
+   sempre aparece como alerta, com prévia e confirmação manual do Admin.
+   ========================================================= */
+const BOOK_CLEANUP_RETENTION_PERIODS = 2; // período atual + 1 anterior ficam sempre intactos
+
+function storagePathFromPublicUrl(url) {
+    if (!url) return null;
+    const marker = '/closure-photos/';
+    const idx = url.indexOf(marker);
+    return idx === -1 ? null : url.slice(idx + marker.length);
+}
+
+// Períodos padrão da Vale (21 a 20) mais antigos que a janela de retenção,
+// que já tiveram o BOOK extraído há 1+ dia e ainda têm foto pra liberar.
+function findCleanablePeriods() {
+    const results = [];
+    for (let monthsBack = BOOK_CLEANUP_RETENTION_PERIODS; monthsBack < BOOK_CLEANUP_RETENTION_PERIODS + 12; monthsBack++) {
+        const period = measurementPeriodOffset(monthsBack);
+        const bookEntry = state.auditLog.find(a => a.acao === 'BOOK de Aderência gerado' && a.agendamentoData === period.to);
+        if (!bookEntry) continue;
+        const generatedAt = new Date(bookEntry.dataHora);
+        if (Date.now() - generatedAt.getTime() < 24 * 60 * 60 * 1000) continue;
+        const affected = state.bookings.filter(b => b.date >= period.from && b.date <= period.to && (b.closurePhotoBefore || b.closurePhotoAfter));
+        if (!affected.length) continue;
+        results.push({ period, affected, generatedAt });
+    }
+    return results;
+}
+
+function renderBookCleanupAlert() {
+    const box = document.getElementById('book-cleanup-alert');
+    if (!box) return;
+    if (state.profileKey !== 'ADMIN') { box.innerHTML = ''; return; }
+    const cleanable = findCleanablePeriods();
+    box.innerHTML = cleanable.map(c => {
+        const photoCount = c.affected.reduce((n, b) => n + (b.closurePhotoBefore ? 1 : 0) + (b.closurePhotoAfter ? 1 : 0), 0);
+        const days = Math.floor((Date.now() - c.generatedAt.getTime()) / 86400000);
+        return `
+        <div style="margin-top:10px; padding:12px 14px; border-radius:8px; background:rgba(245,158,11,0.12); border:1px solid rgba(245,158,11,0.4); display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap;">
+            <div style="font-size:12.5px; color:var(--text-primary);">
+                &#128465;&#65039; O período de <b>${formatDateBR(c.period.from)} a ${formatDateBR(c.period.to)}</b> já teve o BOOK extraído há ${days} dia(s) —
+                ${photoCount} foto(s) em ${c.affected.length} bloqueio(s) podem ser liberadas do Storage.
+            </div>
+            <button class="btn-secondary" style="white-space:nowrap;" onclick="openBookCleanupModal('${c.period.to}')">Ver e Limpar</button>
+        </div>`;
+    }).join('');
+}
+
+function openBookCleanupModal(periodTo) {
+    if (state.profileKey !== 'ADMIN') { showAccessDenied('Apenas o Admin Master pode liberar fotos do Storage.'); return; }
+    const cleanable = findCleanablePeriods().find(c => c.period.to === periodTo);
+    if (!cleanable) { toast('Este período não está mais disponível para limpeza.', 'error'); return; }
+    const { period, affected } = cleanable;
+    openModal(`
+        <div class="modal-header"><h3>Liberar Fotos do Storage — ${formatDateBR(period.from)} a ${formatDateBR(period.to)}</h3><button class="modal-close" onclick="closeModal()">&times;</button></div>
+        <div class="modal-body">
+            <div class="access-denied-icon">&#128465;</div>
+            <div class="access-denied-text">
+                Esse período já teve o BOOK de Aderência extraído (há pelo menos 1 dia). Isso remove só as
+                <b>fotos de antes/depois</b> do Storage dos ${affected.length} bloqueio(s) abaixo — o registro da OM,
+                data, status e nota de aderência continuam intactos no histórico. Não pode ser desfeito.
+            </div>
+            <div class="m-field" style="margin-top:10px;">
+                <label>Bloqueios afetados</label>
+                <div style="max-height:220px; overflow-y:auto; border:1px solid var(--border-color); border-radius:8px; padding:8px; font-size:12.5px;">
+                    ${affected.map(b => `<div style="padding:4px 0; border-bottom:1px solid var(--border-color);"><b>${escapeHtml(b.tag)}</b> — OM ${escapeHtml(b.om || '—')} — ${formatDateBR(b.date)} — ${escapeHtml(b.type)}</div>`).join('')}
+                </div>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn-secondary" onclick="closeModal()">Voltar</button>
+            <button class="btn-danger" id="book-cleanup-confirm-btn" onclick="confirmBookCleanup('${period.to}')">Liberar ${affected.length} Foto(s) Definitivamente</button>
+        </div>
+    `);
+}
+
+async function confirmBookCleanup(periodTo) {
+    if (state.profileKey !== 'ADMIN') { showAccessDenied('Apenas o Admin Master pode liberar fotos do Storage.'); return; }
+    const cleanable = findCleanablePeriods().find(c => c.period.to === periodTo);
+    if (!cleanable) { toast('Este período não está mais disponível para limpeza.', 'error'); closeModal(); return; }
+    const { period, affected } = cleanable;
+
+    const btn = document.getElementById('book-cleanup-confirm-btn');
+    if (btn) { btn.disabled = true; btn.textContent = 'Liberando...'; }
+
+    // Sequencial, igual às outras rotinas em massa do app -- evita disparar
+    // dezenas de remoções em paralelo e mascarar falhas de rede/permissão.
+    let okCount = 0, failCount = 0;
+    for (const booking of affected) {
+        const paths = [booking.closurePhotoBefore, booking.closurePhotoAfter].map(storagePathFromPublicUrl).filter(Boolean);
+        if (paths.length) {
+            const { error: storageErr } = await sb.storage.from('closure-photos').remove(paths);
+            if (storageErr) { failCount++; continue; }
+        }
+        const { error } = await sb.from('bookings').update({ closure_photo_before: null, closure_photo_after: null }).eq('id', booking.id);
+        if (error) { failCount++; continue; }
+        booking.closurePhotoBefore = null;
+        booking.closurePhotoAfter = null;
+        okCount++;
+    }
+
+    await addAuditEntry({
+        acao: 'Fotos do Storage liberadas (período expirado)',
+        justificativa: `Período ${formatDateBR(period.from)} a ${formatDateBR(period.to)} -- ${okCount} bloqueio(s) tiveram fotos removidas${failCount ? `, ${failCount} falharam` : ''}`,
+        agendamentoData: period.to
+    });
+
+    closeModal();
+    if (failCount === 0) toast(`${okCount} bloqueio(s) tiveram as fotos liberadas do Storage.`, 'warn');
+    else toast(`${okCount} liberado(s), ${failCount} falharam -- tente de novo mais tarde.`, 'error');
+    renderCharts();
+}
 
 /* =========================================================
    IMPORTAÇÃO EM MASSA (Admin Master) -- planilha + fotos de uma vez,
