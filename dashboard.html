@@ -1290,10 +1290,32 @@ function mapAuditFromDb(row) {
     };
 }
 
+// O Supabase (PostgREST) limita quantas linhas uma única consulta devolve
+// (o padrão do projeto costuma ser 1000) -- com meses de bookings/auditoria
+// acumulados, um `select('*')` sem paginação corta silenciosamente o final
+// do resultado, sem erro nenhum, fazendo lançamentos recentes (ex: uma
+// importação em massa) sumirem do Calendário mesmo tendo sido gravados com
+// sucesso. Busca em blocos até a página vir mais curta que o tamanho pedido,
+// garantindo que TODAS as linhas do site cheguem, não importa quantas sejam.
+async function fetchAllRows(table, orderCol, ascending) {
+    const PAGE_SIZE = 1000;
+    let all = [];
+    let from = 0;
+    while (true) {
+        const { data, error } = await sb.from(table).select('*').eq('site_key', state.currentSite)
+            .order(orderCol, { ascending }).range(from, from + PAGE_SIZE - 1);
+        if (error) return { data: null, error };
+        all = all.concat(data || []);
+        if (!data || data.length < PAGE_SIZE) break;
+        from += PAGE_SIZE;
+    }
+    return { data: all, error: null };
+}
+
 async function loadPersisted() {
     const [{ data: bookings, error: bErr }, { data: audit, error: aErr }] = await Promise.all([
-        sb.from('bookings').select('*').eq('site_key', state.currentSite),
-        sb.from('audit_log').select('*').eq('site_key', state.currentSite).order('data_hora', { ascending: false })
+        fetchAllRows('bookings', 'date', true),
+        fetchAllRows('audit_log', 'data_hora', false)
     ]);
     if (bErr) { toast('Erro ao carregar agendamentos: ' + bErr.message, 'error'); state.bookings = []; }
     else state.bookings = (bookings || []).map(mapBookingFromDb);
