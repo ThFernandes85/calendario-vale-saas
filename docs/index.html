@@ -412,8 +412,14 @@ aside.collapsed .nav-badge { top: 2px; right: 2px; }
 
 .print-report-banner { display: none; }
 
+.book-preview-toolbar { display: none; }
+body.print-book-mode .book-preview-toolbar {
+    display: flex; align-items: center; gap: 10px; position: sticky; top: 0; z-index: 50;
+    padding: 12px 24px; background: var(--bg-secondary); border-bottom: 1px solid var(--border-color);
+}
+
 @media print {
-    aside, header, .filter-section, .agenda-toolbar, .audit-toolbar button, #btn-heatmap-print, #btn-print-full-report, #btn-print-book, #book-period-wrap, #toast-container { display: none !important; }
+    aside, header, .filter-section, .agenda-toolbar, .audit-toolbar button, #btn-heatmap-print, #btn-print-full-report, #btn-print-book, #book-period-wrap, #toast-container, .book-preview-toolbar { display: none !important; }
     /* Log de Auditoria nunca sai impresso/em PDF, venha o print de onde vier
        (botão dedicado, Relatório Completo, ou Ctrl+P direto na tela) -- ele
        já tem seu próprio "Exportar Excel" para consulta fora do app. */
@@ -905,7 +911,7 @@ aside.collapsed .nav-badge { top: 2px; right: 2px; }
                 <div style="font-size:11.5px; color:var(--text-secondary); max-width:260px;">Padrão: ciclo de medição da Vale (dia 21 a dia 20 do mês seguinte). Ajuste se precisar de outro período.</div>
             </div>
             <div style="margin-top:10px;">
-                <button class="btn-secondary" id="btn-print-book" style="width:100%;">Gerar BOOK de Aderência (PDF) — Limpeza Sodexo com fotos de Antes/Depois</button>
+                <button class="btn-secondary" id="btn-print-book" style="width:100%;">Visualizar BOOK de Aderência — Limpeza Sodexo com fotos de Antes/Depois</button>
             </div>
             <div id="book-cleanup-alert"></div>
         </div>
@@ -1043,7 +1049,12 @@ aside.collapsed .nav-badge { top: 2px; right: 2px; }
         </div>
     </div>
 
-    <!-- VIEW OCULTA: BOOK DE ADERÊNCIA (só aparece para impressão/PDF, sem item de navegação) -->
+    <!-- VIEW OCULTA: BOOK DE ADERÊNCIA (só aparece na prévia/impressão, sem item de navegação) -->
+    <div class="book-preview-toolbar">
+        <button class="btn-secondary" id="btn-book-back">&#8592; Voltar</button>
+        <div style="flex:1;"></div>
+        <button class="btn-primary" id="btn-book-print-now">Imprimir / Exportar PDF</button>
+    </div>
     <div class="content-container" id="view-book"></div>
 
     <!-- VIEW: USUÁRIOS & ACESSOS (somente Admin Master) -->
@@ -3802,17 +3813,38 @@ function buildAderenciaBookHtml() {
     return header + cards;
 }
 
-function printAderenciaBook() {
+// A montagem do BOOK (HTML + todas as fotos carregando do Storage) já
+// acontecia inteira antes de imprimir -- só não ficava visível na tela, ia
+// direto pro diálogo de impressão. Separar em prévia + exportar não pesa
+// mais nada: é o mesmo conteúdo, só que exibido antes de decidir imprimir.
+let bookPreviousView = null;
+
+function previewAderenciaBook() {
     if (!canExportReports()) { showAccessDenied('Perfil sem privilégios para extrair o BOOK de aderência.'); return; }
-    const previousView = document.querySelector('.content-container.view-active').id.replace('view-', '');
+    bookPreviousView = document.querySelector('.content-container.view-active').id.replace('view-', '');
     const container = document.getElementById('view-book');
     container.innerHTML = buildAderenciaBookHtml();
     container.classList.add('view-active');
     document.body.classList.add('print-book-mode');
+    window.scrollTo(0, 0);
+}
+document.getElementById('btn-print-book').addEventListener('click', previewAderenciaBook);
+
+function closeBookPreview() {
+    document.getElementById('view-book').classList.remove('view-active');
+    document.body.classList.remove('print-book-mode');
+    if (bookPreviousView) switchView(bookPreviousView);
+}
+document.getElementById('btn-book-back').addEventListener('click', closeBookPreview);
+
+function exportAderenciaBookPdf() {
+    const container = document.getElementById('view-book');
 
     // Marca no histórico que o BOOK desse período foi extraído -- é essa
     // marca (com pelo menos 1 dia de idade) que faz o alerta de limpeza de
     // Storage aparecer depois, em renderBookCleanupAlert/findCleanablePeriods.
+    // Só registra aqui (na exportação de verdade), não já na prévia -- só
+    // visualizar não deve contar como "já extraí e mandei pro cliente".
     const { from: bookFrom, to: bookTo } = bookPeriodoSelecionado();
     if (bookFrom && bookTo) {
         addAuditEntry({
@@ -3832,6 +3864,8 @@ function printAderenciaBook() {
     // ainda não pintadas no instante exato em que o print tirava o retrato
     // da página, saindo em branco mesmo sem erro nenhum. img.decode()
     // garante que a decodificação terminou de verdade antes de imprimir.
+    // Na prévia a maioria das fotos já teve tempo de carregar enquanto o
+    // usuário revisava a tela, então essa espera aqui costuma ser rápida.
     const imgs = Array.from(container.querySelectorAll('img'));
     const espera = imgs.map(img => new Promise(resolve => {
         const done = () => (img.decode ? img.decode().catch(() => {}) : Promise.resolve()).then(resolve);
@@ -3844,12 +3878,10 @@ function printAderenciaBook() {
 
     window.addEventListener('afterprint', function restoreAfterPrint() {
         window.removeEventListener('afterprint', restoreAfterPrint);
-        container.classList.remove('view-active');
-        document.body.classList.remove('print-book-mode');
-        switchView(previousView);
+        closeBookPreview();
     });
 }
-document.getElementById('btn-print-book').addEventListener('click', printAderenciaBook);
+document.getElementById('btn-book-print-now').addEventListener('click', exportAderenciaBookPdf);
 
 /* =========================================================
    LIMPEZA DE STORAGE -- libera fotos de antes/depois de períodos de medição
