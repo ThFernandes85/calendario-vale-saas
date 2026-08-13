@@ -1052,6 +1052,7 @@ body.print-book-mode .book-preview-toolbar {
     <!-- VIEW OCULTA: BOOK DE ADERÊNCIA (só aparece na prévia/impressão, sem item de navegação) -->
     <div class="book-preview-toolbar">
         <button class="btn-secondary" id="btn-book-back">&#8592; Voltar</button>
+        <div id="book-loading-progress" style="font-size:12.5px; color:var(--text-secondary); display:none;"></div>
         <div style="flex:1;"></div>
         <button class="btn-primary" id="btn-book-print-now">Imprimir / Exportar PDF</button>
     </div>
@@ -1904,13 +1905,47 @@ function openCloseBookingModal(id) {
     updateForm();
 }
 
+// Foto de celular direto da câmera costuma vir com vários MB -- sem
+// necessidade nenhuma pra uma evidência de antes/depois, e é isso que
+// enche o Storage rápido e deixa a prévia do BOOK lenta pra carregar.
+// Redimensiona pro maior lado caber em 1600px e reencoda como JPEG a 75%
+// de qualidade antes de subir -- ainda fica nítida o suficiente pra
+// conferência visual, só que com uma fração do tamanho. Qualquer falha
+// (formato exótico, sem suporte no navegador etc) sobe o arquivo original
+// em vez de travar o encerramento por causa da compressão.
+async function compressImageFile(file, maxDim, quality) {
+    if (!file.type || !file.type.startsWith('image/')) return file;
+    try {
+        const bitmap = await createImageBitmap(file);
+        let { width, height } = bitmap;
+        if (width <= maxDim && height <= maxDim) {
+            if (bitmap.close) bitmap.close();
+            return file;
+        }
+        const scale = maxDim / Math.max(width, height);
+        width = Math.round(width * scale);
+        height = Math.round(height * scale);
+        const canvas = document.createElement('canvas');
+        canvas.width = width; canvas.height = height;
+        canvas.getContext('2d').drawImage(bitmap, 0, 0, width, height);
+        if (bitmap.close) bitmap.close();
+        const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', quality));
+        if (!blob) return file;
+        const baseName = (file.name || 'foto').replace(/\.[^.]+$/, '');
+        return new File([blob], `${baseName}.jpg`, { type: 'image/jpeg' });
+    } catch (e) {
+        return file;
+    }
+}
+
 // `silent` é usado pela sincronização automática da fila offline -- se
 // ainda não voltou sinal de verdade, não faz sentido incomodar o
 // encarregado com um toast de erro a cada tentativa muda em segundo plano.
 async function uploadClosurePhoto(booking, file, tipo, silent) {
-    const ext = (file.name.split('.').pop() || 'jpg').toLowerCase();
+    const compressed = await compressImageFile(file, 1600, 0.75);
+    const ext = (compressed.name.split('.').pop() || 'jpg').toLowerCase();
     const path = `${state.currentSite}/${booking.id}/${tipo}-${Date.now()}.${ext}`;
-    const { error } = await sb.storage.from('closure-photos').upload(path, file, { upsert: true });
+    const { error } = await sb.storage.from('closure-photos').upload(path, compressed, { upsert: true });
     if (error) { if (!silent) toast(`Erro ao enviar foto (${tipo}): ` + error.message, 'error'); return null; }
     const { data } = sb.storage.from('closure-photos').getPublicUrl(path);
     return data.publicUrl;
@@ -3830,6 +3865,31 @@ function buildAderenciaBookHtml() {
 // mais nada: é o mesmo conteúdo, só que exibido antes de decidir imprimir.
 let bookPreviousView = null;
 
+// As fotos vêm do Storage (rede) -- só esperar o evento 'load' não basta
+// num BOOK com muitas fotos de uma vez: 'load' significa que o arquivo
+// chegou pela rede, não que o navegador já terminou de DECODIFICAR e
+// PINTAR ela na tela -- com dezenas/centenas de fotos decodificando ao
+// mesmo tempo, algumas ficavam prontas na rede mas ainda não pintadas no
+// instante exato em que o print tirava o retrato da página, saindo em
+// branco mesmo sem erro nenhum. img.decode() garante que a decodificação
+// terminou de verdade. onProgress(feitas, total) deixa a tela mostrar
+// "Carregando fotos... X/Y" em vez de parecer travada.
+function waitForBookImages(container, onProgress) {
+    const imgs = Array.from(container.querySelectorAll('img'));
+    let feitas = 0;
+    const total = imgs.length;
+    if (onProgress) onProgress(feitas, total);
+    if (!total) return Promise.resolve();
+    const espera = imgs.map(img => new Promise(resolve => {
+        const marcaFeita = () => { feitas++; if (onProgress) onProgress(feitas, total); resolve(); };
+        const done = () => (img.decode ? img.decode().catch(() => {}) : Promise.resolve()).then(marcaFeita);
+        if (img.complete) { done(); return; }
+        img.addEventListener('load', done, { once: true });
+        img.addEventListener('error', marcaFeita, { once: true });
+    }));
+    return Promise.all(espera);
+}
+
 function previewAderenciaBook() {
     if (!canExportReports()) { showAccessDenied('Perfil sem privilégios para extrair o BOOK de aderência.'); return; }
     bookPreviousView = document.querySelector('.content-container.view-active').id.replace('view-', '');
@@ -3838,6 +3898,13 @@ function previewAderenciaBook() {
     container.classList.add('view-active');
     document.body.classList.add('print-book-mode');
     window.scrollTo(0, 0);
+
+    const progressEl = document.getElementById('book-loading-progress');
+    waitForBookImages(container, (feitas, total) => {
+        if (!progressEl || !total) return;
+        if (feitas < total) { progressEl.style.display = 'block'; progressEl.textContent = `Carregando fotos... ${feitas}/${total}`; }
+        else progressEl.style.display = 'none';
+    });
 }
 document.getElementById('btn-print-book').addEventListener('click', previewAderenciaBook);
 
@@ -3865,27 +3932,9 @@ function exportAderenciaBookPdf() {
         });
     }
 
-    // As fotos vêm do Storage (rede) -- sem esperar elas carregarem, o
-    // window.print() dispara antes das imagens chegarem e o PDF sai com
-    // espaços em branco no lugar das fotos. Só esperar o evento 'load' não
-    // basta num BOOK com muitas fotos de uma vez: 'load' significa que o
-    // arquivo chegou pela rede, não que o navegador já terminou de
-    // DECODIFICAR e PINTAR ela na tela -- com dezenas/centenas de fotos
-    // decodificando ao mesmo tempo, algumas ficavam prontas na rede mas
-    // ainda não pintadas no instante exato em que o print tirava o retrato
-    // da página, saindo em branco mesmo sem erro nenhum. img.decode()
-    // garante que a decodificação terminou de verdade antes de imprimir.
     // Na prévia a maioria das fotos já teve tempo de carregar enquanto o
     // usuário revisava a tela, então essa espera aqui costuma ser rápida.
-    const imgs = Array.from(container.querySelectorAll('img'));
-    const espera = imgs.map(img => new Promise(resolve => {
-        const done = () => (img.decode ? img.decode().catch(() => {}) : Promise.resolve()).then(resolve);
-        if (img.complete) { done(); return; }
-        img.addEventListener('load', done, { once: true });
-        img.addEventListener('error', resolve, { once: true });
-    }));
-
-    Promise.all(espera).then(() => setTimeout(() => window.print(), 150));
+    waitForBookImages(container).then(() => setTimeout(() => window.print(), 150));
 
     window.addEventListener('afterprint', function restoreAfterPrint() {
         window.removeEventListener('afterprint', restoreAfterPrint);
