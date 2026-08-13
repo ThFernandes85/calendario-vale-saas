@@ -3880,13 +3880,21 @@ function waitForBookImages(container, onProgress) {
     const total = imgs.length;
     if (onProgress) onProgress(feitas, total);
     if (!total) return Promise.resolve();
-    const espera = imgs.map(img => new Promise(resolve => {
-        const marcaFeita = () => { feitas++; if (onProgress) onProgress(feitas, total); resolve(); };
-        const done = () => (img.decode ? img.decode().catch(() => {}) : Promise.resolve()).then(marcaFeita);
-        if (img.complete) { done(); return; }
-        img.addEventListener('load', done, { once: true });
-        img.addEventListener('error', marcaFeita, { once: true });
-    }));
+    const espera = imgs.map(img => {
+        const carregada = new Promise(resolve => {
+            const marcaFeita = () => { feitas++; if (onProgress) onProgress(feitas, total); resolve(); };
+            const done = () => (img.decode ? img.decode().catch(() => {}) : Promise.resolve()).then(marcaFeita);
+            if (img.complete) { done(); return; }
+            img.addEventListener('load', done, { once: true });
+            img.addEventListener('error', marcaFeita, { once: true });
+        });
+        // Uma foto travada (rede instável, link antigo quebrado, CORS) não
+        // pode prender o BOOK inteiro esperando pra sempre -- depois de 10s
+        // essa imagem em particular é dada como resolvida do jeito que
+        // estiver, e o restante segue normalmente.
+        const timeout = new Promise(resolve => setTimeout(resolve, 10000));
+        return Promise.race([carregada, timeout]);
+    });
     return Promise.all(espera);
 }
 

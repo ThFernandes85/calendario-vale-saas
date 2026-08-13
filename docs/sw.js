@@ -12,6 +12,13 @@ self.addEventListener('activate', (event) => {
     event.waitUntil(self.clients.claim());
 });
 
-self.addEventListener('fetch', (event) => {
-    event.respondWith(fetch(event.request));
-});
+// Só precisa existir esse listener pro Chrome/Android considerar o site
+// instalável -- NUNCA chama respondWith(), pra não interceptar nem
+// arriscar quebrar nenhum request de verdade. O "Failed to fetch" que
+// vinha acontecendo era exatamente isso: re-fazer o fetch aqui dentro
+// falhava pra alguns tipos de requisição (rede instável, certas
+// requisições cross-origin) e derrubava a requisição inteira, inclusive
+// a própria navegação da página -- explicando telas que pareciam travadas
+// sem erro nenhum visível. Sem respondWith, o navegador cuida do fetch
+// normal, como se o service worker nem existisse pra esse request.
+self.addEventListener('fetch', () => {});
