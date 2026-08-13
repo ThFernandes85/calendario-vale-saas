@@ -3273,9 +3273,20 @@ document.getElementById('btn-clear-filter').addEventListener('click', () => {
 // únicas "conclusões finais" de um bloqueio de Limpeza Sodexo). REPROGRAMADA
 // fica de fora -- o serviço só vai ganhar um desfecho definitivo quando o
 // novo agendamento, criado à parte, também for encerrado.
+// Sem filtro nenhum aplicado, a nota/total geral tem que refletir o período
+// de medição ATUAL (21 a 20) que está em andamento -- nunca o histórico
+// inteiro desde o início do app. Só puxa OM de fora do período atual quando
+// o usuário aplica um filtro de data explícito em "Período — De/Até".
 function sodexoCleaningBreakdown(periodo) {
-    const from = periodo ? periodo.from : state.reportFilter.from;
-    const to = periodo ? periodo.to : state.reportFilter.to;
+    let from, to;
+    if (periodo) {
+        from = periodo.from; to = periodo.to;
+    } else if (state.reportFilter.from || state.reportFilter.to) {
+        from = state.reportFilter.from; to = state.reportFilter.to;
+    } else {
+        const atual = periodoMedicaoAtual();
+        from = atual.from; to = atual.to;
+    }
     const fechados = state.bookings.filter(b => {
         if (b.type !== SODEXO_CLEANING_TYPE) return false;
         if (!['ENCERRADA', 'PENDENTE_VALE', 'PENDENTE_SODEXO'].includes(b.closureStatus)) return false;
