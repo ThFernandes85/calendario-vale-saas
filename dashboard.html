@@ -3845,11 +3845,11 @@ function buildAderenciaBookHtml() {
             <div style="display:flex; gap:12px;">
                 <div style="flex:1;">
                     <div style="font-size:11px; font-weight:600; margin-bottom:4px;">ANTES</div>
-                    ${b.closurePhotoBefore ? `<img src="${b.closurePhotoBefore}" style="width:280px; height:280px; object-fit:cover; border-radius:6px; border:1px solid #ddd;" onerror="handleBookImgFail(this)" onload="if(this.naturalWidth===0) handleBookImgFail(this)">` : `<div style="font-size:11px; color:#999;">Sem foto</div>`}
+                    ${b.closurePhotoBefore ? `<img src="${b.closurePhotoBefore}" loading="lazy" style="width:280px; height:280px; object-fit:cover; border-radius:6px; border:1px solid #ddd;" onerror="handleBookImgFail(this)" onload="if(this.naturalWidth===0) handleBookImgFail(this)">` : `<div style="font-size:11px; color:#999;">Sem foto</div>`}
                 </div>
                 <div style="flex:1;">
                     <div style="font-size:11px; font-weight:600; margin-bottom:4px;">DEPOIS</div>
-                    ${b.closurePhotoAfter ? `<img src="${b.closurePhotoAfter}" style="width:280px; height:280px; object-fit:cover; border-radius:6px; border:1px solid #ddd;" onerror="handleBookImgFail(this)" onload="if(this.naturalWidth===0) handleBookImgFail(this)">` : `<div style="font-size:11px; color:#999;">Sem foto</div>`}
+                    ${b.closurePhotoAfter ? `<img src="${b.closurePhotoAfter}" loading="lazy" style="width:280px; height:280px; object-fit:cover; border-radius:6px; border:1px solid #ddd;" onerror="handleBookImgFail(this)" onload="if(this.naturalWidth===0) handleBookImgFail(this)">` : `<div style="font-size:11px; color:#999;">Sem foto</div>`}
                 </div>
             </div>
         </div>
@@ -3906,13 +3906,11 @@ function previewAderenciaBook() {
     container.classList.add('view-active');
     document.body.classList.add('print-book-mode');
     window.scrollTo(0, 0);
-
-    const progressEl = document.getElementById('book-loading-progress');
-    waitForBookImages(container, (feitas, total) => {
-        if (!progressEl || !total) return;
-        if (feitas < total) { progressEl.style.display = 'block'; progressEl.textContent = `Carregando fotos... ${feitas}/${total}`; }
-        else progressEl.style.display = 'none';
-    });
+    // As fotos usam loading="lazy" (buildAderenciaBookHtml) -- só baixam
+    // conforme a tela rola até elas, em vez de todas de uma vez. Num
+    // período grande (centenas de atividades), isso é a diferença entre a
+    // prévia abrir na hora ou travar o navegador tentando baixar tudo de
+    // uma vez só pra abrir a tela.
 }
 document.getElementById('btn-print-book').addEventListener('click', previewAderenciaBook);
 
@@ -3940,9 +3938,19 @@ function exportAderenciaBookPdf() {
         });
     }
 
-    // Na prévia a maioria das fotos já teve tempo de carregar enquanto o
-    // usuário revisava a tela, então essa espera aqui costuma ser rápida.
-    waitForBookImages(container).then(() => setTimeout(() => window.print(), 150));
+    // As fotos são "lazy" na prévia (só carregam quando rola até elas) --
+    // pra não sair faltando foto no PDF de quem nunca rolou a tela inteira,
+    // força todas a carregar de vez antes de esperar/imprimir. É só aqui
+    // (não mais na abertura da prévia) que faz sentido mostrar o progresso
+    // "Carregando fotos... X/Y" -- é o único momento em que o app realmente
+    // tenta baixar tudo de uma vez.
+    container.querySelectorAll('img[loading="lazy"]').forEach(img => { img.loading = 'eager'; });
+    const progressEl = document.getElementById('book-loading-progress');
+    waitForBookImages(container, (feitas, total) => {
+        if (!progressEl || !total) return;
+        if (feitas < total) { progressEl.style.display = 'block'; progressEl.textContent = `Carregando fotos... ${feitas}/${total}`; }
+        else progressEl.style.display = 'none';
+    }).then(() => setTimeout(() => window.print(), 150));
 
     window.addEventListener('afterprint', function restoreAfterPrint() {
         window.removeEventListener('afterprint', restoreAfterPrint);
