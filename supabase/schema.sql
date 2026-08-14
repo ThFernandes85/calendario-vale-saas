@@ -145,11 +145,12 @@ begin
 end $$;
 
 -- ---------- COLLABORATORS (quadro de colaboradores do S11D) ----------
--- Cadastro simples por site (nome + cargo): o Encarregado escolhe quem
--- executou cada limpeza ao encerrar no Mobile. As colunas novas em
--- `bookings` guardam nome/cargo DENORMALIZADOS (copiados na hora do
+-- Cadastro simples por site (nome + cargo): o Encarregado marca quem
+-- executou cada limpeza ao encerrar no Mobile -- pode ser mais de um (áreas
+-- maiores têm 3+ executantes). A coluna nova em `bookings` guarda a lista
+-- DENORMALIZADA ([{"name":...,"role":...}, ...], copiada na hora do
 -- encerramento, como já acontece com operator_label) -- assim o histórico
--- não muda se o colaborador for depois renomeado ou excluído do cadastro.
+-- não muda se algum colaborador for depois renomeado ou excluído do cadastro.
 create table if not exists public.collaborators (
   id uuid primary key default gen_random_uuid(),
   site_key text not null references public.sites(key) on delete cascade,
@@ -157,8 +158,11 @@ create table if not exists public.collaborators (
   role text not null,
   created_at timestamptz default now()
 );
-alter table public.bookings add column if not exists collaborator_name text;
-alter table public.bookings add column if not exists collaborator_role text;
+-- collaborator_name/collaborator_role (colunas singulares antigas) foram
+-- substituídas por `collaborators` (lista) antes de irem pra produção.
+alter table public.bookings drop column if exists collaborator_name;
+alter table public.bookings drop column if exists collaborator_role;
+alter table public.bookings add column if not exists collaborators jsonb not null default '[]'::jsonb;
 
 -- ---------- AUDIT LOG ----------
 create table if not exists public.audit_log (

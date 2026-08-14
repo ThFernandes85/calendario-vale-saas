@@ -1504,7 +1504,7 @@ function mapBookingFromDb(row) {
         closurePhotoBefore: row.closure_photo_before, closurePhotoAfter: row.closure_photo_after,
         closurePhotosExtra: row.closure_photos_extra || [],
         valeDecisionReason: row.vale_decision_reason, valeDecidedAt: row.vale_decided_at,
-        collaboratorName: row.collaborator_name, collaboratorRole: row.collaborator_role
+        collaborators: row.collaborators || []
     };
 }
 function mapAuditFromDb(row) {
@@ -2385,17 +2385,19 @@ function validateClosureForm(booking) {
     const dateStr = dateEl ? dateEl.value : booking.date;
     if (dateEl && !dateStr) return { ok: false, message: 'Informe a data do serviço.' };
 
-    // O seletor de colaborador só existe no formulário mobile do S11D (ver
-    // renderMobileCloseForm) -- no desktop e nos demais sites o campo nem
-    // é renderizado, então a validação simplesmente não se aplica ali.
-    let collaboratorName = null, collaboratorRole = null;
-    const collabEl = document.getElementById('close-collaborator');
-    if (collabEl) {
-        const collabId = collabEl.value;
-        if (!collabId) return { ok: false, message: 'Selecione o colaborador que executou a limpeza.' };
-        const collab = COLLABORATORS.find(c => c.id === collabId);
-        collaboratorName = collab ? collab.name : null;
-        collaboratorRole = collab ? collab.role : null;
+    // Os checkboxes de colaborador só existem no formulário mobile do S11D
+    // (ver renderMobileCloseForm) -- no desktop e nos demais sites a lista
+    // vem vazia, então a validação simplesmente não se aplica ali. Aceita
+    // mais de um marcado -- áreas maiores às vezes têm 3+ executantes.
+    let collaborators = [];
+    const collabCheckboxes = document.querySelectorAll('.close-collab-checkbox');
+    if (collabCheckboxes.length) {
+        const checked = Array.from(collabCheckboxes).filter(cb => cb.checked);
+        if (!checked.length) return { ok: false, message: 'Selecione ao menos um colaborador que executou a limpeza.' };
+        collaborators = checked.map(cb => {
+            const c = COLLABORATORS.find(x => x.id === cb.value);
+            return c ? { name: c.name, role: c.role } : null;
+        }).filter(Boolean);
     }
 
     // Uma OM só pode ser encerrada uma vez -- se esse número já aparece em
@@ -2429,7 +2431,7 @@ function validateClosureForm(booking) {
         return { ok: false, message: 'Uma das fotos veio vazia/corrompida -- tire a foto novamente antes de encerrar.' };
     }
 
-    return { ok: true, outcome, reason, dateStr, photos, collaboratorName, collaboratorRole };
+    return { ok: true, outcome, reason, dateStr, photos, collaborators };
 }
 
 async function confirmCloseBooking(id) {
@@ -2442,7 +2444,7 @@ async function confirmCloseBooking(id) {
         toast(v.message, 'error');
         return v.duplicateOm ? 'duplicate_om' : undefined;
     }
-    const { outcome, reason, dateStr, photos, collaboratorName, collaboratorRole } = v;
+    const { outcome, reason, dateStr, photos, collaborators } = v;
 
     const confirmBtn = document.querySelector('#modal-box .modal-footer .btn-primary') || document.getElementById('mobile-close-submit');
     if (confirmBtn) { confirmBtn.disabled = true; confirmBtn.textContent = 'Enviando...'; }
@@ -2459,7 +2461,7 @@ async function confirmCloseBooking(id) {
     const { data, error } = await sb.from('bookings').update({
         date: dateStr, closure_status: closureStatus, closure_reason: reason, closed_at: closedAt,
         closure_photo_before: photoBeforeUrl, closure_photo_after: photoAfterUrl, closure_photos_extra: photosExtra,
-        collaborator_name: collaboratorName, collaborator_role: collaboratorRole,
+        collaborators: collaborators,
         closed_by: (state.currentUser && state.profileKey !== 'VISITANTE') ? state.currentUser.id : null
     }).eq('id', id).select();
     if (error) {
@@ -2476,7 +2478,7 @@ async function confirmCloseBooking(id) {
     booking.date = dateStr;
     booking.closureStatus = closureStatus; booking.closureReason = reason; booking.closedAt = closedAt;
     booking.closurePhotoBefore = photoBeforeUrl; booking.closurePhotoAfter = photoAfterUrl; booking.closurePhotosExtra = photosExtra;
-    booking.collaboratorName = collaboratorName; booking.collaboratorRole = collaboratorRole;
+    booking.collaborators = collaborators;
     booking.pendingOfflineSync = false;
 
     const outcomeLabel = closureOutcomesFor(booking).find(o => o.value === outcome).label;
@@ -2602,10 +2604,10 @@ async function queueClosureOffline(booking) {
         toast(v.message, 'error');
         return;
     }
-    const { outcome, reason, dateStr, photos, collaboratorName, collaboratorRole } = v;
+    const { outcome, reason, dateStr, photos, collaborators } = v;
     const record = {
         id: 'offline_' + booking.id + '_' + Date.now(), kind: 'close',
-        bookingId: booking.id, outcome, reason, dateStr, photos, collaboratorName, collaboratorRole,
+        bookingId: booking.id, outcome, reason, dateStr, photos, collaborators,
         createdAt: Date.now(),
     };
     await offlineQueueAdd(record);
@@ -2706,7 +2708,7 @@ async function trySyncOfflineQueue() {
             const { data, error } = await sb.from('bookings').update({
                 date: record.dateStr, closure_status: closureStatus, closure_reason: record.reason, closed_at: closedAt,
                 closure_photo_before: photoBeforeUrl, closure_photo_after: photoAfterUrl, closure_photos_extra: photosExtra,
-                collaborator_name: record.collaboratorName || null, collaborator_role: record.collaboratorRole || null,
+                collaborators: record.collaborators || [],
                 closed_by: (state.currentUser && state.profileKey !== 'VISITANTE') ? state.currentUser.id : null
             }).eq('id', booking.id).select();
             if (error || !data || data.length === 0) break;
@@ -2714,7 +2716,7 @@ async function trySyncOfflineQueue() {
             booking.date = record.dateStr;
             booking.closureStatus = closureStatus; booking.closureReason = record.reason; booking.closedAt = closedAt;
             booking.closurePhotoBefore = photoBeforeUrl; booking.closurePhotoAfter = photoAfterUrl; booking.closurePhotosExtra = photosExtra;
-            booking.collaboratorName = record.collaboratorName || null; booking.collaboratorRole = record.collaboratorRole || null;
+            booking.collaborators = record.collaborators || [];
             booking.pendingOfflineSync = false;
 
             const outcomeLabel = closureOutcomesFor(booking).find(o => o.value === record.outcome).label;
@@ -3017,11 +3019,15 @@ function renderMobileCloseForm(booking) {
             </div>
             ${isClientApprovalSite() ? `
             <div class="m-field">
-                <label>Colaborador Executante *</label>
-                <select id="close-collaborator">
-                    <option value="">Selecione...</option>
-                    ${COLLABORATORS.map(c => `<option value="${escapeHtml(c.id)}">${escapeHtml(c.name)} — ${escapeHtml(c.role)}</option>`).join('')}
-                </select>
+                <label>Colaboradores Executantes * <span style="font-weight:400; color:var(--text-secondary);">(marque todos que fizeram o serviço)</span></label>
+                <div style="display:flex; flex-direction:column; gap:6px; max-height:220px; overflow-y:auto; border:1px solid var(--border-color); border-radius:8px; padding:10px;">
+                    ${COLLABORATORS.map(c => `
+                        <label class="m-checkbox">
+                            <input type="checkbox" class="close-collab-checkbox" value="${escapeHtml(c.id)}" style="width:auto;">
+                            ${escapeHtml(c.name)} — ${escapeHtml(c.role)}
+                        </label>
+                    `).join('')}
+                </div>
                 ${!COLLABORATORS.length ? `<div style="font-size:11px; color:var(--text-secondary); margin-top:4px;">Nenhum colaborador cadastrado ainda -- peça ao Admin ou Técnico de Planejamento pra cadastrar em Ativos.</div>` : ''}
             </div>` : ''}
             <div class="m-field">
@@ -4598,11 +4604,14 @@ document.getElementById('btn-vale-value-clear').addEventListener('click', () => 
     renderValeApprovalsValueCard();
 });
 
-// " · Executado por: Nome (Cargo)" -- só aparece quando o encarregado
-// escolheu o colaborador no encerramento mobile (ver renderMobileCloseForm);
-// bloqueios antigos, de antes desta função existir, ficam sem essa parte.
+// " · Executado por: Nome (Cargo), Nome2 (Cargo2)..." -- só aparece quando o
+// encarregado marcou colaborador(es) no encerramento mobile (ver
+// renderMobileCloseForm); bloqueios antigos, de antes desta função existir,
+// ficam sem essa parte. Aceita mais de um -- áreas maiores têm 3+ executantes.
 function valeCollaboratorLine(booking) {
-    return booking.collaboratorName ? ` · Executado por: ${escapeHtml(booking.collaboratorName)} (${escapeHtml(booking.collaboratorRole || '—')})` : '';
+    if (!booking.collaborators || !booking.collaborators.length) return '';
+    const nomes = booking.collaborators.map(c => `${escapeHtml(c.name)} (${escapeHtml(c.role || '—')})`).join(', ');
+    return ` · Executado por: ${nomes}`;
 }
 
 function renderValeApprovals() {
