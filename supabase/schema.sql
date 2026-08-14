@@ -144,6 +144,22 @@ begin
     ));
 end $$;
 
+-- ---------- COLLABORATORS (quadro de colaboradores do S11D) ----------
+-- Cadastro simples por site (nome + cargo): o Encarregado escolhe quem
+-- executou cada limpeza ao encerrar no Mobile. As colunas novas em
+-- `bookings` guardam nome/cargo DENORMALIZADOS (copiados na hora do
+-- encerramento, como já acontece com operator_label) -- assim o histórico
+-- não muda se o colaborador for depois renomeado ou excluído do cadastro.
+create table if not exists public.collaborators (
+  id uuid primary key default gen_random_uuid(),
+  site_key text not null references public.sites(key) on delete cascade,
+  name text not null,
+  role text not null,
+  created_at timestamptz default now()
+);
+alter table public.bookings add column if not exists collaborator_name text;
+alter table public.bookings add column if not exists collaborator_role text;
+
 -- ---------- AUDIT LOG ----------
 create table if not exists public.audit_log (
   id uuid primary key default gen_random_uuid(),
@@ -199,6 +215,7 @@ $$;
 alter table public.sites enable row level security;
 alter table public.areas enable row level security;
 alter table public.equipment enable row level security;
+alter table public.collaborators enable row level security;
 alter table public.profiles enable row level security;
 alter table public.profile_sites enable row level security;
 alter table public.bookings enable row level security;
@@ -234,6 +251,15 @@ create policy "equipment_select" on public.equipment for select
   using (public.has_site_access(site_key));
 drop policy if exists "equipment_admin_write" on public.equipment;
 create policy "equipment_admin_write" on public.equipment for all
+  using (public.is_admin() or (public.current_role_key() = 'TECNICO_PLANEJAMENTO' and public.has_site_access(site_key)))
+  with check (public.is_admin() or (public.current_role_key() = 'TECNICO_PLANEJAMENTO' and public.has_site_access(site_key)));
+
+-- COLLABORATORS (quadro de colaboradores do S11D)
+drop policy if exists "collaborators_select" on public.collaborators;
+create policy "collaborators_select" on public.collaborators for select
+  using (public.has_site_access(site_key));
+drop policy if exists "collaborators_admin_write" on public.collaborators;
+create policy "collaborators_admin_write" on public.collaborators for all
   using (public.is_admin() or (public.current_role_key() = 'TECNICO_PLANEJAMENTO' and public.has_site_access(site_key)))
   with check (public.is_admin() or (public.current_role_key() = 'TECNICO_PLANEJAMENTO' and public.has_site_access(site_key)));
 

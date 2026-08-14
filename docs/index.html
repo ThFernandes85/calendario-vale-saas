@@ -161,6 +161,8 @@ header {
 #closed-bookings-section.closed-bookings-collapsed #closed-bookings-content { display: none; }
 #equip-value-section.equip-value-collapsed .profile-toggle-btn svg { transform: rotate(-90deg); }
 #equip-value-section.equip-value-collapsed #equip-value-content { display: none; }
+#collab-mgmt-section.collab-mgmt-collapsed .profile-toggle-btn svg { transform: rotate(-90deg); }
+#collab-mgmt-section.collab-mgmt-collapsed #collab-mgmt-content { display: none; }
 
 .btn-area-filter {
     background-color: #1c2533; border: 1px solid var(--border-color); color: var(--text-primary);
@@ -859,6 +861,35 @@ body.book-preview-mode .book-preview-toolbar {
             </div>
         </div>
 
+        <div class="card-section" id="collab-mgmt-section" style="display:none;">
+            <div class="filter-title-row">
+                <div class="filter-title" style="margin-bottom:0;">Colaboradores (Quadro de Limpeza)</div>
+                <button type="button" id="btn-toggle-collab-mgmt" class="profile-toggle-btn" title="Minimizar/Expandir">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
+                </button>
+            </div>
+            <div id="collab-mgmt-content">
+                <p style="color: var(--text-secondary); font-size: 12.5px; margin-top:8px;">Cadastro de colaboradores que executam as limpezas -- o Encarregado escolhe quem fez o serviço ao encerrar no Mobile.</p>
+                <div class="agenda-toolbar">
+                    <div class="agenda-field">
+                        <label>Nome do Colaborador</label>
+                        <input type="text" id="new-collab-name" placeholder="ex: João da Silva" style="min-width:180px;">
+                    </div>
+                    <div class="agenda-field">
+                        <label>Cargo</label>
+                        <input type="text" id="new-collab-role" placeholder="ex: Auxiliar de Limpeza" style="min-width:160px;">
+                    </div>
+                    <button class="btn-primary" id="btn-add-collab" style="align-self:flex-end;">+ Adicionar Colaborador</button>
+                </div>
+                <div class="audit-table-wrap" style="margin-top:10px;">
+                    <table class="audit-table">
+                        <thead><tr><th>Nome</th><th>Cargo</th><th>Ações</th></tr></thead>
+                        <tbody id="collab-tbody"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
         <div class="equip-grid-section">
             <div class="section-header-box">
                 <div class="box-title" id="grid-title">Equipamentos da Área: TOD</div>
@@ -1285,6 +1316,10 @@ function equipValorCalculado(tag) {
     const m = EQUIP_META[tag];
     return (m && m.m2 != null && m.valorM2 != null) ? m.m2 * m.valorM2 : null;
 }
+// Quadro de colaboradores (nome + cargo) por site -- usado só no S11D pro
+// Encarregado escolher quem executou cada limpeza ao encerrar no Mobile.
+// { id, name, role } carregado em loadSiteDatabase().
+const COLLABORATORS = [];
 
 /* =========================================================
    MATRIZ DE PERMISSÕES (RBAC)
@@ -1468,7 +1503,8 @@ function mapBookingFromDb(row) {
         closureStatus: row.closure_status, closureReason: row.closure_reason, closedAt: row.closed_at,
         closurePhotoBefore: row.closure_photo_before, closurePhotoAfter: row.closure_photo_after,
         closurePhotosExtra: row.closure_photos_extra || [],
-        valeDecisionReason: row.vale_decision_reason, valeDecidedAt: row.vale_decided_at
+        valeDecisionReason: row.vale_decision_reason, valeDecidedAt: row.vale_decided_at,
+        collaboratorName: row.collaborator_name, collaboratorRole: row.collaborator_role
     };
 }
 function mapAuditFromDb(row) {
@@ -2349,6 +2385,19 @@ function validateClosureForm(booking) {
     const dateStr = dateEl ? dateEl.value : booking.date;
     if (dateEl && !dateStr) return { ok: false, message: 'Informe a data do serviço.' };
 
+    // O seletor de colaborador só existe no formulário mobile do S11D (ver
+    // renderMobileCloseForm) -- no desktop e nos demais sites o campo nem
+    // é renderizado, então a validação simplesmente não se aplica ali.
+    let collaboratorName = null, collaboratorRole = null;
+    const collabEl = document.getElementById('close-collaborator');
+    if (collabEl) {
+        const collabId = collabEl.value;
+        if (!collabId) return { ok: false, message: 'Selecione o colaborador que executou a limpeza.' };
+        const collab = COLLABORATORS.find(c => c.id === collabId);
+        collaboratorName = collab ? collab.name : null;
+        collaboratorRole = collab ? collab.role : null;
+    }
+
     // Uma OM só pode ser encerrada uma vez -- se esse número já aparece em
     // OUTRO lançamento que já foi Encerrado, é sinal de duplicidade (OM
     // digitada de novo por engano) e não deixa contar duas vezes na nota.
@@ -2380,7 +2429,7 @@ function validateClosureForm(booking) {
         return { ok: false, message: 'Uma das fotos veio vazia/corrompida -- tire a foto novamente antes de encerrar.' };
     }
 
-    return { ok: true, outcome, reason, dateStr, photos };
+    return { ok: true, outcome, reason, dateStr, photos, collaboratorName, collaboratorRole };
 }
 
 async function confirmCloseBooking(id) {
@@ -2393,7 +2442,7 @@ async function confirmCloseBooking(id) {
         toast(v.message, 'error');
         return v.duplicateOm ? 'duplicate_om' : undefined;
     }
-    const { outcome, reason, dateStr, photos } = v;
+    const { outcome, reason, dateStr, photos, collaboratorName, collaboratorRole } = v;
 
     const confirmBtn = document.querySelector('#modal-box .modal-footer .btn-primary') || document.getElementById('mobile-close-submit');
     if (confirmBtn) { confirmBtn.disabled = true; confirmBtn.textContent = 'Enviando...'; }
@@ -2410,6 +2459,7 @@ async function confirmCloseBooking(id) {
     const { data, error } = await sb.from('bookings').update({
         date: dateStr, closure_status: closureStatus, closure_reason: reason, closed_at: closedAt,
         closure_photo_before: photoBeforeUrl, closure_photo_after: photoAfterUrl, closure_photos_extra: photosExtra,
+        collaborator_name: collaboratorName, collaborator_role: collaboratorRole,
         closed_by: (state.currentUser && state.profileKey !== 'VISITANTE') ? state.currentUser.id : null
     }).eq('id', id).select();
     if (error) {
@@ -2426,6 +2476,7 @@ async function confirmCloseBooking(id) {
     booking.date = dateStr;
     booking.closureStatus = closureStatus; booking.closureReason = reason; booking.closedAt = closedAt;
     booking.closurePhotoBefore = photoBeforeUrl; booking.closurePhotoAfter = photoAfterUrl; booking.closurePhotosExtra = photosExtra;
+    booking.collaboratorName = collaboratorName; booking.collaboratorRole = collaboratorRole;
     booking.pendingOfflineSync = false;
 
     const outcomeLabel = closureOutcomesFor(booking).find(o => o.value === outcome).label;
@@ -2551,10 +2602,10 @@ async function queueClosureOffline(booking) {
         toast(v.message, 'error');
         return;
     }
-    const { outcome, reason, dateStr, photos } = v;
+    const { outcome, reason, dateStr, photos, collaboratorName, collaboratorRole } = v;
     const record = {
         id: 'offline_' + booking.id + '_' + Date.now(), kind: 'close',
-        bookingId: booking.id, outcome, reason, dateStr, photos,
+        bookingId: booking.id, outcome, reason, dateStr, photos, collaboratorName, collaboratorRole,
         createdAt: Date.now(),
     };
     await offlineQueueAdd(record);
@@ -2655,6 +2706,7 @@ async function trySyncOfflineQueue() {
             const { data, error } = await sb.from('bookings').update({
                 date: record.dateStr, closure_status: closureStatus, closure_reason: record.reason, closed_at: closedAt,
                 closure_photo_before: photoBeforeUrl, closure_photo_after: photoAfterUrl, closure_photos_extra: photosExtra,
+                collaborator_name: record.collaboratorName || null, collaborator_role: record.collaboratorRole || null,
                 closed_by: (state.currentUser && state.profileKey !== 'VISITANTE') ? state.currentUser.id : null
             }).eq('id', booking.id).select();
             if (error || !data || data.length === 0) break;
@@ -2662,6 +2714,7 @@ async function trySyncOfflineQueue() {
             booking.date = record.dateStr;
             booking.closureStatus = closureStatus; booking.closureReason = record.reason; booking.closedAt = closedAt;
             booking.closurePhotoBefore = photoBeforeUrl; booking.closurePhotoAfter = photoAfterUrl; booking.closurePhotosExtra = photosExtra;
+            booking.collaboratorName = record.collaboratorName || null; booking.collaboratorRole = record.collaboratorRole || null;
             booking.pendingOfflineSync = false;
 
             const outcomeLabel = closureOutcomesFor(booking).find(o => o.value === record.outcome).label;
@@ -2962,6 +3015,15 @@ function renderMobileCloseForm(booking) {
                 <input type="date" id="close-date" value="${booking.date}" max="${todayStr()}">
                 <div style="font-size:11px; color:var(--text-secondary); margin-top:4px;">Errou a data ao lançar? Corrija aqui antes de encerrar.</div>
             </div>
+            ${isClientApprovalSite() ? `
+            <div class="m-field">
+                <label>Colaborador Executante *</label>
+                <select id="close-collaborator">
+                    <option value="">Selecione...</option>
+                    ${COLLABORATORS.map(c => `<option value="${escapeHtml(c.id)}">${escapeHtml(c.name)} — ${escapeHtml(c.role)}</option>`).join('')}
+                </select>
+                ${!COLLABORATORS.length ? `<div style="font-size:11px; color:var(--text-secondary); margin-top:4px;">Nenhum colaborador cadastrado ainda -- peça ao Admin ou Técnico de Planejamento pra cadastrar em Ativos.</div>` : ''}
+            </div>` : ''}
             <div class="m-field">
                 <label>Desfecho *</label>
                 <select id="close-outcome">${outcomes.map(o => `<option value="${o.value}">${o.label}</option>`).join('')}</select>
@@ -4171,7 +4233,7 @@ function buildAderenciaBookHtml() {
                 <div style="font-size:10.5px; font-weight:700; padding:3px 8px; border-radius:10px; background:${badge.bg}; color:${badge.fg};">${escapeHtml(badge.label)}</div>
             </div>
             <div style="font-size:12px; color:#444; margin-bottom:10px;">
-                ${formatDateBR(b.date)} · ${minutesToTime(b.startMin)}–${minutesToTime(b.endMin)} · OM ${escapeHtml(b.om || '—')} · Responsável: ${escapeHtml(b.operator)}
+                ${formatDateBR(b.date)} · ${minutesToTime(b.startMin)}–${minutesToTime(b.endMin)} · OM ${escapeHtml(b.om || '—')} · Responsável: ${escapeHtml(b.operator)}${valeCollaboratorLine(b)}
             </div>
             <div style="font-size:12px; margin-bottom:10px;"><b>Observação:</b> ${escapeHtml(b.closureReason || '—')}</div>
             <div style="display:flex; gap:12px; flex-wrap:wrap;">
@@ -4535,6 +4597,13 @@ document.getElementById('btn-vale-value-clear').addEventListener('click', () => 
     renderValeApprovalsValueCard();
 });
 
+// " · Executado por: Nome (Cargo)" -- só aparece quando o encarregado
+// escolheu o colaborador no encerramento mobile (ver renderMobileCloseForm);
+// bloqueios antigos, de antes desta função existir, ficam sem essa parte.
+function valeCollaboratorLine(booking) {
+    return booking.collaboratorName ? ` · Executado por: ${escapeHtml(booking.collaboratorName)} (${escapeHtml(booking.collaboratorRole || '—')})` : '';
+}
+
 function renderValeApprovals() {
     renderValeApprovalsValueCard();
     const pendingBox = document.getElementById('vale-pending-list');
@@ -4550,7 +4619,7 @@ function renderValeApprovals() {
                 <div style="font-weight:700; font-size:14px;">${escapeHtml(b.tag)} — ${escapeHtml(AREA_LABEL[b.area] || b.area)}${valeAreaInfoLine(b)}</div>
                 <div style="font-size:10.5px; font-weight:700; padding:3px 8px; border-radius:10px; background:rgba(245,158,11,0.15); color:#b45309;">Aguardando Aprovação</div>
             </div>
-            <div style="font-size:12px; color:var(--text-secondary); margin-bottom:8px;">${formatDateBR(b.date)} · ${minutesToTime(b.startMin)}–${minutesToTime(b.endMin)} · Responsável: ${escapeHtml(b.operator)}</div>
+            <div style="font-size:12px; color:var(--text-secondary); margin-bottom:8px;">${formatDateBR(b.date)} · ${minutesToTime(b.startMin)}–${minutesToTime(b.endMin)} · Responsável: ${escapeHtml(b.operator)}${valeCollaboratorLine(b)}</div>
             <div style="font-size:12.5px; margin-bottom:10px;"><b>Observação do encarregado:</b> ${escapeHtml(b.closureReason || '—')}</div>
             <div style="display:flex; gap:10px; flex-wrap:wrap; margin-bottom:12px;">
                 ${valePhotoPreview(b.closurePhotoBefore, 'Antes')}
@@ -4577,7 +4646,7 @@ function renderValeApprovals() {
                 <div style="font-weight:700; font-size:13.5px;">${escapeHtml(b.tag)} — ${escapeHtml(AREA_LABEL[b.area] || b.area)}</div>
                 <div style="font-size:10.5px; font-weight:700; padding:3px 8px; border-radius:10px; background:${badgeColor.bg}; color:${badgeColor.fg};">${escapeHtml(meta.label)}</div>
             </div>
-            <div style="font-size:12px; color:var(--text-secondary); margin-bottom:6px;">${formatDateBR(b.date)} · Decidido em ${b.valeDecidedAt ? new Date(b.valeDecidedAt).toLocaleString('pt-BR') : '—'}</div>
+            <div style="font-size:12px; color:var(--text-secondary); margin-bottom:6px;">${formatDateBR(b.date)} · Decidido em ${b.valeDecidedAt ? new Date(b.valeDecidedAt).toLocaleString('pt-BR') : '—'}${valeCollaboratorLine(b)}</div>
             <div style="font-size:12.5px; margin-bottom:10px;"><b>Justificativa:</b> ${escapeHtml(b.valeDecisionReason || '—')}</div>
             ${canDecideValeApprovals() ? `<button class="btn-secondary" style="padding:6px 12px; font-size:12px;" onclick="openValeReclassifyModal('${b.id}')">Reclassificar</button>` : ''}
         </div>`;
@@ -5340,6 +5409,7 @@ async function loadSiteDatabase() {
     Object.keys(AREA_LABEL).forEach(k => delete AREA_LABEL[k]);
     Object.keys(EQUIP_META).forEach(k => delete EQUIP_META[k]);
     ALL_EQUIP.length = 0;
+    COLLABORATORS.length = 0;
     const { data: areas, error: areasErr } = await sb.from('areas').select('code, label').eq('site_key', state.currentSite);
     if (areasErr) { toast('Erro ao carregar áreas: ' + areasErr.message, 'error'); return; }
     (areas || []).forEach(a => { DATABASE[a.code] = []; AREA_LABEL[a.code] = a.label; });
@@ -5351,6 +5421,13 @@ async function loadSiteDatabase() {
         ALL_EQUIP.push({ tag: e.tag, area: e.area_code });
         EQUIP_META[e.tag] = { m2: e.m2 == null ? null : Number(e.m2), valorM2: e.valor_m2 == null ? null : Number(e.valor_m2) };
     });
+    // Quadro de colaboradores só existe/é usado no workflow S11D -- não vale
+    // a pena consultar essa tabela pros outros sites.
+    if (isClientApprovalSite()) {
+        const { data: collaborators, error: collabErr } = await sb.from('collaborators').select('id, name, role').eq('site_key', state.currentSite).order('name');
+        if (collabErr) { toast('Erro ao carregar colaboradores: ' + collabErr.message, 'error'); return; }
+        (collaborators || []).forEach(c => COLLABORATORS.push({ id: c.id, name: c.name, role: c.role }));
+    }
 }
 
 function renderAssetMgmtPanel() {
@@ -5379,6 +5456,10 @@ function renderAssetMgmtPanel() {
     }
     document.getElementById('equip-value-section').style.display = canManageAssets() ? 'flex' : 'none';
     renderEquipValueTable();
+    // Cadastro de colaboradores só faz sentido no workflow S11D -- os
+    // demais sites nem têm o conceito de "quem executou" por limpeza.
+    document.getElementById('collab-mgmt-section').style.display = (canManageAssets() && isClientApprovalSite()) ? 'flex' : 'none';
+    renderCollabTable();
 }
 
 // Tabela de m²/valor por ATIVO (sub-área, ex: STAFF01) -- é a única forma
@@ -5439,6 +5520,70 @@ document.getElementById('btn-toggle-equip-value').addEventListener('click', () =
     applyEquipValueCollapse(!document.getElementById('equip-value-section').classList.contains('equip-value-collapsed'));
 });
 applyEquipValueCollapse(localStorage.getItem(LS_EQUIPVALUE_COLLAPSED) === '1');
+
+function renderCollabTable() {
+    const tbody = document.getElementById('collab-tbody');
+    if (!tbody) return;
+    tbody.innerHTML = COLLABORATORS.map(c => `
+        <tr>
+            <td>${escapeHtml(c.name)}</td>
+            <td>${escapeHtml(c.role)}</td>
+            <td><button class="btn-danger" style="padding:5px 9px; font-size:11px;" onclick="openDeleteCollabModal('${c.id}')">Excluir</button></td>
+        </tr>`).join('') || `<tr><td colspan="3" style="text-align:center; color:var(--text-muted);">Nenhum colaborador cadastrado neste site ainda.</td></tr>`;
+}
+
+document.getElementById('btn-add-collab').addEventListener('click', async () => {
+    if (!canManageAssets()) { showAccessDenied('Apenas o Admin Master e o Técnico de Planejamento e GU podem gerenciar colaboradores.'); return; }
+    const name = document.getElementById('new-collab-name').value.trim();
+    const role = document.getElementById('new-collab-role').value.trim();
+    if (!name || !role) { toast('Informe o nome e o cargo do colaborador.', 'error'); return; }
+    const { data, error } = await sb.from('collaborators').insert({ site_key: state.currentSite, name, role }).select().single();
+    if (error) { toast('Erro ao adicionar colaborador: ' + error.message, 'error'); return; }
+    COLLABORATORS.push({ id: data.id, name: data.name, role: data.role });
+    document.getElementById('new-collab-name').value = '';
+    document.getElementById('new-collab-role').value = '';
+    toast(`Colaborador "${name}" adicionado com sucesso.`);
+    renderCollabTable();
+});
+
+function openDeleteCollabModal(id) {
+    const c = COLLABORATORS.find(x => x.id === id);
+    if (!c) return;
+    openModal(`
+        <div class="modal-header"><h3>Excluir Colaborador</h3><button class="modal-close" onclick="closeModal()">&times;</button></div>
+        <div class="modal-body">
+            <div class="access-denied-icon">&#9888;</div>
+            <div class="access-denied-text">
+                Tem certeza que deseja excluir <b>${escapeHtml(c.name)}</b> (${escapeHtml(c.role)}) do cadastro?
+                Limpezas já registradas com o nome dele continuam mostrando o nome normalmente -- ele só deixa de aparecer nas próximas seleções. Esta ação não pode ser desfeita.
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn-secondary" onclick="closeModal()">Cancelar</button>
+            <button class="btn-danger" onclick="confirmDeleteCollab('${id}')">Excluir Colaborador</button>
+        </div>
+    `);
+}
+async function confirmDeleteCollab(id) {
+    const { error } = await sb.from('collaborators').delete().eq('id', id);
+    if (error) { toast('Erro ao excluir colaborador: ' + error.message, 'error'); return; }
+    const idx = COLLABORATORS.findIndex(c => c.id === id);
+    const name = idx !== -1 ? COLLABORATORS[idx].name : '';
+    if (idx !== -1) COLLABORATORS.splice(idx, 1);
+    closeModal();
+    toast(`Colaborador "${name}" excluído com sucesso.`, 'warn');
+    renderCollabTable();
+}
+
+const LS_COLLABMGMT_COLLAPSED = 'vale_saas_collabmgmt_collapsed_v1';
+function applyCollabMgmtCollapse(collapsed) {
+    document.getElementById('collab-mgmt-section').classList.toggle('collab-mgmt-collapsed', collapsed);
+    localStorage.setItem(LS_COLLABMGMT_COLLAPSED, collapsed ? '1' : '0');
+}
+document.getElementById('btn-toggle-collab-mgmt').addEventListener('click', () => {
+    applyCollabMgmtCollapse(!document.getElementById('collab-mgmt-section').classList.contains('collab-mgmt-collapsed'));
+});
+applyCollabMgmtCollapse(localStorage.getItem(LS_COLLABMGMT_COLLAPSED) === '1');
 
 async function moveEquipment(tag, newArea) {
     const item = ALL_EQUIP.find(e => e.tag === tag);
