@@ -908,6 +908,15 @@ body.book-preview-mode .book-preview-toolbar {
             <div id="book-period-wrap" style="margin-top:14px; padding-top:14px; border-top:1px dashed var(--border-color); display:flex; gap:14px; align-items:flex-end; flex-wrap:wrap;">
                 <div class="agenda-field"><label>BOOK — Período de medição, De</label><input type="date" id="book-from"></div>
                 <div class="agenda-field"><label>BOOK — Até</label><input type="date" id="book-to"></div>
+                <div class="agenda-field">
+                    <label>BOOK — Filtrar por desfecho</label>
+                    <select id="book-status-filter">
+                        <option value="ALL">Tudo (Encerrado + Pendente Vale + Pendente Sodexo)</option>
+                        <option value="ENCERRADA">Somente Encerrado</option>
+                        <option value="PENDENTE_VALE">Somente Pendente Vale</option>
+                        <option value="PENDENTE_SODEXO">Somente Pendente Sodexo</option>
+                    </select>
+                </div>
                 <div style="font-size:11.5px; color:var(--text-secondary); max-width:260px;">Padrão: ciclo de medição da Vale (dia 21 a dia 20 do mês seguinte). Ajuste se precisar de outro período.</div>
             </div>
             <div style="margin-top:10px;">
@@ -3791,15 +3800,28 @@ const BOOK_STATUS_BADGE = {
     PENDENTE_SODEXO: { bg: 'rgba(239,68,68,0.15)', fg: '#b91c1c', label: 'Pendente Sodexo' },
 };
 
+const BOOK_STATUS_FILTER_LABELS = {
+    ALL: 'Tudo (Encerrado + Pendente Vale + Pendente Sodexo)',
+    ENCERRADA: 'Somente Encerrado',
+    PENDENTE_VALE: 'Somente Pendente Vale',
+    PENDENTE_SODEXO: 'Somente Pendente Sodexo',
+};
+
 function buildAderenciaBookHtml() {
     const { from, to } = bookPeriodoSelecionado();
+    const statusFilterEl = document.getElementById('book-status-filter');
+    const statusFilter = statusFilterEl ? statusFilterEl.value : 'ALL';
     // O BOOK precisa trazer não só o que foi concluído (ENCERRADA), mas
     // também as pendências (Pendente Vale / Pendente Sodexo) -- são elas
     // que a empresa precisa visualizar e controlar, mesmo sem foto de
-    // antes/depois, já que o serviço não chegou a acontecer.
+    // antes/depois, já que o serviço não chegou a acontecer. O filtro de
+    // desfecho deixa a gestora/gerente imprimir só a fatia que interessa
+    // pra cada situação (ex: só Pendente Vale, pra cobrar liberação de
+    // área -- sem precisar folhear o BOOK inteiro).
     const itens = state.bookings.filter(b => {
         if (b.type !== SODEXO_CLEANING_TYPE) return false;
         if (!['ENCERRADA', 'PENDENTE_VALE', 'PENDENTE_SODEXO'].includes(b.closureStatus)) return false;
+        if (statusFilter !== 'ALL' && b.closureStatus !== statusFilter) return false;
         if (from && b.date < from) return false;
         if (to && b.date > to) return false;
         return true;
@@ -3808,6 +3830,9 @@ function buildAderenciaBookHtml() {
     const periodTxt = (from || to)
         ? `Período: ${from ? formatDateBR(from) : '...'} a ${to ? formatDateBR(to) : '...'}`
         : 'Período: todo o histórico';
+    // A Nota de Aderência sempre reflete o período INTEIRO (as 3 situações
+    // juntas) -- é o indicador real, não muda com o filtro de desfecho, que
+    // só decide quais cards aparecem na lista abaixo.
     const breakdown = sodexoCleaningBreakdown({ from, to });
     const notaTxt = breakdown
         ? `Nota de Aderência: ${sodexoAdherenceScore(breakdown)}% — Total Geral ${breakdown.total} × Realizada ${breakdown.atendido} · Pendente Vale ${breakdown.pctPendenteVale}% (não desconta) · Pendente Sodexo ${breakdown.pctPendenteSodexo}% (${breakdown.total} atividade(s) no período)`
@@ -3815,19 +3840,23 @@ function buildAderenciaBookHtml() {
 
     const encerradaCount = itens.filter(b => b.closureStatus === 'ENCERRADA').length;
     const pendenteCount = itens.length - encerradaCount;
+    const filtroTxt = `Filtro: ${BOOK_STATUS_FILTER_LABELS[statusFilter] || BOOK_STATUS_FILTER_LABELS.ALL}`;
 
     const header = `
         <div style="font-size:18px; font-weight:800; border-bottom:2px solid #000; padding-bottom:10px; margin-bottom:18px;">
             BOOK de Aderência — Limpeza Sodexo — ${escapeHtml(SITES[state.currentSite] || state.currentSite)}
             <small style="display:block; font-size:11px; font-weight:400; color:#444; margin-top:4px;">
                 ${escapeHtml(periodTxt)} — ${escapeHtml(notaTxt)}<br>
-                ${itens.length} bloqueio(s) no período — ${encerradaCount} encerrado(s) com evidência fotográfica, ${pendenteCount} pendente(s) —
+                ${escapeHtml(filtroTxt)} — ${itens.length} bloqueio(s) nesta lista — ${encerradaCount} encerrado(s) com evidência fotográfica, ${pendenteCount} pendente(s) —
                 Gerado em ${new Date().toLocaleString('pt-BR')} por ${escapeHtml(activeProfile().user)} (${state.profileKey})
             </small>
         </div>`;
 
     if (!itens.length) {
-        return header + `<div style="padding:20px; color:#444;">Nenhum bloqueio de Limpeza Sodexo encerrado ou pendente no período selecionado.</div>`;
+        const semNadaTxt = statusFilter === 'ALL'
+            ? 'Nenhum bloqueio de Limpeza Sodexo encerrado ou pendente no período selecionado.'
+            : `Nenhum bloqueio "${BOOK_STATUS_FILTER_LABELS[statusFilter]}" no período selecionado.`;
+        return header + `<div style="padding:20px; color:#444;">${escapeHtml(semNadaTxt)}</div>`;
     }
 
     const cards = itens.map(b => {
