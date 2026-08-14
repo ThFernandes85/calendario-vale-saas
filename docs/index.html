@@ -976,6 +976,17 @@ body.book-preview-mode .book-preview-toolbar {
                 </button>
             </div>
             <div id="closed-bookings-summary" class="kpi-grid" style="margin-top:14px;"></div>
+            <div class="agenda-field" style="margin-top:14px; max-width:280px;">
+                <label>Filtrar por Desfecho</label>
+                <select id="closed-status-filter">
+                    <option value="ALL">Todos os desfechos</option>
+                    <option value="ENCERRADA">Encerrado</option>
+                    <option value="REPROGRAMADA">Reprogramado</option>
+                    <option value="PENDENTE_VALE">Pendente Vale</option>
+                    <option value="PENDENTE_SODEXO">Pendente Sodexo</option>
+                    <option value="PENDENTE">Pendente (genérico)</option>
+                </select>
+            </div>
             <div id="closed-bookings-content">
                 <div style="height:16px;"></div>
                 <div class="audit-table-wrap">
@@ -3453,8 +3464,11 @@ function renderClosedBookings() {
     if (!tbody) return;
     const { from, to } = state.reportFilter;
     const isAdmin = state.profileKey === 'ADMIN';
+    const statusFilterEl = document.getElementById('closed-status-filter');
+    const statusFilter = statusFilterEl ? statusFilterEl.value : 'ALL';
     const rows = state.bookings.filter(b => {
         if (!b.closureStatus) return false;
+        if (statusFilter !== 'ALL' && b.closureStatus !== statusFilter) return false;
         if (from && b.date < from) return false;
         if (to && b.date > to) return false;
         return true;
@@ -3475,8 +3489,9 @@ function renderClosedBookings() {
                 ${isAdmin ? `<button class="btn-danger" style="padding:5px 9px; font-size:11px;" onclick="openDeleteBookingModal('${b.id}')">Excluir</button>` : '—'}
             </td>
         </tr>
-    `).join('') || `<tr><td colspan="9" style="text-align:center; color:var(--text-muted);">Nenhum bloqueio encerrado, reprogramado ou pendente no período selecionado.</td></tr>`;
+    `).join('') || `<tr><td colspan="9" style="text-align:center; color:var(--text-muted);">${statusFilter === 'ALL' ? 'Nenhum bloqueio encerrado, reprogramado ou pendente no período selecionado.' : `Nenhum bloqueio "${escapeHtml(CLOSURE_STATUS_LABELS[statusFilter] || statusFilter)}" no período selecionado.`}</td></tr>`;
 }
+document.getElementById('closed-status-filter').addEventListener('change', renderClosedBookings);
 
 // Nota de aderência mês a mês, não só do período filtrado -- de um número
 // isolado não dá pra saber se a Sodexo está melhorando ou piorando; de uma
