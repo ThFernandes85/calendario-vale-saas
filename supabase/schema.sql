@@ -48,8 +48,9 @@ create table if not exists public.profiles (
   active boolean not null default true,
   created_at timestamptz default now()
 );
--- Libera a role ENCARREGADO em bancos criados antes dela existir (tabela já
--- existente não ganha a nova lista do "check" acima sozinha).
+-- Libera roles novas em bancos criados antes delas existirem (tabela já
+-- existente não ganha a nova lista do "check" acima sozinha). CLIENTE_VALE
+-- é o contato da Vale que aprova/reprova as limpezas do S11D.
 do $$
 begin
   if exists (
@@ -60,7 +61,7 @@ begin
     alter table public.profiles drop constraint profiles_role_check;
   end if;
   alter table public.profiles add constraint profiles_role_check
-    check (role in ('ADMIN','PCM','PCO','PCM_PCO','ENG_CONF','ENG_EST','ENCARREGADO'));
+    check (role in ('ADMIN','PCM','PCO','PCM_PCO','ENG_CONF','ENG_EST','ENCARREGADO','CLIENTE_VALE'));
 end $$;
 
 -- ---------- PROFILE_SITES (quais sites cada perfil acessa) ----------
@@ -96,16 +97,47 @@ alter table public.bookings add column if not exists closure_photo_before text;
 alter table public.bookings add column if not exists closure_photo_after text;
 alter table public.bookings add column if not exists closed_at timestamptz;
 alter table public.bookings add column if not exists closed_by uuid references public.profiles(id) on delete set null;
+-- ============================================================
+-- S11D — workflow de aprovação do cliente (Vale)
+-- Site com sistemática própria (limpeza predial, sem OM): o encarregado
+-- encerra com fotos mas fica "Aguardando Aprovação Vale" -- só conta na
+-- nota depois que o cliente aprova/reprova/marca pendência, com
+-- justificativa. Ver sites.client_approval_workflow mais abaixo.
+-- ============================================================
+alter table public.sites add column if not exists client_approval_workflow boolean not null default false;
+
+-- m² e R$/m² -- só pra exibir o valor calculado (m² × R$/m²) da limpeza
+-- daquela área; não é um motor de faturamento.
+alter table public.areas add column if not exists m2 numeric;
+alter table public.areas add column if not exists valor_m2 numeric;
+
+-- Decisão MAIS RECENTE do Cliente Vale sobre um bloqueio (o histórico
+-- completo de decisões/reclassificações fica registrado no audit_log, uma
+-- linha por decisão -- essas colunas só guardam o estado atual).
+alter table public.bookings add column if not exists vale_decision_reason text;
+alter table public.bookings add column if not exists vale_decided_at timestamptz;
+alter table public.bookings add column if not exists vale_decided_by uuid references public.profiles(id) on delete set null;
+-- Fotos além de antes/depois (ex: "durante", do workflow S11D). Formato:
+-- [{"tipo":"durante","url":"..."}]. As colunas closure_photo_before/after
+-- continuam existindo e sem uso alterado.
+alter table public.bookings add column if not exists closure_photos_extra jsonb not null default '[]'::jsonb;
+
+-- Recria o check de closure_status pra incluir os 4 status novos do
+-- workflow S11D, sem perder nenhum dos 5 originais.
 do $$
 begin
-  if not exists (
+  if exists (
     select 1 from pg_constraint c
     join pg_class t on t.oid = c.conrelid
     where c.conname = 'bookings_closure_status_check' and t.relname = 'bookings'
   ) then
-    alter table public.bookings add constraint bookings_closure_status_check
-      check (closure_status in ('ENCERRADA','REPROGRAMADA','PENDENTE','PENDENTE_VALE','PENDENTE_SODEXO'));
+    alter table public.bookings drop constraint bookings_closure_status_check;
   end if;
+  alter table public.bookings add constraint bookings_closure_status_check
+    check (closure_status in (
+      'ENCERRADA','REPROGRAMADA','PENDENTE','PENDENTE_VALE','PENDENTE_SODEXO',
+      'AGUARDANDO_APROVACAO_VALE','APROVADO_VALE','REPROVADO_VALE','PENDENCIA_VALE'
+    ));
 end $$;
 
 -- ---------- AUDIT LOG ----------
@@ -253,6 +285,9 @@ create policy "bookings_update" on public.bookings for update
       or (public.current_role_key() = 'PCO' and type in ('Limpeza Sodexo','Limpeza Mecanizada'))
       or (public.current_role_key() = 'ENCARREGADO' and type in ('Limpeza Sodexo','Limpeza Mecanizada'))
       or (public.current_role_key() = 'PCM_PCO' and type in ('Manutenção Preventiva','Manutenção Corretiva','Limpeza Sodexo','Limpeza Mecanizada'))
+      -- Cliente Vale só aprova/reprova/marca pendência em Limpeza Sodexo
+      -- (a decisão do workflow S11D) -- nunca em Manutenção.
+      or (public.current_role_key() = 'CLIENTE_VALE' and type = 'Limpeza Sodexo')
     )
   )
   with check (
@@ -263,6 +298,7 @@ create policy "bookings_update" on public.bookings for update
       or (public.current_role_key() = 'PCO' and type in ('Limpeza Sodexo','Limpeza Mecanizada'))
       or (public.current_role_key() = 'ENCARREGADO' and type in ('Limpeza Sodexo','Limpeza Mecanizada'))
       or (public.current_role_key() = 'PCM_PCO' and type in ('Manutenção Preventiva','Manutenção Corretiva','Limpeza Sodexo','Limpeza Mecanizada'))
+      or (public.current_role_key() = 'CLIENTE_VALE' and type = 'Limpeza Sodexo')
     )
   );
 

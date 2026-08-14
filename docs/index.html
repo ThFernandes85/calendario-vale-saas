@@ -393,11 +393,12 @@ table.heatmap-table tr:hover td { filter: brightness(1.15); }
 .site-dropdown-item.active .site-dropdown-item-btn { background-color: rgba(37,99,235,0.18); color: #7ea6ff; font-weight: 700; }
 .site-dropdown-item .check { opacity: 0; font-size: 12px; }
 .site-dropdown-item.active .check { opacity: 1; }
-.site-dropdown-delete-btn {
+.site-dropdown-delete-btn, .site-dropdown-config-btn {
     flex-shrink: 0; background: none; border: none; color: var(--text-muted); padding: 6px; border-radius: 6px;
     cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.12s;
 }
 .site-dropdown-delete-btn:hover { background-color: rgba(239,68,68,0.15); color: #ff8080; }
+.site-dropdown-config-btn:hover { background-color: var(--bg-hover); color: var(--text-primary); }
 .site-dropdown-empty { padding: 10px; font-size: 11.5px; color: var(--text-muted); text-align: center; }
 .site-dropdown-divider { border-top: 1px dashed var(--border-color); margin: 6px 4px; }
 
@@ -666,6 +667,11 @@ body.book-preview-mode .book-preview-toolbar {
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="5" height="5" rx="1"/><rect x="9.5" y="3" width="5" height="5" rx="1"/><rect x="16" y="3" width="5" height="5" rx="1"/><rect x="3" y="9.5" width="5" height="5" rx="1"/><rect x="9.5" y="9.5" width="5" height="5" rx="1"/><rect x="16" y="9.5" width="5" height="5" rx="1"/><rect x="3" y="16" width="5" height="5" rx="1"/><rect x="9.5" y="16" width="5" height="5" rx="1"/><rect x="16" y="16" width="5" height="5" rx="1"/></svg>
                 <span class="nav-label">Mapa de Calor</span>
             </button>
+            <button class="nav-item" data-view="aprovacoes" title="Aprovações Vale" style="display:none;">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+                <span class="nav-label">Aprovações Vale</span>
+                <span class="nav-badge" id="nav-badge-aprovacoes"></span>
+            </button>
             <button class="nav-item" data-view="usuarios" title="Usuários &amp; Acessos" style="display:none;">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
                 <span class="nav-label">Usuários &amp; Acessos</span>
@@ -776,9 +782,26 @@ body.book-preview-mode .book-preview-toolbar {
                         <label>Nome de Exibição</label>
                         <input type="text" id="new-area-label" placeholder="ex: Nova Área" style="min-width:160px;">
                     </div>
+                    <div class="agenda-field">
+                        <label>m² (opcional)</label>
+                        <input type="number" id="new-area-m2" step="0.01" min="0" placeholder="ex: 16,5" style="min-width:100px;">
+                    </div>
+                    <div class="agenda-field">
+                        <label>R$/m² (opcional)</label>
+                        <input type="number" id="new-area-valor-m2" step="0.01" min="0" placeholder="ex: 2,89" style="min-width:100px;">
+                    </div>
                     <button class="btn-primary" id="btn-add-area" style="align-self:flex-end;">+ Adicionar Área</button>
                 </div>
                 <div style="height:14px;"></div>
+                <div id="area-value-table-wrap" style="display:none;">
+                    <div class="audit-table-wrap">
+                        <table class="audit-table">
+                            <thead><tr><th>Código</th><th>Nome</th><th>m²</th><th>R$/m²</th><th>Valor Calculado</th><th>Ações</th></tr></thead>
+                            <tbody id="area-value-tbody"></tbody>
+                        </table>
+                    </div>
+                    <div style="height:14px;"></div>
+                </div>
                 <div class="agenda-toolbar">
                     <div class="agenda-field">
                         <label>Área de Destino</label>
@@ -915,6 +938,9 @@ body.book-preview-mode .book-preview-toolbar {
                         <option value="ENCERRADA">Somente Encerrado</option>
                         <option value="PENDENTE_VALE">Somente Pendente Vale</option>
                         <option value="PENDENTE_SODEXO">Somente Pendente Sodexo</option>
+                        <option value="APROVADO_VALE">Somente Aprovado Vale</option>
+                        <option value="REPROVADO_VALE">Somente Reprovado Vale</option>
+                        <option value="PENDENCIA_VALE">Somente Pendência Vale</option>
                     </select>
                 </div>
                 <div style="font-size:11.5px; color:var(--text-secondary); max-width:260px;">Padrão: ciclo de medição da Vale (dia 21 a dia 20 do mês seguinte). Ajuste se precisar de outro período.</div>
@@ -985,6 +1011,10 @@ body.book-preview-mode .book-preview-toolbar {
                     <option value="PENDENTE_VALE">Pendente Vale</option>
                     <option value="PENDENTE_SODEXO">Pendente Sodexo</option>
                     <option value="PENDENTE">Pendente (genérico)</option>
+                    <option value="AGUARDANDO_APROVACAO_VALE">Aguardando Aprovação Vale</option>
+                    <option value="APROVADO_VALE">Aprovado Vale</option>
+                    <option value="REPROVADO_VALE">Reprovado Vale</option>
+                    <option value="PENDENCIA_VALE">Pendência Vale</option>
                 </select>
             </div>
             <div id="closed-bookings-content">
@@ -1077,6 +1107,24 @@ body.book-preview-mode .book-preview-toolbar {
         <button class="btn-primary" id="btn-book-print-now">Imprimir / Exportar PDF</button>
     </div>
     <div class="content-container" id="view-book"></div>
+
+    <!-- VIEW: APROVAÇÕES VALE (Cliente Vale + Admin Master) -->
+    <div class="content-container" id="view-aprovacoes">
+        <div>
+            <h2 style="font-size: 22px; margin-bottom: 6px; font-weight: 600;">Aprovações Vale</h2>
+            <p style="color: var(--text-secondary); font-size: 14px;">Limpezas do site com workflow de aprovação (ex: S11D) que o encarregado já encerrou com fotos, aguardando sua avaliação -- aprove, reprove ou marque uma pendência da Vale, sempre com justificativa.</p>
+        </div>
+
+        <div class="card-section">
+            <div class="filter-title">Aguardando Aprovação</div>
+            <div id="vale-pending-list" style="margin-top:14px;"></div>
+        </div>
+
+        <div class="card-section" style="margin-top:20px;">
+            <div class="filter-title">Decisões Registradas</div>
+            <div id="vale-decided-list" style="margin-top:14px;"></div>
+        </div>
+    </div>
 
     <!-- VIEW: USUÁRIOS & ACESSOS (somente Admin Master) -->
     <div class="content-container" id="view-usuarios">
@@ -1196,6 +1244,13 @@ const DATABASE = {};
 const AREA_LABEL = {};
 const ALL_EQUIP = [];
 function areaOf(tag) { const e = ALL_EQUIP.find(x => x.tag === tag); return e ? e.area : null; }
+// m²/valor por área -- informativo (ex: limpeza predial do S11D), sem
+// motor de faturamento nenhum por trás. { m2, valorM2 } por código de área.
+const AREA_META = {};
+function areaValorCalculado(areaCode) {
+    const m = AREA_META[areaCode];
+    return (m && m.m2 != null && m.valorM2 != null) ? m.m2 * m.valorM2 : null;
+}
 
 /* =========================================================
    MATRIZ DE PERMISSÕES (RBAC)
@@ -1252,6 +1307,10 @@ function isOverdueBooking(booking) {
 // horário -- é por OM: a mesma OM não pode ficar aberta duas vezes no
 // mesmo equipamento (isso sim é duplicidade/erro de lançamento).
 function activeOmConflict(tag, om) {
+    // Sem OM (sites como o S11D, que não usa número de OM), não existe
+    // conflito de duplicidade -- senão toda OM vazia "colidiria" com
+    // qualquer outra, impedindo até duas limpezas na mesma área/dia.
+    if (!om) return null;
     return state.bookings.find(b => isActiveBooking(b) && b.tag === tag && b.om === om);
 }
 
@@ -1275,6 +1334,11 @@ function activeProfile() {
 }
 function canBookType(type) { const p = activeProfile(); return !p.readOnly && p.canBook.includes(type); }
 function canExportReports() { return activeProfile().canExport; }
+// Aprovar/reprovar/marcar pendência é uma permissão própria, independente
+// de `readOnly` -- o Cliente Vale continua sem poder agendar/encerrar nada
+// normal, mas precisa desta ação específica. Admin Master tem paridade de
+// supervisão, igual às outras ações administrativas do app.
+function canReviewValeApprovals() { return state.profileKey === 'CLIENTE_VALE' || state.profileKey === 'ADMIN'; }
 // Gráfico de Indisponibilidade (Manutenção) é indicador de PCM -- fica fora
 // até para o Admin Master, a pedido explícito, pra não poluir o dashboard
 // de quem não lida com Manutenção no dia a dia.
@@ -1318,7 +1382,9 @@ function mapBookingFromDb(row) {
         emergencial: row.emergencial, om: row.om, justification: row.justification,
         operator: row.operator_label, operatorId: row.operator_id, createdAt: row.created_at,
         closureStatus: row.closure_status, closureReason: row.closure_reason, closedAt: row.closed_at,
-        closurePhotoBefore: row.closure_photo_before, closurePhotoAfter: row.closure_photo_after
+        closurePhotoBefore: row.closure_photo_before, closurePhotoAfter: row.closure_photo_after,
+        closurePhotosExtra: row.closure_photos_extra || [],
+        valeDecisionReason: row.vale_decision_reason, valeDecidedAt: row.vale_decided_at
     };
 }
 function mapAuditFromDb(row) {
@@ -1367,12 +1433,26 @@ async function loadPersisted() {
    ========================================================= */
 const LS_ACTIVE_SITE = 'vale_saas_active_site_v1';
 let SITES = {};
+// Config por site -- hoje só o workflow de aprovação do cliente (S11D),
+// mas fica pronto pra outras chaves de config futuras sem migração nova.
+// NUNCA checar `state.currentSite === 'S11D'` direto em nenhum lugar do
+// app -- sempre por isClientApprovalSite(), pra não prender a lógica a um
+// nome de site específico.
+let SITE_CONFIG = {};
+function isClientApprovalSite(siteKey) {
+    const k = siteKey || state.currentSite;
+    return !!(SITE_CONFIG[k] && SITE_CONFIG[k].clientApprovalWorkflow);
+}
 
 async function loadSites() {
-    const { data, error } = await sb.from('sites').select('key, label').order('label');
-    if (error) { toast('Erro ao carregar sites: ' + error.message, 'error'); SITES = {}; return; }
+    const { data, error } = await sb.from('sites').select('key, label, client_approval_workflow').order('label');
+    if (error) { toast('Erro ao carregar sites: ' + error.message, 'error'); SITES = {}; SITE_CONFIG = {}; return; }
     SITES = {};
-    (data || []).forEach(s => { SITES[s.key] = s.label; });
+    SITE_CONFIG = {};
+    (data || []).forEach(s => {
+        SITES[s.key] = s.label;
+        SITE_CONFIG[s.key] = { clientApprovalWorkflow: !!s.client_approval_workflow };
+    });
 }
 
 function accessibleSites() {
@@ -1393,12 +1473,17 @@ function renderSiteSelect() {
             <button type="button" class="site-dropdown-item-btn" data-site="${k}">
                 <span>${escapeHtml(SITES[k])}</span><span class="check">&#10003;</span>
             </button>
+            ${isAdmin ? `<button type="button" class="site-dropdown-config-btn" data-site="${k}" title="Configurar site">&#9881;</button>` : ''}
             ${isAdmin ? `<button type="button" class="site-dropdown-delete-btn" data-site="${k}" title="Excluir site">&#128465;</button>` : ''}
         </div>
     `).join('') : `<div class="site-dropdown-empty">Nenhum site liberado para o seu usuário.</div>`;
     list.querySelectorAll('.site-dropdown-item-btn').forEach(btn => btn.addEventListener('click', async () => {
         await switchSite(btn.dataset.site);
         closeSiteDropdown();
+    }));
+    list.querySelectorAll('.site-dropdown-config-btn').forEach(btn => btn.addEventListener('click', e => {
+        e.stopPropagation();
+        openSiteConfigModal(btn.dataset.site);
     }));
     list.querySelectorAll('.site-dropdown-delete-btn').forEach(btn => btn.addEventListener('click', e => {
         e.stopPropagation();
@@ -1453,6 +1538,14 @@ function openAddSiteModal() {
         <div class="modal-header"><h3>Criar Novo Site</h3><button class="modal-close" onclick="closeModal()">&times;</button></div>
         <div class="modal-body">
             <div class="m-field"><label>Nome do Site</label><input type="text" id="new-site-name" placeholder="Ex: Fábrica, Água Limpa..."></div>
+            <div class="m-field" style="margin-top:10px; display:flex; align-items:center; gap:8px;">
+                <input type="checkbox" id="new-site-client-approval" style="width:auto;">
+                <label for="new-site-client-approval" style="margin:0; cursor:pointer;">Cliente aprova cada limpeza (workflow S11D)</label>
+            </div>
+            <div style="font-size:11.5px; color:var(--text-secondary); margin-top:4px;">
+                Ative só se esse site tiver sistemática própria: sem OM, encarregado encerra com fotos mas fica
+                aguardando o cliente aprovar/reprovar/marcar pendência antes de contar na nota.
+            </div>
         </div>
         <div class="modal-footer">
             <button class="btn-secondary" onclick="closeModal()">Cancelar</button>
@@ -1460,20 +1553,58 @@ function openAddSiteModal() {
         </div>
     `);
 }
-function confirmAddSite() { addSite(document.getElementById('new-site-name').value); }
+function confirmAddSite() {
+    addSite(document.getElementById('new-site-name').value, document.getElementById('new-site-client-approval').checked);
+}
 
-async function addSite(name) {
+async function addSite(name, clientApprovalWorkflow) {
     if (state.profileKey !== 'ADMIN') { showAccessDenied('Apenas o Admin Master pode criar novos sites.'); return; }
     const trimmed = name.trim();
     const key = trimmed.toUpperCase().replace(/[^A-Z0-9_]/g, '_').replace(/_+/g, '_');
     if (!trimmed || !key) { toast('Informe um nome válido para o site.', 'error'); return; }
     if (SITES[key]) { toast('Já existe um site com esse nome.', 'error'); return; }
-    const { error } = await sb.from('sites').insert({ key, label: trimmed });
+    const { error } = await sb.from('sites').insert({ key, label: trimmed, client_approval_workflow: !!clientApprovalWorkflow });
     if (error) { toast('Erro ao criar site: ' + error.message, 'error'); return; }
     SITES[key] = trimmed;
+    SITE_CONFIG[key] = { clientApprovalWorkflow: !!clientApprovalWorkflow };
     renderSiteSelect();
     closeModal();
     toast(`Site "${trimmed}" criado. Selecione-o para cadastrar áreas e equipamentos.`);
+}
+
+// Retrofit -- pra sites criados antes do checkbox acima existir (ex: o
+// próprio S11D, criado nesta sessão antes dessa feature).
+function openSiteConfigModal(key) {
+    if (state.profileKey !== 'ADMIN') { showAccessDenied('Apenas o Admin Master pode configurar sites.'); return; }
+    const label = SITES[key];
+    if (!label) return;
+    const current = isClientApprovalSite(key);
+    openModal(`
+        <div class="modal-header"><h3>Configurar Site — ${escapeHtml(label)}</h3><button class="modal-close" onclick="closeModal()">&times;</button></div>
+        <div class="modal-body">
+            <div class="m-field" style="display:flex; align-items:center; gap:8px;">
+                <input type="checkbox" id="site-config-client-approval" style="width:auto;" ${current ? 'checked' : ''}>
+                <label for="site-config-client-approval" style="margin:0; cursor:pointer;">Cliente aprova cada limpeza (workflow S11D)</label>
+            </div>
+            <div style="font-size:11.5px; color:var(--text-secondary); margin-top:4px;">
+                Ative só se esse site tiver sistemática própria: sem OM, encarregado encerra com fotos mas fica
+                aguardando o cliente aprovar/reprovar/marcar pendência antes de contar na nota.
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn-secondary" onclick="closeModal()">Cancelar</button>
+            <button class="btn-primary" onclick="saveSiteConfig('${key}')">Salvar</button>
+        </div>
+    `);
+}
+async function saveSiteConfig(key) {
+    const checked = document.getElementById('site-config-client-approval').checked;
+    const { error } = await sb.from('sites').update({ client_approval_workflow: checked }).eq('key', key);
+    if (error) { toast('Erro ao salvar configuração do site: ' + error.message, 'error'); return; }
+    SITE_CONFIG[key] = { clientApprovalWorkflow: checked };
+    closeModal();
+    toast(`Configuração de "${SITES[key]}" salva.`);
+    if (key === state.currentSite) { onProfileChanged(); renderWeekGrid(); }
 }
 
 function openDeleteSiteModal(key) {
@@ -1618,7 +1749,7 @@ function openBookingModal(tag, dateStr, startHour) {
             <div class="m-field"><label>Horário de Início *</label><input type="time" id="bk-start" value="${defaultStart}"></div>
             <div class="m-field"><label>Horário de Término *</label><input type="time" id="bk-end" value="${defaultEnd}"></div>
             <div class="m-field"><label>Tipo de Bloqueio</label><select id="bk-type">${options}</select></div>
-            <div class="m-field"><label>Número da OM *</label><input type="text" id="bk-om" maxlength="12" inputmode="numeric" placeholder="Ex: 123456789012"></div>
+            <div class="m-field" id="bk-om-wrap" style="${isClientApprovalSite() ? 'display:none;' : ''}"><label>Número da OM *</label><input type="text" id="bk-om" maxlength="12" inputmode="numeric" placeholder="Ex: 123456789012"></div>
             <div class="m-field" id="bk-emergencial-wrap" style="display:none;">
                 <label class="m-checkbox"><input type="checkbox" id="bk-emergencial" style="width:auto;"> Corretiva emergencial (marca como crítico)</label>
             </div>
@@ -1640,13 +1771,15 @@ async function submitBooking(tag) {
     const startStr = document.getElementById('bk-start').value;
     const endStr = document.getElementById('bk-end').value;
     const type = document.getElementById('bk-type').value;
-    const om = document.getElementById('bk-om').value.trim();
+    const omRequired = !isClientApprovalSite();
+    const omRaw = document.getElementById('bk-om').value.trim();
+    const om = omRequired ? omRaw : (omRaw || null);
     const emergencial = document.getElementById('bk-emergencial') ? document.getElementById('bk-emergencial').checked : false;
     const justification = document.getElementById('bk-just').value.trim();
 
     if (!canBookType(type)) { showAccessDenied(`O perfil ativo não pode agendar bloqueios do tipo "${type}".`); return; }
     if (!startStr || !endStr) { toast('Informe o horário de início e de término.', 'error'); return; }
-    if (!/^\d{1,12}$/.test(om)) { toast('Informe o número da OM (somente dígitos, até 12 caracteres).', 'error'); return; }
+    if (omRequired && !/^\d{1,12}$/.test(om)) { toast('Informe o número da OM (somente dígitos, até 12 caracteres).', 'error'); return; }
     if (justification.length < 5) { toast('Informe uma justificativa técnica válida (mínimo 5 caracteres).', 'error'); return; }
 
     const startMin = timeToMinutes(startStr);
@@ -1846,6 +1979,16 @@ async function confirmCancelDay() {
 document.getElementById('btn-cancel-day').addEventListener('click', openCancelDayModal);
 
 function closureOutcomesFor(booking) {
+    // S11D (e qualquer site com workflow de aprovação do cliente): o
+    // encarregado só encerra "pra aprovação" -- não é mais ele quem decide
+    // Pendente Vale/Pendente Sodexo, isso vira julgamento do Cliente Vale
+    // depois (ver renderValeApprovals). Reprogramar continua existindo.
+    if (booking.type === SODEXO_CLEANING_TYPE && isClientApprovalSite()) {
+        return [
+            { value: 'AGUARDANDO_APROVACAO_VALE', label: 'Concluído — Enviar p/ Aprovação Vale', hint: 'Não conta na nota de Aderência até o Cliente Vale avaliar (aprovar, reprovar ou marcar pendência).' },
+            { value: 'REPROGRAMADA', label: 'Reprogramado', hint: 'Será remarcado para outra data — crie o novo agendamento separadamente depois de confirmar aqui.' },
+        ];
+    }
     const base = [
         { value: 'ENCERRADA', label: 'Encerrado', hint: 'Serviço concluído normalmente — o equipamento volta a ficar livre.' },
         { value: 'REPROGRAMADA', label: 'Reprogramado', hint: 'Será remarcado para outra data — crie o novo agendamento separadamente depois de confirmar aqui.' },
@@ -1871,14 +2014,32 @@ function closureOutcomesFor(booking) {
 // vez. Reprogramação/pendência continuam em branco de propósito, já que aí
 // a explicação real importa.
 function defaultCloseObservationFor(outcome) {
-    return outcome === 'ENCERRADA' ? 'Concluído Sodexo' : '';
+    return (outcome === 'ENCERRADA' || outcome === 'AGUARDANDO_APROVACAO_VALE') ? 'Concluído Sodexo' : '';
 }
 
 function closurePhotosRequired(booking, outcome) {
-    // Fotos de antes/depois só embasam o BOOK de Aderência da Limpeza feita
-    // pela própria Sodexo -- e só fazem sentido quando o serviço foi de fato
-    // concluído (ENCERRADA), não em reprogramação/pendência.
-    return booking.type === SODEXO_CLEANING_TYPE && outcome === 'ENCERRADA';
+    // Fotos só embasam o BOOK/aprovação da Limpeza feita pela própria
+    // Sodexo -- e só fazem sentido quando o serviço foi de fato concluído
+    // (ENCERRADA no fluxo normal, ou AGUARDANDO_APROVACAO_VALE no S11D),
+    // não em reprogramação/pendência.
+    return booking.type === SODEXO_CLEANING_TYPE && (outcome === 'ENCERRADA' || outcome === 'AGUARDANDO_APROVACAO_VALE');
+}
+
+// Quais fotos o encerramento pede: antes/depois no fluxo normal, e
+// antes/durante/depois no workflow S11D (bate com o relatório de
+// referência do cliente, que sempre traz 3-4 fotos por atividade).
+function closurePhotoSlotsFor(booking) {
+    if (booking.type === SODEXO_CLEANING_TYPE && isClientApprovalSite()) {
+        return [
+            { tipo: 'antes', label: 'Antes' },
+            { tipo: 'durante', label: 'Durante' },
+            { tipo: 'depois', label: 'Depois' },
+        ];
+    }
+    return [
+        { tipo: 'antes', label: 'Antes' },
+        { tipo: 'depois', label: 'Depois' },
+    ];
 }
 
 function openCloseBookingModal(id) {
@@ -1901,18 +2062,16 @@ function openCloseBookingModal(id) {
             </div>
             <div class="m-field"><label>Observação *</label><textarea id="close-just" rows="3" maxlength="200" placeholder="Explique o desfecho deste bloqueio..."></textarea></div>
             <div class="m-field" id="close-photos-wrap">
-                <label id="close-photos-label">Fotos de Antes / Depois *</label>
+                <label id="close-photos-label">Fotos ${closurePhotoSlotsFor(booking).map(s => s.label).join(' / ')} *</label>
                 <div style="display:flex; gap:12px;">
-                    <div style="flex:1;">
-                        <div style="font-size:11px; color:var(--text-secondary); margin-bottom:4px;">Antes</div>
-                        <input type="file" id="close-photo-before" accept="image/*">
-                    </div>
-                    <div style="flex:1;">
-                        <div style="font-size:11px; color:var(--text-secondary); margin-bottom:4px;">Depois</div>
-                        <input type="file" id="close-photo-after" accept="image/*">
-                    </div>
+                    ${closurePhotoSlotsFor(booking).map(slot => `
+                        <div style="flex:1;">
+                            <div style="font-size:11px; color:var(--text-secondary); margin-bottom:4px;">${escapeHtml(slot.label)}</div>
+                            <input type="file" id="close-photo-${slot.tipo}" accept="image/*">
+                        </div>
+                    `).join('')}
                 </div>
-                <div style="font-size:12px; color:var(--text-secondary); margin-top:6px;">Selecione as fotos recebidas do encarregado (ex: salvas do grupo do WhatsApp) — obrigatório para embasar o BOOK de Aderência da Limpeza (Sodexo).</div>
+                <div style="font-size:12px; color:var(--text-secondary); margin-top:6px;">Selecione as fotos recebidas do encarregado (ex: salvas do grupo do WhatsApp) — obrigatório para embasar o BOOK/aprovação da Limpeza (Sodexo).</div>
             </div>
         </div>
         <div class="modal-footer">
@@ -1975,6 +2134,29 @@ async function uploadClosurePhoto(booking, file, tipo, silent) {
     if (error) { if (!silent) toast(`Erro ao enviar foto (${tipo}): ` + error.message, 'error'); return null; }
     const { data } = sb.storage.from('closure-photos').getPublicUrl(path);
     return data.publicUrl;
+}
+
+// Sobe uma lista de fotos [{tipo,file}] de um encerramento e devolve como
+// elas se encaixam nas colunas do banco: 'antes'/'depois' vão pras colunas
+// de sempre (closure_photo_before/after -- nunca mudam de nome, o BOOK
+// atual depende delas), qualquer outro tipo (ex: 'durante', do S11D) vai
+// pro array closure_photos_extra. `existing` é o booking atual, pra manter
+// a foto de um lado que não foi reenviado desta vez.
+async function uploadClosurePhotos(booking, photos, existing, silent) {
+    const before = { url: existing.closurePhotoBefore || null };
+    const after = { url: existing.closurePhotoAfter || null };
+    const extra = (existing.closurePhotosExtra || []).slice();
+    for (const p of photos) {
+        const url = await uploadClosurePhoto(booking, p.file, p.tipo, silent);
+        if (!url) return { failed: true };
+        if (p.tipo === 'antes') before.url = url;
+        else if (p.tipo === 'depois') after.url = url;
+        else {
+            const idx = extra.findIndex(e => e.tipo === p.tipo);
+            if (idx !== -1) extra[idx] = { tipo: p.tipo, url }; else extra.push({ tipo: p.tipo, url });
+        }
+    }
+    return { failed: false, before: before.url, after: after.url, extra };
 }
 
 function pickedFile(...ids) {
@@ -2094,23 +2276,27 @@ function validateClosureForm(booking) {
     }
 
     const fotosObrigatorias = closurePhotosRequired(booking, outcome);
-    // Desktop tem um único input (close-photo-before/-after); a tela mobile
-    // tem dois cada (câmera e galeria, ver renderMobileCloseForm) -- pega o
-    // primeiro que realmente tiver um arquivo escolhido, seja qual for a origem.
-    const fileBefore = pickedFile('close-photo-before', 'close-photo-before-camera', 'close-photo-before-galeria');
-    const fileAfter = pickedFile('close-photo-after', 'close-photo-after-camera', 'close-photo-after-galeria');
-    if (fotosObrigatorias && (!fileBefore || !fileAfter)) {
-        return { ok: false, message: 'Para encerrar um bloqueio de Limpeza é obrigatório anexar as fotos de antes e depois.' };
+    const slots = closurePhotoSlotsFor(booking);
+    // Desktop tem um único input por slot (close-photo-{tipo}); a tela
+    // mobile tem dois cada (câmera e galeria, ver renderMobileCloseForm) --
+    // pega o primeiro que realmente tiver um arquivo escolhido, seja qual
+    // for a origem.
+    const photos = slots.map(slot => ({
+        tipo: slot.tipo,
+        file: pickedFile(`close-photo-${slot.tipo}`, `close-photo-${slot.tipo}-camera`, `close-photo-${slot.tipo}-galeria`)
+    })).filter(p => p.file);
+    if (fotosObrigatorias && photos.length < slots.length) {
+        return { ok: false, message: `Para encerrar este bloqueio é obrigatório anexar as fotos: ${slots.map(s => s.label).join(', ')}.` };
     }
     // Câmera do celular às vezes devolve um arquivo vazio/corrompido (app
     // fechado no meio da captura, falha de permissão etc.) -- sem checar
     // isso, o upload "dava certo" (sem erro do Supabase) só que salvava uma
     // foto em branco, e o bloqueio fechava sem ninguém perceber o problema.
-    if ((fileBefore && fileBefore.size === 0) || (fileAfter && fileAfter.size === 0)) {
+    if (photos.some(p => p.file.size === 0)) {
         return { ok: false, message: 'Uma das fotos veio vazia/corrompida -- tire a foto novamente antes de encerrar.' };
     }
 
-    return { ok: true, outcome, reason, dateStr, fileBefore, fileAfter };
+    return { ok: true, outcome, reason, dateStr, photos };
 }
 
 async function confirmCloseBooking(id) {
@@ -2123,21 +2309,14 @@ async function confirmCloseBooking(id) {
         toast(v.message, 'error');
         return v.duplicateOm ? 'duplicate_om' : undefined;
     }
-    const { outcome, reason, dateStr, fileBefore, fileAfter } = v;
+    const { outcome, reason, dateStr, photos } = v;
 
     const confirmBtn = document.querySelector('#modal-box .modal-footer .btn-primary') || document.getElementById('mobile-close-submit');
     if (confirmBtn) { confirmBtn.disabled = true; confirmBtn.textContent = 'Enviando...'; }
 
-    let photoBeforeUrl = booking.closurePhotoBefore || null;
-    let photoAfterUrl = booking.closurePhotoAfter || null;
-    if (fileBefore) {
-        photoBeforeUrl = await uploadClosurePhoto(booking, fileBefore, 'antes');
-        if (!photoBeforeUrl) { if (confirmBtn) { confirmBtn.disabled = false; confirmBtn.textContent = 'Confirmar'; } return; }
-    }
-    if (fileAfter) {
-        photoAfterUrl = await uploadClosurePhoto(booking, fileAfter, 'depois');
-        if (!photoAfterUrl) { if (confirmBtn) { confirmBtn.disabled = false; confirmBtn.textContent = 'Confirmar'; } return; }
-    }
+    const uploaded = await uploadClosurePhotos(booking, photos, booking);
+    if (uploaded.failed) { if (confirmBtn) { confirmBtn.disabled = false; confirmBtn.textContent = 'Confirmar'; } return; }
+    const photoBeforeUrl = uploaded.before, photoAfterUrl = uploaded.after, photosExtra = uploaded.extra;
 
     const closureStatus = outcome === 'PENDENTE' ? pendingClosureStatusFor(booking.type) : outcome;
     const closedAt = new Date().toISOString();
@@ -2146,7 +2325,7 @@ async function confirmCloseBooking(id) {
     // a atualização, o Supabase não retorna "error", só devolve 0 linhas.
     const { data, error } = await sb.from('bookings').update({
         date: dateStr, closure_status: closureStatus, closure_reason: reason, closed_at: closedAt,
-        closure_photo_before: photoBeforeUrl, closure_photo_after: photoAfterUrl,
+        closure_photo_before: photoBeforeUrl, closure_photo_after: photoAfterUrl, closure_photos_extra: photosExtra,
         closed_by: (state.currentUser && state.profileKey !== 'VISITANTE') ? state.currentUser.id : null
     }).eq('id', id).select();
     if (error) {
@@ -2162,7 +2341,7 @@ async function confirmCloseBooking(id) {
 
     booking.date = dateStr;
     booking.closureStatus = closureStatus; booking.closureReason = reason; booking.closedAt = closedAt;
-    booking.closurePhotoBefore = photoBeforeUrl; booking.closurePhotoAfter = photoAfterUrl;
+    booking.closurePhotoBefore = photoBeforeUrl; booking.closurePhotoAfter = photoAfterUrl; booking.closurePhotosExtra = photosExtra;
     booking.pendingOfflineSync = false;
 
     const outcomeLabel = closureOutcomesFor(booking).find(o => o.value === outcome).label;
@@ -2265,7 +2444,7 @@ async function reconcileOfflineQueueFlags() {
                         operator: `${activeProfile().user} (${state.profileKey})`,
                         createdAt: new Date(rec.createdAt).toISOString(),
                         closureStatus: null, closureReason: null, closedAt: null,
-                        closurePhotoBefore: null, closurePhotoAfter: null,
+                        closurePhotoBefore: null, closurePhotoAfter: null, closurePhotosExtra: [],
                     };
                     state.bookings.push(booking);
                 }
@@ -2288,11 +2467,10 @@ async function queueClosureOffline(booking) {
         toast(v.message, 'error');
         return;
     }
-    const { outcome, reason, dateStr, fileBefore, fileAfter } = v;
+    const { outcome, reason, dateStr, photos } = v;
     const record = {
         id: 'offline_' + booking.id + '_' + Date.now(), kind: 'close',
-        bookingId: booking.id, outcome, reason, dateStr,
-        photoBefore: fileBefore || null, photoAfter: fileAfter || null,
+        bookingId: booking.id, outcome, reason, dateStr, photos,
         createdAt: Date.now(),
     };
     await offlineQueueAdd(record);
@@ -2312,7 +2490,7 @@ async function queueNewBookingOffline(tag, v) {
         emergencial: false, om, justification,
         operatorId: state.currentUser.id, operator: `${activeProfile().user} (${state.profileKey})`,
         createdAt: new Date().toISOString(), closureStatus: null, closureReason: null, closedAt: null,
-        closurePhotoBefore: null, closurePhotoAfter: null, pendingOfflineCreate: true,
+        closurePhotoBefore: null, closurePhotoAfter: null, closurePhotosExtra: [], pendingOfflineCreate: true,
     };
     state.bookings.push(booking);
     await offlineQueueAdd({
@@ -2377,31 +2555,29 @@ async function trySyncOfflineQueue() {
             // algo que ainda não existe lá. Deixa pra próxima tentativa.
             if (booking.pendingOfflineCreate) continue;
 
-            let photoBeforeUrl = booking.closurePhotoBefore || null;
-            let photoAfterUrl = booking.closurePhotoAfter || null;
-            let failed = false;
-            if (record.photoBefore) {
-                photoBeforeUrl = await uploadClosurePhoto(booking, record.photoBefore, 'antes', true);
-                if (!photoBeforeUrl) failed = true;
-            }
-            if (!failed && record.photoAfter) {
-                photoAfterUrl = await uploadClosurePhoto(booking, record.photoAfter, 'depois', true);
-                if (!photoAfterUrl) failed = true;
-            }
-            if (failed) break; // ainda sem sinal de verdade -- para por aqui, tenta de novo na próxima
+            // `record.photos` é o formato atual -- fallback pro formato antigo
+            // (photoBefore/photoAfter) cobre um registro que já estava na fila
+            // do IndexedDB de alguém antes desta atualização.
+            const recordPhotos = record.photos || [
+                ...(record.photoBefore ? [{ tipo: 'antes', file: record.photoBefore }] : []),
+                ...(record.photoAfter ? [{ tipo: 'depois', file: record.photoAfter }] : []),
+            ];
+            const uploaded = await uploadClosurePhotos(booking, recordPhotos, booking, true);
+            if (uploaded.failed) break; // ainda sem sinal de verdade -- para por aqui, tenta de novo na próxima
+            const photoBeforeUrl = uploaded.before, photoAfterUrl = uploaded.after, photosExtra = uploaded.extra;
 
             const closureStatus = record.outcome === 'PENDENTE' ? pendingClosureStatusFor(booking.type) : record.outcome;
             const closedAt = new Date().toISOString();
             const { data, error } = await sb.from('bookings').update({
                 date: record.dateStr, closure_status: closureStatus, closure_reason: record.reason, closed_at: closedAt,
-                closure_photo_before: photoBeforeUrl, closure_photo_after: photoAfterUrl,
+                closure_photo_before: photoBeforeUrl, closure_photo_after: photoAfterUrl, closure_photos_extra: photosExtra,
                 closed_by: (state.currentUser && state.profileKey !== 'VISITANTE') ? state.currentUser.id : null
             }).eq('id', booking.id).select();
             if (error || !data || data.length === 0) break;
 
             booking.date = record.dateStr;
             booking.closureStatus = closureStatus; booking.closureReason = record.reason; booking.closedAt = closedAt;
-            booking.closurePhotoBefore = photoBeforeUrl; booking.closurePhotoAfter = photoAfterUrl;
+            booking.closurePhotoBefore = photoBeforeUrl; booking.closurePhotoAfter = photoAfterUrl; booking.closurePhotosExtra = photosExtra;
             booking.pendingOfflineSync = false;
 
             const outcomeLabel = closureOutcomesFor(booking).find(o => o.value === record.outcome).label;
@@ -2619,7 +2795,7 @@ function renderMobileNewForm(tag) {
                 <div class="m-field" style="flex:1;"><label>Hora início *</label><input type="time" id="mobile-new-start" value="${minutesToTime(nowMinutes())}"></div>
                 <div class="m-field" style="flex:1;"><label>Hora fim *</label><input type="time" id="mobile-new-end" value="${minutesToTime(Math.min(nowMinutes() + 60, 23 * 60 + 59))}"></div>
             </div>
-            <div class="m-field"><label>Número da OM *</label><input type="text" id="mobile-new-om" inputmode="numeric" maxlength="12" placeholder="Ex: 123456789012"></div>
+            <div class="m-field" id="mobile-new-om-wrap" style="${isClientApprovalSite() ? 'display:none;' : ''}"><label>Número da OM *</label><input type="text" id="mobile-new-om" inputmode="numeric" maxlength="12" placeholder="Ex: 123456789012"></div>
             <div class="m-field"><label>Justificativa Técnica *</label><textarea id="mobile-new-just" rows="3" maxlength="200" placeholder="Ex: Limpeza geral, remoção de material..."></textarea></div>
         </div>
         <button type="button" class="btn-primary mobile-submit" id="mobile-new-submit">Criar e Continuar</button>
@@ -2635,12 +2811,14 @@ function validateNewBookingForm(tag) {
     const dateStr = document.getElementById('mobile-new-date').value;
     const startStr = document.getElementById('mobile-new-start').value;
     const endStr = document.getElementById('mobile-new-end').value;
-    const om = document.getElementById('mobile-new-om').value.trim();
+    const omRequired = !isClientApprovalSite();
+    const omRaw = document.getElementById('mobile-new-om').value.trim();
+    const om = omRequired ? omRaw : (omRaw || null);
     const justification = document.getElementById('mobile-new-just').value.trim();
     if (!canBookType(type)) return { ok: false, accessDenied: true, type };
     if (!dateStr) return { ok: false, message: 'Informe a data do serviço.' };
     if (!startStr || !endStr) return { ok: false, message: 'Informe o horário de início e de término.' };
-    if (!/^\d{1,12}$/.test(om)) return { ok: false, message: 'Informe o número da OM (somente dígitos, até 12 caracteres).' };
+    if (omRequired && !/^\d{1,12}$/.test(om)) return { ok: false, message: 'Informe o número da OM (somente dígitos, até 12 caracteres).' };
     if (justification.length < 5) return { ok: false, message: 'Informe uma justificativa técnica válida (mínimo 5 caracteres).' };
 
     const startMin = timeToMinutes(startStr);
@@ -2707,18 +2885,18 @@ function renderMobileCloseForm(booking) {
             </div>
             <div class="m-field"><label>Observação *</label><textarea id="close-just" rows="3" maxlength="200" placeholder="Explique o desfecho...">${defaultCloseObservationFor(outcomes[0].value)}</textarea></div>
             <div class="m-field" id="close-photos-wrap">
-                <label id="close-photos-label">Fotos de Antes / Depois *</label>
+                <label id="close-photos-label">Fotos ${closurePhotoSlotsFor(booking).map(s => s.label).join(' / ')} *</label>
                 <div style="display:flex; gap:12px;">
-                    ${['before', 'after'].map(side => `
+                    ${closurePhotoSlotsFor(booking).map(slot => `
                         <div style="flex:1;">
-                            <div style="font-size:11px; color:var(--text-secondary); margin-bottom:4px;">${side === 'before' ? 'Antes' : 'Depois'}</div>
+                            <div style="font-size:11px; color:var(--text-secondary); margin-bottom:4px;">${escapeHtml(slot.label)}</div>
                             <div style="display:flex; gap:6px;">
-                                <button type="button" class="btn-secondary" style="flex:1; padding:10px 4px; font-size:12px;" onclick="document.getElementById('close-photo-${side}-camera').click()">📷 Câmera</button>
-                                <button type="button" class="btn-secondary" style="flex:1; padding:10px 4px; font-size:12px;" onclick="document.getElementById('close-photo-${side}-galeria').click()">🖼️ Galeria</button>
+                                <button type="button" class="btn-secondary" style="flex:1; padding:10px 4px; font-size:12px;" onclick="document.getElementById('close-photo-${slot.tipo}-camera').click()">📷 Câmera</button>
+                                <button type="button" class="btn-secondary" style="flex:1; padding:10px 4px; font-size:12px;" onclick="document.getElementById('close-photo-${slot.tipo}-galeria').click()">🖼️ Galeria</button>
                             </div>
-                            <input type="file" id="close-photo-${side}-camera" accept="image/*" capture="environment" style="display:none;">
-                            <input type="file" id="close-photo-${side}-galeria" accept="image/*" style="display:none;">
-                            <div id="close-photo-${side}-status" style="font-size:11px; color:var(--text-secondary); margin-top:6px;">Nenhuma foto selecionada</div>
+                            <input type="file" id="close-photo-${slot.tipo}-camera" accept="image/*" capture="environment" style="display:none;">
+                            <input type="file" id="close-photo-${slot.tipo}-galeria" accept="image/*" style="display:none;">
+                            <div id="close-photo-${slot.tipo}-status" style="font-size:11px; color:var(--text-secondary); margin-top:6px;">Nenhuma foto selecionada</div>
                         </div>
                     `).join('')}
                 </div>
@@ -2746,10 +2924,10 @@ function renderMobileCloseForm(booking) {
     };
     outcomeSelect.addEventListener('change', updateForm);
     updateForm();
-    ['before', 'after'].forEach(side => {
+    closurePhotoSlotsFor(booking).forEach(slot => {
         ['camera', 'galeria'].forEach(mode => {
-            document.getElementById(`close-photo-${side}-${mode}`).addEventListener('change', (e) => {
-                const status = document.getElementById(`close-photo-${side}-status`);
+            document.getElementById(`close-photo-${slot.tipo}-${mode}`).addEventListener('change', (e) => {
+                const status = document.getElementById(`close-photo-${slot.tipo}-status`);
                 if (e.target.files[0]) status.textContent = `Selecionado: ${e.target.files[0].name}`;
             });
         });
@@ -3056,6 +3234,7 @@ function onProfileChanged() {
     `;
     document.querySelector('[data-view="usuarios"]').style.display = state.profileKey === 'ADMIN' ? 'flex' : 'none';
     document.querySelector('[data-view="importacao"]').style.display = state.profileKey === 'ADMIN' ? 'flex' : 'none';
+    document.querySelector('[data-view="aprovacoes"]').style.display = canReviewValeApprovals() ? 'flex' : 'none';
     const chartBoxManut = document.getElementById('chart-box-manut');
     if (chartBoxManut) chartBoxManut.style.display = canSeeAvailabilityChart() ? 'flex' : 'none';
     renderSiteSelect();
@@ -3073,12 +3252,14 @@ const VIEW_META = {
     calendario: { title: 'Calendário de Processos', sub: 'Agenda interativa de ocupação dos equipamentos' },
     relatorios: { title: 'Relatórios & Auditoria', sub: 'Indicadores operacionais e trilha de auditoria' },
     mapacalor: { title: 'Mapa de Calor', sub: 'Indicadores de manutenção e limpeza por equipamento' },
+    aprovacoes: { title: 'Aprovações Vale', sub: 'Avaliação das limpezas do workflow S11D' },
     usuarios: { title: 'Usuários & Acessos', sub: 'Gestão de contas e permissões (Admin Master)' },
     importacao: { title: 'Importação em Massa', sub: 'Lançamento em lote via planilha + fotos (Admin Master)' }
 };
 function switchView(view) {
     if (view === 'usuarios' && state.profileKey !== 'ADMIN') { showAccessDenied('Apenas o Admin Master pode gerenciar usuários.'); return; }
     if (view === 'importacao' && state.profileKey !== 'ADMIN') { showAccessDenied('Apenas o Admin Master pode fazer importação em massa.'); return; }
+    if (view === 'aprovacoes' && !canReviewValeApprovals()) { showAccessDenied('Perfil sem privilégios para avaliar aprovações da Vale.'); return; }
     document.querySelectorAll('.nav-item').forEach(b => b.classList.toggle('active', b.dataset.view === view));
     document.querySelectorAll('.content-container').forEach(c => c.classList.toggle('view-active', c.id === 'view-' + view));
     document.getElementById('header-title').textContent = VIEW_META[view].title;
@@ -3089,6 +3270,7 @@ function switchView(view) {
     if (view === 'usuarios') loadProfiles().then(renderUsersView);
     if (view === 'calendario') renderWeekGrid();
     if (view === 'mapacalor') renderHeatmap();
+    if (view === 'aprovacoes') renderValeApprovals();
     if (view === 'importacao') resetImportUi();
 }
 document.querySelectorAll('.nav-item').forEach(btn => btn.addEventListener('click', () => switchView(btn.dataset.view)));
@@ -3348,18 +3530,23 @@ function sodexoCleaningBreakdown(periodo) {
         const atual = periodoMedicaoAtual();
         from = atual.from; to = atual.to;
     }
+    // APROVADO_VALE/REPROVADO_VALE/PENDENCIA_VALE são as decisões do
+    // workflow S11D -- mesmo peso na nota que ENCERRADA/PENDENTE_SODEXO/
+    // PENDENTE_VALE, respectivamente. AGUARDANDO_APROVACAO_VALE fica de
+    // fora de propósito: não conta nem a favor nem contra até o Cliente
+    // Vale decidir.
     const fechados = state.bookings.filter(b => {
         if (b.type !== SODEXO_CLEANING_TYPE) return false;
-        if (!['ENCERRADA', 'PENDENTE_VALE', 'PENDENTE_SODEXO'].includes(b.closureStatus)) return false;
+        if (!['ENCERRADA', 'PENDENTE_VALE', 'PENDENTE_SODEXO', 'APROVADO_VALE', 'REPROVADO_VALE', 'PENDENCIA_VALE'].includes(b.closureStatus)) return false;
         if (from && b.date < from) return false;
         if (to && b.date > to) return false;
         return true;
     });
     const total = fechados.length;
     if (!total) return null;
-    const atendido = fechados.filter(b => b.closureStatus === 'ENCERRADA').length;
-    const pendenteVale = fechados.filter(b => b.closureStatus === 'PENDENTE_VALE').length;
-    const pendenteSodexo = fechados.filter(b => b.closureStatus === 'PENDENTE_SODEXO').length;
+    const atendido = fechados.filter(b => b.closureStatus === 'ENCERRADA' || b.closureStatus === 'APROVADO_VALE').length;
+    const pendenteVale = fechados.filter(b => b.closureStatus === 'PENDENTE_VALE' || b.closureStatus === 'PENDENCIA_VALE').length;
+    const pendenteSodexo = fechados.filter(b => b.closureStatus === 'PENDENTE_SODEXO' || b.closureStatus === 'REPROVADO_VALE').length;
     const pct = n => Math.round((n / total) * 1000) / 10;
     return {
         total, atendido, pendenteVale, pendenteSodexo,
@@ -3425,6 +3612,10 @@ const CLOSURE_STATUS_LABELS = {
     PENDENTE: 'Pendente',
     PENDENTE_VALE: 'Pendente Vale',
     PENDENTE_SODEXO: 'Pendente Sodexo',
+    AGUARDANDO_APROVACAO_VALE: 'Aguardando Aprovação Vale',
+    APROVADO_VALE: 'Aprovado Vale',
+    REPROVADO_VALE: 'Reprovado Vale',
+    PENDENCIA_VALE: 'Pendência Vale',
 };
 
 // Lista de gerenciamento dos bloqueios já encerrados/reprogramados/pendentes
@@ -3819,6 +4010,9 @@ const BOOK_STATUS_BADGE = {
     ENCERRADA: { bg: 'rgba(46,213,115,0.15)', fg: '#1a8a4a', label: 'Encerrado' },
     PENDENTE_VALE: { bg: 'rgba(245,158,11,0.15)', fg: '#b45309', label: 'Pendente Vale' },
     PENDENTE_SODEXO: { bg: 'rgba(239,68,68,0.15)', fg: '#b91c1c', label: 'Pendente Sodexo' },
+    APROVADO_VALE: { bg: 'rgba(46,213,115,0.15)', fg: '#1a8a4a', label: 'Aprovado Vale' },
+    REPROVADO_VALE: { bg: 'rgba(239,68,68,0.15)', fg: '#b91c1c', label: 'Reprovado Vale' },
+    PENDENCIA_VALE: { bg: 'rgba(245,158,11,0.15)', fg: '#b45309', label: 'Pendência Vale' },
 };
 
 const BOOK_STATUS_FILTER_LABELS = {
@@ -3826,6 +4020,9 @@ const BOOK_STATUS_FILTER_LABELS = {
     ENCERRADA: 'Somente Encerrado',
     PENDENTE_VALE: 'Somente Pendente Vale',
     PENDENTE_SODEXO: 'Somente Pendente Sodexo',
+    APROVADO_VALE: 'Somente Aprovado Vale',
+    REPROVADO_VALE: 'Somente Reprovado Vale',
+    PENDENCIA_VALE: 'Somente Pendência Vale',
 };
 
 function buildAderenciaBookHtml() {
@@ -3841,7 +4038,7 @@ function buildAderenciaBookHtml() {
     // área -- sem precisar folhear o BOOK inteiro).
     const itens = state.bookings.filter(b => {
         if (b.type !== SODEXO_CLEANING_TYPE) return false;
-        if (!['ENCERRADA', 'PENDENTE_VALE', 'PENDENTE_SODEXO'].includes(b.closureStatus)) return false;
+        if (!['ENCERRADA', 'PENDENTE_VALE', 'PENDENTE_SODEXO', 'APROVADO_VALE', 'REPROVADO_VALE', 'PENDENCIA_VALE'].includes(b.closureStatus)) return false;
         if (statusFilter !== 'ALL' && b.closureStatus !== statusFilter) return false;
         if (from && b.date < from) return false;
         if (to && b.date > to) return false;
@@ -4150,6 +4347,175 @@ async function confirmBookCleanup(periodTo) {
     if (failCount === 0) toast(`${okCount} bloqueio(s) tiveram as fotos liberadas do Storage.`, 'warn');
     else toast(`${okCount} liberado(s), ${failCount} falharam -- tente de novo mais tarde.`, 'error');
     renderCharts();
+}
+
+/* =========================================================
+   APROVAÇÕES VALE -- workflow do site S11D (Cliente Vale + Admin Master).
+   O encarregado encerra com fotos e o bloqueio fica AGUARDANDO_APROVACAO_
+   VALE (não conta na nota); aqui o cliente decide Aprovado/Reprovado/
+   Pendência Vale, sempre com justificativa -- e pode voltar depois e
+   reclassificar sua própria decisão a qualquer momento.
+   ========================================================= */
+const VALE_DECISION_META = {
+    APROVADO_VALE: { label: 'Aprovado', hint: 'Conta como Encerrado na nota de Aderência da Sodexo.' },
+    REPROVADO_VALE: { label: 'Reprovado', hint: 'Desconta da nota de Aderência da Sodexo (igual Pendente Sodexo).' },
+    PENDENCIA_VALE: { label: 'Pendência Vale', hint: 'Interferência do lado Vale (ex: área não liberada) -- não desconta da nota.' },
+};
+
+function valeApprovalsForCurrentSite() {
+    return state.bookings.filter(b => b.type === SODEXO_CLEANING_TYPE);
+}
+
+function valePhotoPreview(url, label) {
+    return `
+        <div style="flex:1; min-width:110px;">
+            <div style="font-size:10.5px; color:var(--text-secondary); margin-bottom:4px;">${escapeHtml(label)}</div>
+            ${url ? `<img src="${url}" style="width:100%; height:100px; object-fit:cover; border-radius:6px; border:1px solid var(--border-color);" onerror="handleBookImgFail(this)" onload="if(this.naturalWidth===0) handleBookImgFail(this)">` : `<div style="font-size:11px; color:var(--text-muted); padding:8px 0;">Sem foto</div>`}
+        </div>`;
+}
+
+function valeAreaInfoLine(booking) {
+    const valor = areaValorCalculado(booking.area);
+    const meta = AREA_META[booking.area];
+    if (!meta || (meta.m2 == null && meta.valorM2 == null)) return '';
+    const partes = [];
+    if (meta.m2 != null) partes.push(`${meta.m2} m²`);
+    if (meta.valorM2 != null) partes.push(`R$ ${meta.valorM2.toFixed(2)}/m²`);
+    if (valor != null) partes.push(`R$ ${valor.toFixed(2)}`);
+    return ` · ${partes.join(' · ')}`;
+}
+
+function renderValeApprovals() {
+    const pendingBox = document.getElementById('vale-pending-list');
+    const decidedBox = document.getElementById('vale-decided-list');
+    if (!pendingBox || !decidedBox) return;
+    const all = valeApprovalsForCurrentSite();
+    const pending = all.filter(b => b.closureStatus === 'AGUARDANDO_APROVACAO_VALE').sort((a, b) => (b.closedAt || '').localeCompare(a.closedAt || ''));
+    const decided = all.filter(b => ['APROVADO_VALE', 'REPROVADO_VALE', 'PENDENCIA_VALE'].includes(b.closureStatus)).sort((a, b) => (b.valeDecidedAt || '').localeCompare(a.valeDecidedAt || ''));
+
+    pendingBox.innerHTML = pending.length ? pending.map(b => `
+        <div style="border:1px solid var(--border-color); border-radius:8px; padding:16px; margin-bottom:14px;">
+            <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:6px;">
+                <div style="font-weight:700; font-size:14px;">${escapeHtml(b.tag)} — ${escapeHtml(AREA_LABEL[b.area] || b.area)}${valeAreaInfoLine(b)}</div>
+                <div style="font-size:10.5px; font-weight:700; padding:3px 8px; border-radius:10px; background:rgba(245,158,11,0.15); color:#b45309;">Aguardando Aprovação</div>
+            </div>
+            <div style="font-size:12px; color:var(--text-secondary); margin-bottom:8px;">${formatDateBR(b.date)} · ${minutesToTime(b.startMin)}–${minutesToTime(b.endMin)} · Responsável: ${escapeHtml(b.operator)}</div>
+            <div style="font-size:12.5px; margin-bottom:10px;"><b>Observação do encarregado:</b> ${escapeHtml(b.closureReason || '—')}</div>
+            <div style="display:flex; gap:10px; flex-wrap:wrap; margin-bottom:12px;">
+                ${valePhotoPreview(b.closurePhotoBefore, 'Antes')}
+                ${(b.closurePhotosExtra || []).map(p => valePhotoPreview(p.url, p.tipo.charAt(0).toUpperCase() + p.tipo.slice(1)))}
+                ${valePhotoPreview(b.closurePhotoAfter, 'Depois')}
+            </div>
+            <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                <button class="btn-primary" style="padding:8px 14px; font-size:12.5px;" onclick="openValeDecisionModal('${b.id}','APROVADO_VALE')">Aprovar</button>
+                <button class="btn-danger" style="padding:8px 14px; font-size:12.5px;" onclick="openValeDecisionModal('${b.id}','REPROVADO_VALE')">Reprovar</button>
+                <button class="btn-secondary" style="padding:8px 14px; font-size:12.5px;" onclick="openValeDecisionModal('${b.id}','PENDENCIA_VALE')">Pendência Vale</button>
+            </div>
+        </div>
+    `).join('') : `<div style="color:var(--text-muted); font-size:13px;">Nenhuma limpeza aguardando aprovação no momento.</div>`;
+
+    decidedBox.innerHTML = decided.length ? decided.map(b => {
+        const meta = VALE_DECISION_META[b.closureStatus];
+        const badgeColor = b.closureStatus === 'APROVADO_VALE' ? { bg: 'rgba(46,213,115,0.15)', fg: '#1a8a4a' }
+            : b.closureStatus === 'REPROVADO_VALE' ? { bg: 'rgba(239,68,68,0.15)', fg: '#b91c1c' }
+            : { bg: 'rgba(245,158,11,0.15)', fg: '#b45309' };
+        return `
+        <div style="border:1px solid var(--border-color); border-radius:8px; padding:14px 16px; margin-bottom:10px;">
+            <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:6px; flex-wrap:wrap; gap:8px;">
+                <div style="font-weight:700; font-size:13.5px;">${escapeHtml(b.tag)} — ${escapeHtml(AREA_LABEL[b.area] || b.area)}</div>
+                <div style="font-size:10.5px; font-weight:700; padding:3px 8px; border-radius:10px; background:${badgeColor.bg}; color:${badgeColor.fg};">${escapeHtml(meta.label)}</div>
+            </div>
+            <div style="font-size:12px; color:var(--text-secondary); margin-bottom:6px;">${formatDateBR(b.date)} · Decidido em ${b.valeDecidedAt ? new Date(b.valeDecidedAt).toLocaleString('pt-BR') : '—'}</div>
+            <div style="font-size:12.5px; margin-bottom:10px;"><b>Sua justificativa:</b> ${escapeHtml(b.valeDecisionReason || '—')}</div>
+            <button class="btn-secondary" style="padding:6px 12px; font-size:12px;" onclick="openValeReclassifyModal('${b.id}')">Reclassificar</button>
+        </div>`;
+    }).join('') : `<div style="color:var(--text-muted); font-size:13px;">Nenhuma decisão registrada ainda.</div>`;
+}
+
+function openValeDecisionModal(bookingId, decision) {
+    if (!canReviewValeApprovals()) { showAccessDenied('Perfil sem privilégios para avaliar aprovações da Vale.'); return; }
+    const booking = state.bookings.find(b => b.id === bookingId);
+    if (!booking) return;
+    const meta = VALE_DECISION_META[decision];
+    openModal(`
+        <div class="modal-header"><h3>${meta.label} — ${escapeHtml(booking.tag)}</h3><button class="modal-close" onclick="closeModal()">&times;</button></div>
+        <div class="modal-body">
+            <div style="font-size:12.5px; color:var(--text-secondary); margin-bottom:12px;">${escapeHtml(meta.hint)}</div>
+            <div class="m-field"><label>Justificativa *</label><textarea id="vale-decision-just" rows="3" maxlength="300" placeholder="Explique o motivo desta decisão..."></textarea></div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn-secondary" onclick="closeModal()">Voltar</button>
+            <button class="btn-primary" onclick="submitValeDecision('${bookingId}','${decision}')">Confirmar ${escapeHtml(meta.label)}</button>
+        </div>
+    `);
+}
+
+// Reclassificar oferece as duas outras opções (não a que já está aplicada)
+// -- o cliente pode mudar de ideia a qualquer momento, sempre com uma
+// justificativa nova, e cada mudança fica registrada no log de auditoria.
+function openValeReclassifyModal(bookingId) {
+    if (!canReviewValeApprovals()) { showAccessDenied('Perfil sem privilégios para avaliar aprovações da Vale.'); return; }
+    const booking = state.bookings.find(b => b.id === bookingId);
+    if (!booking) return;
+    const outras = Object.keys(VALE_DECISION_META).filter(k => k !== booking.closureStatus);
+    openModal(`
+        <div class="modal-header"><h3>Reclassificar — ${escapeHtml(booking.tag)}</h3><button class="modal-close" onclick="closeModal()">&times;</button></div>
+        <div class="modal-body">
+            <div style="font-size:12.5px; color:var(--text-secondary); margin-bottom:12px;">
+                Decisão atual: <b>${escapeHtml(VALE_DECISION_META[booking.closureStatus].label)}</b> — ${escapeHtml(booking.valeDecisionReason || '—')}
+            </div>
+            <div class="m-field"><label>Nova decisão *</label>
+                <select id="vale-reclassify-decision">${outras.map(k => `<option value="${k}">${escapeHtml(VALE_DECISION_META[k].label)}</option>`).join('')}</select>
+            </div>
+            <div class="m-field"><label>Justificativa *</label><textarea id="vale-decision-just" rows="3" maxlength="300" placeholder="Explique o motivo da mudança..."></textarea></div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn-secondary" onclick="closeModal()">Voltar</button>
+            <button class="btn-primary" onclick="submitValeDecision('${bookingId}', document.getElementById('vale-reclassify-decision').value)">Salvar Reclassificação</button>
+        </div>
+    `);
+}
+
+async function submitValeDecision(id, decision) {
+    if (!canReviewValeApprovals()) { showAccessDenied('Perfil sem privilégios para avaliar aprovações da Vale.'); return; }
+    const booking = state.bookings.find(b => b.id === id);
+    if (!booking) return;
+    const justificativa = document.getElementById('vale-decision-just').value.trim();
+    if (justificativa.length < 5) { toast('Informe uma justificativa (mínimo 5 caracteres).', 'error'); return; }
+
+    const confirmBtn = document.querySelector('#modal-box .modal-footer .btn-primary');
+    if (confirmBtn) { confirmBtn.disabled = true; confirmBtn.textContent = 'Salvando...'; }
+
+    const decidedAt = new Date().toISOString();
+    // `.select()` confirma que a linha foi mesmo alterada -- RLS bloqueando
+    // silenciosamente não vira "error", só devolve 0 linhas afetadas.
+    const { data, error } = await sb.from('bookings').update({
+        closure_status: decision, vale_decision_reason: justificativa,
+        vale_decided_at: decidedAt, vale_decided_by: state.currentUser.id
+    }).eq('id', id).select();
+    if (error) {
+        toast('Erro ao registrar decisão: ' + error.message, 'error');
+        if (confirmBtn) { confirmBtn.disabled = false; confirmBtn.textContent = 'Confirmar'; }
+        return;
+    }
+    if (!data || data.length === 0) {
+        toast('Não foi possível registrar: nenhum registro foi afetado no banco (verifique suas permissões).', 'error');
+        if (confirmBtn) { confirmBtn.disabled = false; confirmBtn.textContent = 'Confirmar'; }
+        return;
+    }
+
+    const previousStatus = booking.closureStatus;
+    booking.closureStatus = decision; booking.valeDecisionReason = justificativa; booking.valeDecidedAt = decidedAt;
+    await addAuditEntry({
+        tag: booking.tag, acao: `${booking.type} (${VALE_DECISION_META[decision].label} — Vale)`, justificativa,
+        om: booking.om, agendamentoData: booking.date, agendamentoHorario: `${minutesToTime(booking.startMin)}–${minutesToTime(booking.endMin)}`
+    });
+    closeModal();
+    toast(previousStatus === 'AGUARDANDO_APROVACAO_VALE'
+        ? `Decisão registrada: ${VALE_DECISION_META[decision].label}.`
+        : `Reclassificado para ${VALE_DECISION_META[decision].label}.`);
+    renderValeApprovals();
+    renderCharts(); renderDashboard();
 }
 
 /* =========================================================
@@ -4820,10 +5186,14 @@ async function toggleUserActive(id) {
 async function loadSiteDatabase() {
     Object.keys(DATABASE).forEach(k => delete DATABASE[k]);
     Object.keys(AREA_LABEL).forEach(k => delete AREA_LABEL[k]);
+    Object.keys(AREA_META).forEach(k => delete AREA_META[k]);
     ALL_EQUIP.length = 0;
-    const { data: areas, error: areasErr } = await sb.from('areas').select('code, label').eq('site_key', state.currentSite);
+    const { data: areas, error: areasErr } = await sb.from('areas').select('code, label, m2, valor_m2').eq('site_key', state.currentSite);
     if (areasErr) { toast('Erro ao carregar áreas: ' + areasErr.message, 'error'); return; }
-    (areas || []).forEach(a => { DATABASE[a.code] = []; AREA_LABEL[a.code] = a.label; });
+    (areas || []).forEach(a => {
+        DATABASE[a.code] = []; AREA_LABEL[a.code] = a.label;
+        AREA_META[a.code] = { m2: a.m2 == null ? null : Number(a.m2), valorM2: a.valor_m2 == null ? null : Number(a.valor_m2) };
+    });
     const { data: equip, error: equipErr } = await sb.from('equipment').select('tag, area_code').eq('site_key', state.currentSite);
     if (equipErr) { toast('Erro ao carregar equipamentos: ' + equipErr.message, 'error'); return; }
     (equip || []).forEach(e => {
@@ -4857,6 +5227,59 @@ function renderAssetMgmtPanel() {
             `<optgroup label="${escapeHtml(AREA_LABEL[area] || area)}">${DATABASE[area].map(tag => `<option value="${tag}">${tag} (${escapeHtml(AREA_LABEL[area] || area)})</option>`).join('')}</optgroup>`
         ).join('');
     }
+    renderAreaValueTable();
+}
+
+// Tabela de m²/valor por área -- é a única forma de dar valor a áreas
+// criadas antes desses campos existirem (ex: as do S11D, cadastradas nesta
+// sessão antes desta feature).
+function renderAreaValueTable() {
+    const wrap = document.getElementById('area-value-table-wrap');
+    const tbody = document.getElementById('area-value-tbody');
+    if (!wrap || !tbody) return;
+    const codes = Object.keys(DATABASE);
+    wrap.style.display = codes.length ? 'block' : 'none';
+    tbody.innerHTML = codes.map(code => {
+        const meta = AREA_META[code] || { m2: null, valorM2: null };
+        const valor = areaValorCalculado(code);
+        return `
+        <tr>
+            <td>${escapeHtml(code)}</td>
+            <td>${escapeHtml(AREA_LABEL[code] || code)}</td>
+            <td>${meta.m2 != null ? meta.m2 : '—'}</td>
+            <td>${meta.valorM2 != null ? 'R$ ' + meta.valorM2.toFixed(2) : '—'}</td>
+            <td>${valor != null ? 'R$ ' + valor.toFixed(2) : '—'}</td>
+            <td><button class="btn-secondary" style="padding:5px 9px; font-size:11px;" onclick="openEditAreaValueModal('${code}')">Editar</button></td>
+        </tr>`;
+    }).join('');
+}
+
+function openEditAreaValueModal(code) {
+    if (state.profileKey !== 'ADMIN') { showAccessDenied('Apenas o Admin Master pode gerenciar áreas e equipamentos.'); return; }
+    const meta = AREA_META[code] || { m2: null, valorM2: null };
+    openModal(`
+        <div class="modal-header"><h3>Editar Valor — ${escapeHtml(AREA_LABEL[code] || code)}</h3><button class="modal-close" onclick="closeModal()">&times;</button></div>
+        <div class="modal-body">
+            <div class="m-field"><label>m²</label><input type="number" id="edit-area-m2" step="0.01" min="0" value="${meta.m2 != null ? meta.m2 : ''}"></div>
+            <div class="m-field"><label>R$/m²</label><input type="number" id="edit-area-valor-m2" step="0.01" min="0" value="${meta.valorM2 != null ? meta.valorM2 : ''}"></div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn-secondary" onclick="closeModal()">Cancelar</button>
+            <button class="btn-primary" onclick="saveAreaValue('${code}')">Salvar</button>
+        </div>
+    `);
+}
+async function saveAreaValue(code) {
+    const m2Raw = document.getElementById('edit-area-m2').value;
+    const valorRaw = document.getElementById('edit-area-valor-m2').value;
+    const m2 = m2Raw === '' ? null : Number(m2Raw);
+    const valorM2 = valorRaw === '' ? null : Number(valorRaw);
+    const { error } = await sb.from('areas').update({ m2, valor_m2: valorM2 }).eq('site_key', state.currentSite).eq('code', code);
+    if (error) { toast('Erro ao salvar valor da área: ' + error.message, 'error'); return; }
+    AREA_META[code] = { m2, valorM2 };
+    closeModal();
+    toast(`Valor de "${AREA_LABEL[code] || code}" salvo.`);
+    renderAreaValueTable();
 }
 
 async function moveEquipment(tag, newArea) {
@@ -4922,14 +5345,21 @@ document.getElementById('btn-add-area').addEventListener('click', async () => {
     if (state.profileKey !== 'ADMIN') { showAccessDenied('Apenas o Admin Master pode gerenciar áreas e equipamentos.'); return; }
     const codeRaw = document.getElementById('new-area-code').value.trim().toUpperCase().replace(/[^A-Z0-9_-]/g, '');
     const label = document.getElementById('new-area-label').value.trim();
+    const m2Raw = document.getElementById('new-area-m2').value;
+    const valorRaw = document.getElementById('new-area-valor-m2').value;
+    const m2 = m2Raw === '' ? null : Number(m2Raw);
+    const valorM2 = valorRaw === '' ? null : Number(valorRaw);
     if (!codeRaw || !label) { toast('Informe o código e o nome de exibição da nova área.', 'error'); return; }
     if (DATABASE[codeRaw]) { toast('Já existe uma área com esse código.', 'error'); return; }
-    const { error } = await sb.from('areas').insert({ site_key: state.currentSite, code: codeRaw, label });
+    const { error } = await sb.from('areas').insert({ site_key: state.currentSite, code: codeRaw, label, m2, valor_m2: valorM2 });
     if (error) { toast('Erro ao criar área: ' + error.message, 'error'); return; }
     DATABASE[codeRaw] = [];
     AREA_LABEL[codeRaw] = label;
+    AREA_META[codeRaw] = { m2, valorM2 };
     document.getElementById('new-area-code').value = '';
     document.getElementById('new-area-label').value = '';
+    document.getElementById('new-area-m2').value = '';
+    document.getElementById('new-area-valor-m2').value = '';
     toast(`Área "${label}" adicionada com sucesso.`);
     renderAssetMgmtPanel();
     renderAtivos(); renderAgendaEquipSelect(); renderDashboard();
