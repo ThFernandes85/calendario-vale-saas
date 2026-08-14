@@ -1376,7 +1376,17 @@ function canExportReports() { return activeProfile().canExport; }
 // de `readOnly` -- o Cliente Vale continua sem poder agendar/encerrar nada
 // normal, mas precisa desta ação específica. Admin Master tem paridade de
 // supervisão, igual às outras ações administrativas do app.
-function canReviewValeApprovals() { return state.profileKey === 'CLIENTE_VALE' || state.profileKey === 'ADMIN'; }
+// Quem consegue APROVAR/REPROVAR/marcar pendência de verdade -- Cliente
+// Vale (é a decisão dele) e Admin Master (supervisão).
+function canDecideValeApprovals() { return state.profileKey === 'CLIENTE_VALE' || state.profileKey === 'ADMIN'; }
+// Quem só ACOMPANHA a tela (vê o que está aguardando/decidido, sem poder
+// clicar em nada) -- inclui o Técnico de Planejamento e GU, que precisa
+// saber o que ainda está pendente de aprovação da Vale, mas não decide.
+function canViewValeApprovals() { return canDecideValeApprovals() || state.profileKey === 'TECNICO_PLANEJAMENTO'; }
+// Técnico de Planejamento e GU também cria/gerencia áreas e ativos (sub-
+// áreas) -- é ele quem estrutura o site (ex: S11D) no dia a dia, não só o
+// Admin Master.
+function canManageAssets() { return state.profileKey === 'ADMIN' || state.profileKey === 'TECNICO_PLANEJAMENTO'; }
 // Gráfico de Indisponibilidade (Manutenção) é indicador de PCM -- fica fora
 // até para o Admin Master, a pedido explícito, pra não poluir o dashboard
 // de quem não lida com Manutenção no dia a dia.
@@ -3272,7 +3282,7 @@ function onProfileChanged() {
     `;
     document.querySelector('[data-view="usuarios"]').style.display = state.profileKey === 'ADMIN' ? 'flex' : 'none';
     document.querySelector('[data-view="importacao"]').style.display = state.profileKey === 'ADMIN' ? 'flex' : 'none';
-    document.querySelector('[data-view="aprovacoes"]').style.display = canReviewValeApprovals() ? 'flex' : 'none';
+    document.querySelector('[data-view="aprovacoes"]').style.display = canViewValeApprovals() ? 'flex' : 'none';
     const chartBoxManut = document.getElementById('chart-box-manut');
     if (chartBoxManut) chartBoxManut.style.display = canSeeAvailabilityChart() ? 'flex' : 'none';
     renderSiteSelect();
@@ -3297,7 +3307,7 @@ const VIEW_META = {
 function switchView(view) {
     if (view === 'usuarios' && state.profileKey !== 'ADMIN') { showAccessDenied('Apenas o Admin Master pode gerenciar usuários.'); return; }
     if (view === 'importacao' && state.profileKey !== 'ADMIN') { showAccessDenied('Apenas o Admin Master pode fazer importação em massa.'); return; }
-    if (view === 'aprovacoes' && !canReviewValeApprovals()) { showAccessDenied('Perfil sem privilégios para avaliar aprovações da Vale.'); return; }
+    if (view === 'aprovacoes' && !canViewValeApprovals()) { showAccessDenied('Perfil sem privilégios para acessar as Aprovações Vale.'); return; }
     document.querySelectorAll('.nav-item').forEach(b => b.classList.toggle('active', b.dataset.view === view));
     document.querySelectorAll('.content-container').forEach(c => c.classList.toggle('view-active', c.id === 'view-' + view));
     document.getElementById('header-title').textContent = VIEW_META[view].title;
@@ -4127,12 +4137,17 @@ function buildAderenciaBookHtml() {
                 ${formatDateBR(b.date)} · ${minutesToTime(b.startMin)}–${minutesToTime(b.endMin)} · OM ${escapeHtml(b.om || '—')} · Responsável: ${escapeHtml(b.operator)}
             </div>
             <div style="font-size:12px; margin-bottom:10px;"><b>Observação:</b> ${escapeHtml(b.closureReason || '—')}</div>
-            <div style="display:flex; gap:12px;">
-                <div style="flex:1;">
+            <div style="display:flex; gap:12px; flex-wrap:wrap;">
+                <div style="flex:1; min-width:200px;">
                     <div style="font-size:11px; font-weight:600; margin-bottom:4px;">ANTES</div>
                     ${b.closurePhotoBefore ? `<img src="${b.closurePhotoBefore}" loading="lazy" style="width:280px; height:280px; object-fit:cover; border-radius:6px; border:1px solid #ddd;" onerror="handleBookImgFail(this)" onload="if(this.naturalWidth===0) handleBookImgFail(this)">` : `<div style="font-size:11px; color:#999;">Sem foto</div>`}
                 </div>
-                <div style="flex:1;">
+                ${(b.closurePhotosExtra || []).map(p => `
+                <div style="flex:1; min-width:200px;">
+                    <div style="font-size:11px; font-weight:600; margin-bottom:4px;">${escapeHtml((p.tipo || '').toUpperCase())}</div>
+                    ${p.url ? `<img src="${p.url}" loading="lazy" style="width:280px; height:280px; object-fit:cover; border-radius:6px; border:1px solid #ddd;" onerror="handleBookImgFail(this)" onload="if(this.naturalWidth===0) handleBookImgFail(this)">` : `<div style="font-size:11px; color:#999;">Sem foto</div>`}
+                </div>`).join('')}
+                <div style="flex:1; min-width:200px;">
                     <div style="font-size:11px; font-weight:600; margin-bottom:4px;">DEPOIS</div>
                     ${b.closurePhotoAfter ? `<img src="${b.closurePhotoAfter}" loading="lazy" style="width:280px; height:280px; object-fit:cover; border-radius:6px; border:1px solid #ddd;" onerror="handleBookImgFail(this)" onload="if(this.naturalWidth===0) handleBookImgFail(this)">` : `<div style="font-size:11px; color:#999;">Sem foto</div>`}
                 </div>
@@ -4505,11 +4520,12 @@ function renderValeApprovals() {
                 ${(b.closurePhotosExtra || []).map(p => valePhotoPreview(p.url, p.tipo.charAt(0).toUpperCase() + p.tipo.slice(1)))}
                 ${valePhotoPreview(b.closurePhotoAfter, 'Depois')}
             </div>
+            ${canDecideValeApprovals() ? `
             <div style="display:flex; gap:8px; flex-wrap:wrap;">
                 <button class="btn-primary" style="padding:8px 14px; font-size:12.5px;" onclick="openValeDecisionModal('${b.id}','APROVADO_VALE')">Aprovar</button>
                 <button class="btn-danger" style="padding:8px 14px; font-size:12.5px;" onclick="openValeDecisionModal('${b.id}','REPROVADO_VALE')">Reprovar</button>
                 <button class="btn-secondary" style="padding:8px 14px; font-size:12.5px;" onclick="openValeDecisionModal('${b.id}','PENDENCIA_VALE')">Pendência Vale</button>
-            </div>
+            </div>` : ''}
         </div>
     `).join('') : `<div style="color:var(--text-muted); font-size:13px;">Nenhuma limpeza aguardando aprovação no momento.</div>`;
 
@@ -4525,14 +4541,14 @@ function renderValeApprovals() {
                 <div style="font-size:10.5px; font-weight:700; padding:3px 8px; border-radius:10px; background:${badgeColor.bg}; color:${badgeColor.fg};">${escapeHtml(meta.label)}</div>
             </div>
             <div style="font-size:12px; color:var(--text-secondary); margin-bottom:6px;">${formatDateBR(b.date)} · Decidido em ${b.valeDecidedAt ? new Date(b.valeDecidedAt).toLocaleString('pt-BR') : '—'}</div>
-            <div style="font-size:12.5px; margin-bottom:10px;"><b>Sua justificativa:</b> ${escapeHtml(b.valeDecisionReason || '—')}</div>
-            <button class="btn-secondary" style="padding:6px 12px; font-size:12px;" onclick="openValeReclassifyModal('${b.id}')">Reclassificar</button>
+            <div style="font-size:12.5px; margin-bottom:10px;"><b>Justificativa:</b> ${escapeHtml(b.valeDecisionReason || '—')}</div>
+            ${canDecideValeApprovals() ? `<button class="btn-secondary" style="padding:6px 12px; font-size:12px;" onclick="openValeReclassifyModal('${b.id}')">Reclassificar</button>` : ''}
         </div>`;
     }).join('') : `<div style="color:var(--text-muted); font-size:13px;">Nenhuma decisão registrada ainda.</div>`;
 }
 
 function openValeDecisionModal(bookingId, decision) {
-    if (!canReviewValeApprovals()) { showAccessDenied('Perfil sem privilégios para avaliar aprovações da Vale.'); return; }
+    if (!canDecideValeApprovals()) { showAccessDenied('Perfil sem privilégios para avaliar aprovações da Vale.'); return; }
     const booking = state.bookings.find(b => b.id === bookingId);
     if (!booking) return;
     const meta = VALE_DECISION_META[decision];
@@ -4553,7 +4569,7 @@ function openValeDecisionModal(bookingId, decision) {
 // -- o cliente pode mudar de ideia a qualquer momento, sempre com uma
 // justificativa nova, e cada mudança fica registrada no log de auditoria.
 function openValeReclassifyModal(bookingId) {
-    if (!canReviewValeApprovals()) { showAccessDenied('Perfil sem privilégios para avaliar aprovações da Vale.'); return; }
+    if (!canDecideValeApprovals()) { showAccessDenied('Perfil sem privilégios para avaliar aprovações da Vale.'); return; }
     const booking = state.bookings.find(b => b.id === bookingId);
     if (!booking) return;
     const outras = Object.keys(VALE_DECISION_META).filter(k => k !== booking.closureStatus);
@@ -4576,7 +4592,7 @@ function openValeReclassifyModal(bookingId) {
 }
 
 async function submitValeDecision(id, decision) {
-    if (!canReviewValeApprovals()) { showAccessDenied('Perfil sem privilégios para avaliar aprovações da Vale.'); return; }
+    if (!canDecideValeApprovals()) { showAccessDenied('Perfil sem privilégios para avaliar aprovações da Vale.'); return; }
     const booking = state.bookings.find(b => b.id === id);
     if (!booking) return;
     const justificativa = document.getElementById('vale-decision-just').value.trim();
@@ -5301,7 +5317,7 @@ async function loadSiteDatabase() {
 }
 
 function renderAssetMgmtPanel() {
-    document.getElementById('admin-asset-mgmt').style.display = state.profileKey === 'ADMIN' ? 'flex' : 'none';
+    document.getElementById('admin-asset-mgmt').style.display = canManageAssets() ? 'flex' : 'none';
     const sel = document.getElementById('new-equip-area');
     if (sel) sel.innerHTML = Object.keys(DATABASE).map(k => `<option value="${k}">${escapeHtml(AREA_LABEL[k] || k)}</option>`).join('');
     const moveTagSel = document.getElementById('move-equip-tag');
@@ -5324,7 +5340,7 @@ function renderAssetMgmtPanel() {
             `<optgroup label="${escapeHtml(AREA_LABEL[area] || area)}">${DATABASE[area].map(tag => `<option value="${tag}">${tag} (${escapeHtml(AREA_LABEL[area] || area)})</option>`).join('')}</optgroup>`
         ).join('');
     }
-    document.getElementById('equip-value-section').style.display = state.profileKey === 'ADMIN' ? 'flex' : 'none';
+    document.getElementById('equip-value-section').style.display = canManageAssets() ? 'flex' : 'none';
     renderEquipValueTable();
 }
 
@@ -5350,7 +5366,7 @@ function renderEquipValueTable() {
 }
 
 function openEditEquipValueModal(tag) {
-    if (state.profileKey !== 'ADMIN') { showAccessDenied('Apenas o Admin Master pode gerenciar áreas e equipamentos.'); return; }
+    if (!canManageAssets()) { showAccessDenied('Apenas o Admin Master e o Técnico de Planejamento e GU podem gerenciar áreas e equipamentos.'); return; }
     const meta = EQUIP_META[tag] || { m2: null, valorM2: null };
     openModal(`
         <div class="modal-header"><h3>Editar Valor — ${escapeHtml(tag)}</h3><button class="modal-close" onclick="closeModal()">&times;</button></div>
@@ -5403,7 +5419,7 @@ async function moveEquipment(tag, newArea) {
     renderAtivos(); renderAgendaEquipSelect(); renderDashboard();
 }
 document.getElementById('btn-move-equip').addEventListener('click', async () => {
-    if (state.profileKey !== 'ADMIN') { showAccessDenied('Apenas o Admin Master pode mover equipamentos entre áreas.'); return; }
+    if (!canManageAssets()) { showAccessDenied('Apenas o Admin Master e o Técnico de Planejamento e GU podem mover equipamentos entre áreas.'); return; }
     const tag = document.getElementById('move-equip-tag').value;
     const newArea = document.getElementById('move-equip-area').value;
     if (!tag || !newArea) { toast('Selecione o equipamento e a área de destino.', 'error'); return; }
@@ -5438,7 +5454,7 @@ async function renameEquipment(oldTag, newTagRaw) {
     renderAtivos(); renderAgendaEquipSelect(); renderDashboard(); renderWeekGrid(); renderAudit();
 }
 document.getElementById('btn-rename-equip').addEventListener('click', async () => {
-    if (state.profileKey !== 'ADMIN') { showAccessDenied('Apenas o Admin Master pode renomear equipamentos.'); return; }
+    if (!canManageAssets()) { showAccessDenied('Apenas o Admin Master e o Técnico de Planejamento e GU podem renomear equipamentos.'); return; }
     const oldTag = document.getElementById('rename-equip-tag').value;
     const newTag = document.getElementById('rename-equip-new-tag').value;
     if (!oldTag) { toast('Selecione o equipamento a renomear.', 'error'); return; }
@@ -5447,7 +5463,7 @@ document.getElementById('btn-rename-equip').addEventListener('click', async () =
 });
 
 document.getElementById('btn-add-area').addEventListener('click', async () => {
-    if (state.profileKey !== 'ADMIN') { showAccessDenied('Apenas o Admin Master pode gerenciar áreas e equipamentos.'); return; }
+    if (!canManageAssets()) { showAccessDenied('Apenas o Admin Master e o Técnico de Planejamento e GU podem gerenciar áreas e equipamentos.'); return; }
     const codeRaw = document.getElementById('new-area-code').value.trim().toUpperCase().replace(/[^A-Z0-9_-]/g, '');
     const label = document.getElementById('new-area-label').value.trim();
     if (!codeRaw || !label) { toast('Informe o código e o nome de exibição da nova área.', 'error'); return; }
@@ -5464,7 +5480,7 @@ document.getElementById('btn-add-area').addEventListener('click', async () => {
 });
 
 document.getElementById('btn-add-equip').addEventListener('click', async () => {
-    if (state.profileKey !== 'ADMIN') { showAccessDenied('Apenas o Admin Master pode gerenciar áreas e equipamentos.'); return; }
+    if (!canManageAssets()) { showAccessDenied('Apenas o Admin Master e o Técnico de Planejamento e GU podem gerenciar áreas e equipamentos.'); return; }
     const areaKey = document.getElementById('new-equip-area').value;
     const tag = document.getElementById('new-equip-tag').value.trim().toUpperCase();
     const m2Raw = document.getElementById('new-equip-m2').value;
@@ -5521,7 +5537,7 @@ async function confirmDeleteEquip(tag) {
     renderAtivos(); renderAgendaEquipSelect(); renderDashboard(); renderWeekGrid();
 }
 document.getElementById('btn-delete-equip').addEventListener('click', () => {
-    if (state.profileKey !== 'ADMIN') { showAccessDenied('Apenas o Admin Master pode excluir equipamentos.'); return; }
+    if (!canManageAssets()) { showAccessDenied('Apenas o Admin Master e o Técnico de Planejamento e GU podem excluir equipamentos.'); return; }
     const tag = document.getElementById('del-equip-tag').value;
     if (!tag) { toast('Selecione o equipamento a excluir.', 'error'); return; }
     openDeleteEquipModal(tag);

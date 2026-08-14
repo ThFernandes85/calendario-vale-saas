@@ -220,9 +220,13 @@ create policy "sites_admin_write" on public.sites for all
 drop policy if exists "areas_select" on public.areas;
 create policy "areas_select" on public.areas for select
   using (public.has_site_access(site_key));
+-- Técnico de Planejamento e GU também cria/gerencia áreas -- só nos sites
+-- em que tem acesso (profile_sites), diferente do Admin, que gerencia
+-- qualquer site.
 drop policy if exists "areas_admin_write" on public.areas;
 create policy "areas_admin_write" on public.areas for all
-  using (public.is_admin()) with check (public.is_admin());
+  using (public.is_admin() or (public.current_role_key() = 'TECNICO_PLANEJAMENTO' and public.has_site_access(site_key)))
+  with check (public.is_admin() or (public.current_role_key() = 'TECNICO_PLANEJAMENTO' and public.has_site_access(site_key)));
 
 -- EQUIPMENT
 drop policy if exists "equipment_select" on public.equipment;
@@ -230,7 +234,8 @@ create policy "equipment_select" on public.equipment for select
   using (public.has_site_access(site_key));
 drop policy if exists "equipment_admin_write" on public.equipment;
 create policy "equipment_admin_write" on public.equipment for all
-  using (public.is_admin()) with check (public.is_admin());
+  using (public.is_admin() or (public.current_role_key() = 'TECNICO_PLANEJAMENTO' and public.has_site_access(site_key)))
+  with check (public.is_admin() or (public.current_role_key() = 'TECNICO_PLANEJAMENTO' and public.has_site_access(site_key)));
 
 -- PROFILES: cada um vê o próprio perfil; Admin vê/edita todos
 drop policy if exists "profiles_select" on public.profiles;
