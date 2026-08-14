@@ -2739,7 +2739,7 @@ function renderMobileEquipList() {
     body.innerHTML = `
         ${offlineAlertHtml}
         ${alertHtml}
-        <input type="text" id="mobile-equip-search" class="mobile-search" placeholder="Buscar equipamento...">
+        <input type="text" id="mobile-equip-search" class="mobile-search" placeholder="${isClientApprovalSite() ? 'Buscar por área...' : 'Buscar equipamento...'}">
         <div id="mobile-equip-list" class="mobile-equip-list">${cards}</div>`;
     const syncNowBtn = document.getElementById('mobile-sync-now-btn');
     if (syncNowBtn) syncNowBtn.addEventListener('click', () => {
