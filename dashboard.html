@@ -722,7 +722,7 @@ body.book-preview-mode .book-preview-toolbar {
                 <div class="kpi-sub">Distribuídos em 5 áreas operacionais</div>
             </div>
             <div class="kpi-card" style="--accent: var(--color-operacao);">
-                <div class="kpi-label">Equipamentos Livres</div>
+                <div class="kpi-label" id="lbl-kpi-livres">Equipamentos Livres</div>
                 <div class="kpi-value" id="kpi-livres">0</div>
                 <div class="kpi-sub">Disponíveis neste momento</div>
             </div>
@@ -758,7 +758,7 @@ body.book-preview-mode .book-preview-toolbar {
     <!-- VIEW: ATIVOS & ÁREAS -->
     <div class="content-container" id="view-ativos">
         <div>
-            <h2 style="font-size: 22px; margin-bottom: 6px; font-weight: 600;">Gerenciamento de Equipamentos Industriais</h2>
+            <h2 style="font-size: 22px; margin-bottom: 6px; font-weight: 600;" id="ativos-page-title">Gerenciamento de Equipamentos Industriais</h2>
             <p style="color: var(--text-secondary); font-size: 14px;">Selecione uma área operacional abaixo para filtrar e organizar os ativos de forma agrupada. Clique em um ativo para ver/editar sua agenda.</p>
         </div>
 
@@ -793,7 +793,7 @@ body.book-preview-mode .book-preview-toolbar {
                         <select id="new-equip-area"></select>
                     </div>
                     <div class="agenda-field">
-                        <label>Tag do Equipamento</label>
+                        <label id="lbl-new-equip-tag">Tag do Equipamento</label>
                         <input type="text" id="new-equip-tag" placeholder="ex: 99TC01" style="min-width:160px;">
                     </div>
                     <div class="agenda-field">
@@ -809,7 +809,7 @@ body.book-preview-mode .book-preview-toolbar {
                 <div style="height:14px;"></div>
                 <div class="agenda-toolbar">
                     <div class="agenda-field">
-                        <label>Equipamento a Mover</label>
+                        <label id="lbl-move-equip-tag">Equipamento a Mover</label>
                         <select id="move-equip-tag" style="min-width:200px;"></select>
                     </div>
                     <div class="agenda-field">
@@ -821,7 +821,7 @@ body.book-preview-mode .book-preview-toolbar {
                 <div style="height:14px;"></div>
                 <div class="agenda-toolbar">
                     <div class="agenda-field">
-                        <label>Equipamento a Renomear</label>
+                        <label id="lbl-rename-equip-tag">Equipamento a Renomear</label>
                         <select id="rename-equip-tag" style="min-width:200px;"></select>
                     </div>
                     <div class="agenda-field">
@@ -833,7 +833,7 @@ body.book-preview-mode .book-preview-toolbar {
                 <div style="height:14px;"></div>
                 <div class="agenda-toolbar">
                     <div class="agenda-field">
-                        <label>Equipamento a Excluir</label>
+                        <label id="lbl-del-equip-tag">Equipamento a Excluir</label>
                         <select id="del-equip-tag" style="min-width:200px;"></select>
                     </div>
                     <button class="btn-danger" id="btn-delete-equip" style="align-self:flex-end;">Excluir Equipamento</button>
@@ -883,7 +883,7 @@ body.book-preview-mode .book-preview-toolbar {
         <div class="card-section">
             <div class="agenda-toolbar">
                 <div class="agenda-field">
-                    <label>Equipamento</label>
+                    <label id="lbl-agenda-equip">Equipamento</label>
                     <select id="agenda-equip"></select>
                 </div>
                 <div class="agenda-field">
@@ -992,11 +992,11 @@ body.book-preview-mode .book-preview-toolbar {
 
         <div class="charts-grid">
             <div class="chart-box" id="chart-box-manut">
-                <h3>Top 5 Equipamentos - Maior Taxa de Indisponibilidade (Manutenção)</h3>
+                <h3 id="chart-top5-manut-title">Top 5 Equipamentos - Maior Taxa de Indisponibilidade (Manutenção)</h3>
                 <canvas id="chart-top5"></canvas>
             </div>
             <div class="chart-box">
-                <h3>Top 5 Equipamentos - Maior Volume de Limpeza</h3>
+                <h3 id="chart-top5-limpeza-title">Top 5 Equipamentos - Maior Volume de Limpeza</h3>
                 <canvas id="chart-top5-limpeza"></canvas>
             </div>
             <div class="chart-box">
@@ -1076,8 +1076,8 @@ body.book-preview-mode .book-preview-toolbar {
                 <div class="agenda-field"><label>Período — De</label><input type="date" id="heatmap-from"></div>
                 <div class="agenda-field"><label>Período — Até</label><input type="date" id="heatmap-to"></div>
                 <div class="agenda-field">
-                    <label>Equipamento</label>
-                    <select id="heatmap-equip" style="min-width:200px;"><option value="">Todos os Equipamentos</option></select>
+                    <label id="lbl-heatmap-equip">Equipamento</label>
+                    <select id="heatmap-equip" style="min-width:200px;"><option value="" id="heatmap-equip-all-option">Todos os Equipamentos</option></select>
                 </div>
                 <div class="day-nav">
                     <button class="today-btn" id="btn-heatmap-apply">Aplicar Filtro</button>
@@ -1088,12 +1088,12 @@ body.book-preview-mode .book-preview-toolbar {
 
         <div class="kpi-grid">
             <div class="kpi-card" style="--accent: var(--color-manutencao);">
-                <div class="kpi-label">Equipamento com Mais Manutenções</div>
+                <div class="kpi-label" id="lbl-heatmap-kpi-manut">Equipamento com Mais Manutenções</div>
                 <div class="kpi-value" id="heatmap-kpi-manut" style="font-size:22px;">—</div>
                 <div class="kpi-sub" id="heatmap-kpi-manut-sub">Nenhum dado no período</div>
             </div>
             <div class="kpi-card" style="--accent: var(--color-limpeza);">
-                <div class="kpi-label">Equipamento com Mais Limpezas</div>
+                <div class="kpi-label" id="lbl-heatmap-kpi-limpeza">Equipamento com Mais Limpezas</div>
                 <div class="kpi-value" id="heatmap-kpi-limpeza" style="font-size:22px;">—</div>
                 <div class="kpi-sub" id="heatmap-kpi-limpeza-sub">Nenhum dado no período</div>
             </div>
@@ -1101,7 +1101,7 @@ body.book-preview-mode .book-preview-toolbar {
 
         <div class="equip-grid-section">
             <div class="section-header-box">
-                <div class="box-title">Intervenções por Equipamento e Tipo</div>
+                <div class="box-title" id="lbl-heatmap-table-title">Intervenções por Equipamento e Tipo</div>
                 <button class="btn-secondary" id="btn-heatmap-print">Imprimir</button>
             </div>
             <div class="heatmap-table-wrap">
@@ -1387,6 +1387,42 @@ function canViewValeApprovals() { return canDecideValeApprovals() || state.profi
 // áreas) -- é ele quem estrutura o site (ex: S11D) no dia a dia, não só o
 // Admin Master.
 function canManageAssets() { return state.profileKey === 'ADMIN' || state.profileKey === 'TECNICO_PLANEJAMENTO'; }
+// S11D (limpeza predial) fala em "Área"/"Sub-área", nunca "Equipamento" --
+// esse termo só faz sentido pro Mutuca (máquina industrial de verdade).
+// Usado em todo texto de tela que hoje diz "Equipamento", condicionado ao
+// site ativo -- nunca hardcoded, pra não vazar pro Mutuca.
+function equipTerm(plural) {
+    if (isClientApprovalSite()) return plural ? 'Áreas' : 'Área';
+    return plural ? 'Equipamentos' : 'Equipamento';
+}
+// Frase pronta "Todos os Equipamentos"/"Todas as Áreas" -- concordância de
+// gênero muda junto com o termo, não dá pra só trocar a palavra final.
+function equipTermAllPhrase() { return isClientApprovalSite() ? 'Todas as Áreas' : 'Todos os Equipamentos'; }
+
+// Atualiza todo rótulo/título estático da tela que hoje diz "Equipamento"
+// pra "Área" nos sites com workflow de aprovação (S11D) -- chamado sempre
+// que o perfil/site muda (onProfileChanged já roda nesses dois casos).
+function applyEquipTerminology() {
+    const t = equipTerm(), tp = equipTerm(true);
+    const setText = (id, text) => { const el = document.getElementById(id); if (el) el.textContent = text; };
+    setText('ativos-page-title', isClientApprovalSite() ? 'Gerenciamento de Áreas' : 'Gerenciamento de Equipamentos Industriais');
+    setText('lbl-new-equip-tag', isClientApprovalSite() ? 'Tag da Área' : 'Tag do Equipamento');
+    setText('lbl-move-equip-tag', `${t} a Mover`);
+    setText('lbl-rename-equip-tag', `${t} a Renomear`);
+    setText('lbl-del-equip-tag', `${t} a Excluir`);
+    setText('lbl-agenda-equip', t);
+    setText('chart-top5-manut-title', `Top 5 ${tp} - Maior Taxa de Indisponibilidade (Manutenção)`);
+    setText('chart-top5-limpeza-title', `Top 5 ${tp} - Maior Volume de Limpeza`);
+    setText('lbl-heatmap-equip', t);
+    setText('lbl-heatmap-kpi-manut', `${t} com Mais Manutenções`);
+    setText('lbl-heatmap-kpi-limpeza', `${t} com Mais Limpezas`);
+    setText('lbl-heatmap-table-title', `Intervenções por ${t} e Tipo`);
+    setText('btn-add-equip', `+ Adicionar ${t}`);
+    setText('btn-move-equip', `Mover ${t}`);
+    setText('btn-rename-equip', `Renomear ${t}`);
+    setText('btn-delete-equip', `Excluir ${t}`);
+    setText('lbl-kpi-livres', `${tp} Livres`);
+}
 // Gráfico de Indisponibilidade (Manutenção) é indicador de PCM -- fica fora
 // até para o Admin Master, a pedido explícito, pra não poluir o dashboard
 // de quem não lida com Manutenção no dia a dia.
@@ -3285,6 +3321,7 @@ function onProfileChanged() {
     document.querySelector('[data-view="aprovacoes"]').style.display = canViewValeApprovals() ? 'flex' : 'none';
     const chartBoxManut = document.getElementById('chart-box-manut');
     if (chartBoxManut) chartBoxManut.style.display = canSeeAvailabilityChart() ? 'flex' : 'none';
+    applyEquipTerminology();
     renderSiteSelect();
     renderAssetMgmtPanel();
     renderAgendaEquipSelect();
@@ -3346,7 +3383,7 @@ function renderAtivos() {
         gridTitle.textContent = `Todos os Ativos do Complexo (${ALL_EQUIP.length} itens)`;
         items = ALL_EQUIP;
     } else {
-        gridTitle.textContent = `Equipamentos da Área: ${AREA_LABEL[state.currentArea]} (${DATABASE[state.currentArea].length} itens)`;
+        gridTitle.textContent = `${equipTerm(true)} da Área: ${AREA_LABEL[state.currentArea]} (${DATABASE[state.currentArea].length} itens)`;
         items = DATABASE[state.currentArea].map(tag => ({ tag, area: state.currentArea }));
     }
     items.forEach(item => {
@@ -3373,7 +3410,7 @@ function renderAtivos() {
 const ALL_EQUIP_TAG = '__ALL__';
 function renderAgendaEquipSelect() {
     const sel = document.getElementById('agenda-equip');
-    const allOption = `<option value="${ALL_EQUIP_TAG}" ${state.agendaTag === ALL_EQUIP_TAG ? 'selected' : ''}>Todos os Equipamentos</option>`;
+    const allOption = `<option value="${ALL_EQUIP_TAG}" ${state.agendaTag === ALL_EQUIP_TAG ? 'selected' : ''}>${equipTermAllPhrase()}</option>`;
     sel.innerHTML = allOption + Object.keys(DATABASE).map(area =>
         `<optgroup label="${AREA_LABEL[area]}">${DATABASE[area].map(tag => `<option value="${tag}" ${tag === state.agendaTag ? 'selected' : ''}>${tag}</option>`).join('')}</optgroup>`
     ).join('');
@@ -3394,14 +3431,14 @@ function renderWeekGrid() {
     const grid = document.getElementById('week-grid');
     if (!tag) {
         document.getElementById('agenda-title').textContent = `Agenda — ${SITES[state.currentSite] || state.currentSite}`;
-        grid.innerHTML = `<div style="grid-column:1/-1; padding:40px 20px; text-align:center; color:var(--text-muted);">Nenhum equipamento cadastrado neste site ainda. Peça ao Admin Master para cadastrar áreas e equipamentos em "Ativos &amp; Áreas".</div>`;
+        grid.innerHTML = `<div style="grid-column:1/-1; padding:40px 20px; text-align:center; color:var(--text-muted);">Nenhum(a) ${equipTerm().toLowerCase()} cadastrado(a) neste site ainda. Peça ao Admin Master para cadastrar áreas e ${equipTerm(true).toLowerCase()} em "Ativos &amp; Áreas".</div>`;
         return;
     }
     const isAllMode = tag === ALL_EQUIP_TAG;
     const dates = getWeekDates(state.weekStart);
     const today = todayStr();
     document.getElementById('agenda-title').textContent = isAllMode
-        ? `Agenda — Todos os Equipamentos — Semana de ${formatDateBR(dates[0])} a ${formatDateBR(dates[6])}`
+        ? `Agenda — ${equipTermAllPhrase()} — Semana de ${formatDateBR(dates[0])} a ${formatDateBR(dates[6])}`
         : `Agenda de ${tag} — ${AREA_LABEL[areaOf(tag)]} — Semana de ${formatDateBR(dates[0])} a ${formatDateBR(dates[6])}`;
     document.getElementById('week-jump-date').value = state.weekStart;
 
@@ -4994,7 +5031,7 @@ function getHeatmapAuditLog() {
 function renderHeatmapEquipSelect() {
     const sel = document.getElementById('heatmap-equip');
     const current = sel.value;
-    sel.innerHTML = '<option value="">Todos os Equipamentos</option>' +
+    sel.innerHTML = `<option value="">${equipTermAllPhrase()}</option>` +
         Object.keys(DATABASE).map(area =>
             `<optgroup label="${escapeHtml(AREA_LABEL[area] || area)}">${DATABASE[area].map(tag => `<option value="${tag}">${tag}</option>`).join('')}</optgroup>`
         ).join('');
@@ -5053,7 +5090,7 @@ function renderHeatmap() {
 
     const table = document.getElementById('heatmap-table');
     table.innerHTML = `
-        <thead><tr><th>Equipamento</th><th>Área</th>${HEATMAP_TYPES.map(t => `<th>${t}</th>`).join('')}<th>Total</th></tr></thead>
+        <thead><tr><th>${equipTerm()}</th><th>Área</th>${HEATMAP_TYPES.map(t => `<th>${t}</th>`).join('')}<th>Total</th></tr></thead>
         <tbody>
             ${rows.map(r => `
                 <tr>
