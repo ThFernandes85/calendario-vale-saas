@@ -1115,6 +1115,28 @@ body.book-preview-mode .book-preview-toolbar {
             <p style="color: var(--text-secondary); font-size: 14px;">Limpezas do site com workflow de aprovação (ex: S11D) que o encarregado já encerrou com fotos, aguardando sua avaliação -- aprove, reprove ou marque uma pendência da Vale, sempre com justificativa.</p>
         </div>
 
+        <div class="card-section" id="vale-value-section" style="display:none;">
+            <div class="filter-title-row">
+                <div class="filter-title" style="margin-bottom:0;">Valor Total Aprovado</div>
+            </div>
+            <div class="agenda-toolbar" style="margin-top:12px;">
+                <div class="agenda-field"><label>Período — De</label><input type="date" id="vale-value-from"></div>
+                <div class="agenda-field"><label>Período — Até</label><input type="date" id="vale-value-to"></div>
+                <div class="day-nav">
+                    <button class="today-btn" id="btn-vale-value-apply">Aplicar</button>
+                    <button id="btn-vale-value-clear">Limpar</button>
+                </div>
+                <div style="font-size:11.5px; color:var(--text-secondary); max-width:260px;">Padrão: período de medição atual (dia 21 a dia 20). Só soma limpezas já <b>Aprovadas</b> pelo cliente.</div>
+            </div>
+            <div class="kpi-grid" style="margin-top:14px;">
+                <div class="kpi-card" style="--accent: #2ed573;">
+                    <div class="kpi-label">Valor Total Aprovado</div>
+                    <div class="kpi-value" id="vale-value-total">—</div>
+                    <div class="kpi-sub" id="vale-value-sub"></div>
+                </div>
+            </div>
+        </div>
+
         <div class="card-section">
             <div class="filter-title">Aguardando Aprovação</div>
             <div id="vale-pending-list" style="margin-top:14px;"></div>
@@ -1267,6 +1289,10 @@ const ROLE_META = {
     // acompanhando o serviço, não um engenheiro da Sodexo. Marcar "Exporta
     // Relatórios" pra esse usuário libera ele gerar/filtrar o BOOK sozinho.
     CLIENTE_VALE: { label: 'Cliente Vale (Acompanhamento)', canBook: [], readOnly: true },
+    // Planeja/programa as limpezas do S11D -- mesmo formato de acesso a
+    // agendamento que PCO (Limpeza Sodexo/Mecanizada), já que o site é só
+    // limpeza predial, sem Manutenção.
+    TECNICO_PLANEJAMENTO: { label: 'Técnico de Planejamento e GU', canBook: ['Limpeza Sodexo', 'Limpeza Mecanizada'], readOnly: false },
     ADMIN: { label: 'Admin Master', canBook: ['Manutenção Preventiva', 'Manutenção Corretiva', 'Limpeza Sodexo', 'Limpeza Mecanizada'], readOnly: false },
     VISITANTE: { label: 'Visitante (Somente Leitura)', canBook: [], readOnly: true },
     // Perfil de campo, mobile-only: tela simplificada própria (fora do
@@ -4366,12 +4392,53 @@ function valeApprovalsForCurrentSite() {
     return state.bookings.filter(b => b.type === SODEXO_CLEANING_TYPE);
 }
 
+// Fotos maiores que a prévia do BOOK de propósito -- aqui é onde o Cliente
+// Vale de fato decide aprovar/reprovar um serviço, então o detalhe da foto
+// importa mais do que numa lista geral. Clicável pra abrir em tamanho
+// ainda maior (openImageLightbox), pra quando nem 260px for suficiente.
 function valePhotoPreview(url, label) {
     return `
-        <div style="flex:1; min-width:110px;">
-            <div style="font-size:10.5px; color:var(--text-secondary); margin-bottom:4px;">${escapeHtml(label)}</div>
-            ${url ? `<img src="${url}" style="width:100%; height:100px; object-fit:cover; border-radius:6px; border:1px solid var(--border-color);" onerror="handleBookImgFail(this)" onload="if(this.naturalWidth===0) handleBookImgFail(this)">` : `<div style="font-size:11px; color:var(--text-muted); padding:8px 0;">Sem foto</div>`}
+        <div style="flex:1; min-width:220px;">
+            <div style="font-size:11.5px; color:var(--text-secondary); margin-bottom:4px;">${escapeHtml(label)}</div>
+            ${url ? `<img src="${url}" style="width:100%; height:260px; object-fit:cover; border-radius:8px; border:1px solid var(--border-color); cursor:zoom-in;" onclick="openImageLightbox('${url}', '${escapeHtml(label)}')" onerror="handleBookImgFail(this)" onload="if(this.naturalWidth===0) handleBookImgFail(this)">` : `<div style="font-size:11px; color:var(--text-muted); padding:8px 0;">Sem foto</div>`}
         </div>`;
+}
+
+function openImageLightbox(url, label) {
+    openModal(`
+        <div class="modal-header"><h3>${escapeHtml(label)}</h3><button class="modal-close" onclick="closeModal()">&times;</button></div>
+        <div class="modal-body" style="text-align:center;">
+            <img src="${url}" style="max-width:100%; max-height:75vh; border-radius:8px;" onerror="handleBookImgFail(this)">
+        </div>
+        <div class="modal-footer">
+            <button class="btn-secondary" onclick="closeModal()">Fechar</button>
+        </div>
+    `);
+}
+
+// Só Admin Master e Técnico de Planejamento e GU veem o valor total -- é
+// um número de acompanhamento interno Sodexo, não algo que precise
+// aparecer pro próprio Cliente Vale na hora de decidir aprovar/reprovar.
+function canSeeValeApprovedTotal() { return state.profileKey === 'ADMIN' || state.profileKey === 'TECNICO_PLANEJAMENTO'; }
+
+// Soma o valor (m² × R$/m²) só das limpezas já APROVADAS pelo cliente --
+// é o valor "confirmado" de serviço realizado. Sem período explícito, cai
+// no período de medição atual (21 a 20), mesma convenção já usada em
+// sodexoCleaningBreakdown.
+function valeApprovedTotalValue(from, to) {
+    let f = from, t = to;
+    if (!f && !t) {
+        const atual = periodoMedicaoAtual();
+        f = atual.from; t = atual.to;
+    }
+    const itens = state.bookings.filter(b => {
+        if (b.type !== SODEXO_CLEANING_TYPE || b.closureStatus !== 'APROVADO_VALE') return false;
+        if (f && b.date < f) return false;
+        if (t && b.date > t) return false;
+        return true;
+    });
+    const total = itens.reduce((sum, b) => sum + (areaValorCalculado(b.area) || 0), 0);
+    return { total, count: itens.length, from: f, to: t };
 }
 
 function valeAreaInfoLine(booking) {
@@ -4385,7 +4452,27 @@ function valeAreaInfoLine(booking) {
     return ` · ${partes.join(' · ')}`;
 }
 
+function renderValeApprovalsValueCard() {
+    const section = document.getElementById('vale-value-section');
+    if (!section) return;
+    section.style.display = canSeeValeApprovedTotal() ? 'block' : 'none';
+    if (!canSeeValeApprovedTotal()) return;
+    const fromEl = document.getElementById('vale-value-from');
+    const toEl = document.getElementById('vale-value-to');
+    const { total, count, from, to } = valeApprovedTotalValue(fromEl.value || null, toEl.value || null);
+    document.getElementById('vale-value-total').textContent = `R$ ${total.toFixed(2)}`;
+    document.getElementById('vale-value-sub').textContent =
+        `${count} limpeza(s) aprovada(s) · Período ${formatDateBR(from)} a ${formatDateBR(to)}`;
+}
+document.getElementById('btn-vale-value-apply').addEventListener('click', renderValeApprovalsValueCard);
+document.getElementById('btn-vale-value-clear').addEventListener('click', () => {
+    document.getElementById('vale-value-from').value = '';
+    document.getElementById('vale-value-to').value = '';
+    renderValeApprovalsValueCard();
+});
+
 function renderValeApprovals() {
+    renderValeApprovalsValueCard();
     const pendingBox = document.getElementById('vale-pending-list');
     const decidedBox = document.getElementById('vale-decided-list');
     if (!pendingBox || !decidedBox) return;

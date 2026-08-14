@@ -51,6 +51,8 @@ create table if not exists public.profiles (
 -- Libera roles novas em bancos criados antes delas existirem (tabela já
 -- existente não ganha a nova lista do "check" acima sozinha). CLIENTE_VALE
 -- é o contato da Vale que aprova/reprova as limpezas do S11D.
+-- TECNICO_PLANEJAMENTO é o técnico de Planejamento e GU do S11D (agenda e
+-- acompanha o valor das limpezas do site).
 do $$
 begin
   if exists (
@@ -61,7 +63,7 @@ begin
     alter table public.profiles drop constraint profiles_role_check;
   end if;
   alter table public.profiles add constraint profiles_role_check
-    check (role in ('ADMIN','PCM','PCO','PCM_PCO','ENG_CONF','ENG_EST','ENCARREGADO','CLIENTE_VALE'));
+    check (role in ('ADMIN','PCM','PCO','PCM_PCO','ENG_CONF','ENG_EST','ENCARREGADO','CLIENTE_VALE','TECNICO_PLANEJAMENTO'));
 end $$;
 
 -- ---------- PROFILE_SITES (quais sites cada perfil acessa) ----------
@@ -258,6 +260,8 @@ create policy "bookings_insert" on public.bookings for insert
       or (public.current_role_key() = 'PCO' and type in ('Limpeza Sodexo','Limpeza Mecanizada'))
       or (public.current_role_key() = 'ENCARREGADO' and type in ('Limpeza Sodexo','Limpeza Mecanizada'))
       or (public.current_role_key() = 'PCM_PCO' and type in ('Manutenção Preventiva','Manutenção Corretiva','Limpeza Sodexo','Limpeza Mecanizada'))
+      -- Técnico de Planejamento e GU (S11D) programa as limpezas do site.
+      or (public.current_role_key() = 'TECNICO_PLANEJAMENTO' and type in ('Limpeza Sodexo','Limpeza Mecanizada'))
     )
   );
 drop policy if exists "bookings_delete" on public.bookings;
@@ -273,6 +277,7 @@ create policy "bookings_delete" on public.bookings for delete
       -- excluir qualquer um do tipo que administram.
       or (public.current_role_key() = 'ENCARREGADO' and type in ('Limpeza Sodexo','Limpeza Mecanizada') and operator_id = auth.uid())
       or (public.current_role_key() = 'PCM_PCO' and type in ('Manutenção Preventiva','Manutenção Corretiva','Limpeza Sodexo','Limpeza Mecanizada'))
+      or (public.current_role_key() = 'TECNICO_PLANEJAMENTO' and type in ('Limpeza Sodexo','Limpeza Mecanizada'))
     )
   );
 drop policy if exists "bookings_update" on public.bookings;
@@ -288,6 +293,7 @@ create policy "bookings_update" on public.bookings for update
       -- Cliente Vale só aprova/reprova/marca pendência em Limpeza Sodexo
       -- (a decisão do workflow S11D) -- nunca em Manutenção.
       or (public.current_role_key() = 'CLIENTE_VALE' and type = 'Limpeza Sodexo')
+      or (public.current_role_key() = 'TECNICO_PLANEJAMENTO' and type in ('Limpeza Sodexo','Limpeza Mecanizada'))
     )
   )
   with check (
@@ -299,6 +305,7 @@ create policy "bookings_update" on public.bookings for update
       or (public.current_role_key() = 'ENCARREGADO' and type in ('Limpeza Sodexo','Limpeza Mecanizada'))
       or (public.current_role_key() = 'PCM_PCO' and type in ('Manutenção Preventiva','Manutenção Corretiva','Limpeza Sodexo','Limpeza Mecanizada'))
       or (public.current_role_key() = 'CLIENTE_VALE' and type = 'Limpeza Sodexo')
+      or (public.current_role_key() = 'TECNICO_PLANEJAMENTO' and type in ('Limpeza Sodexo','Limpeza Mecanizada'))
     )
   );
 
