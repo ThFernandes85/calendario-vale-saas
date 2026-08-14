@@ -1488,6 +1488,11 @@ function getWeekDates(weekStart) { return Array.from({ length: 7 }, (_, i) => ad
 function escapeHtml(str) {
     return String(str).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
+// Busca por nome de colaborador precisa ignorar acento (ex: "joao" acha
+// "João") -- nomes em português têm acento demais pra exigir digitação exata.
+function stripAccents(str) {
+    return String(str).normalize('NFD').replace(/\p{Diacritic}/gu, '');
+}
 
 /* =========================================================
    PERSISTÊNCIA (Supabase — agendamentos e auditoria por site)
@@ -3019,14 +3024,23 @@ function renderMobileCloseForm(booking) {
             </div>
             ${isClientApprovalSite() ? `
             <div class="m-field">
-                <label>Colaboradores Executantes * <span style="font-weight:400; color:var(--text-secondary);">(marque todos que fizeram o serviço)</span></label>
-                <div style="display:flex; flex-direction:column; gap:6px; max-height:220px; overflow-y:auto; border:1px solid var(--border-color); border-radius:8px; padding:10px;">
-                    ${COLLABORATORS.map(c => `
-                        <label class="m-checkbox">
-                            <input type="checkbox" class="close-collab-checkbox" value="${escapeHtml(c.id)}" style="width:auto;">
-                            ${escapeHtml(c.name)} — ${escapeHtml(c.role)}
-                        </label>
-                    `).join('')}
+                <div style="display:flex; align-items:center; justify-content:space-between; gap:8px;">
+                    <label style="margin-bottom:0;">Colaboradores Executantes * <span id="close-collab-summary" style="font-weight:400; color:var(--text-secondary);"></span></label>
+                    <button type="button" id="btn-toggle-close-collab" class="profile-toggle-btn" title="Minimizar/Expandir">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
+                    </button>
+                </div>
+                <div id="close-collab-panel" style="margin-top:8px;">
+                    <input type="text" id="close-collab-search" placeholder="Buscar colaborador por nome..." style="margin-bottom:8px;">
+                    <div id="close-collab-list" style="display:flex; flex-direction:column; gap:6px; max-height:220px; overflow-y:auto; border:1px solid var(--border-color); border-radius:8px; padding:10px;">
+                        ${COLLABORATORS.map(c => `
+                            <label class="m-checkbox close-collab-item" data-search="${escapeHtml(stripAccents(`${c.name} ${c.role}`.toLowerCase()))}">
+                                <input type="checkbox" class="close-collab-checkbox" value="${escapeHtml(c.id)}" style="width:auto;">
+                                ${escapeHtml(c.name)} — ${escapeHtml(c.role)}
+                            </label>
+                        `).join('')}
+                        <div id="close-collab-empty" style="font-size:12px; color:var(--text-muted); display:none;">Nenhum colaborador encontrado.</div>
+                    </div>
                 </div>
                 ${!COLLABORATORS.length ? `<div style="font-size:11px; color:var(--text-secondary); margin-top:4px;">Nenhum colaborador cadastrado ainda -- peça ao Admin ou Técnico de Planejamento pra cadastrar em Ativos.</div>` : ''}
             </div>` : ''}
@@ -3057,6 +3071,42 @@ function renderMobileCloseForm(booking) {
         <button type="button" class="btn-primary mobile-submit" id="mobile-close-submit">Confirmar</button>
         ${canDiscardOwnBooking(booking) ? `<button type="button" class="btn-secondary mobile-submit" id="mobile-close-discard-btn" style="margin-top:8px;">Descartar Este Lançamento (data/OM errada)</button>` : ''}
     `;
+    // Painel de colaboradores começa minimizado -- com 30+ cadastrados, a
+    // lista inteira aberta por padrão atravancaria a tela do Encarregado.
+    // A busca ignora acento (stripAccents) pra achar "joao" digitando sem
+    // acento nenhum.
+    const collabToggleBtn = document.getElementById('btn-toggle-close-collab');
+    if (collabToggleBtn) {
+        const collabPanel = document.getElementById('close-collab-panel');
+        const collabSummary = document.getElementById('close-collab-summary');
+        const collabSearch = document.getElementById('close-collab-search');
+        const collabList = document.getElementById('close-collab-list');
+        const collabEmpty = document.getElementById('close-collab-empty');
+        let collabCollapsed = true;
+        const applyCollabCollapse = () => {
+            collabPanel.style.display = collabCollapsed ? 'none' : 'block';
+            collabToggleBtn.querySelector('svg').style.transform = collabCollapsed ? 'rotate(-90deg)' : '';
+        };
+        applyCollabCollapse();
+        collabToggleBtn.addEventListener('click', () => { collabCollapsed = !collabCollapsed; applyCollabCollapse(); });
+        const updateCollabSummary = () => {
+            const checked = collabList.querySelectorAll('.close-collab-checkbox:checked').length;
+            collabSummary.textContent = checked ? `(${checked} selecionado${checked > 1 ? 's' : ''})` : '(nenhum selecionado)';
+        };
+        collabList.querySelectorAll('.close-collab-checkbox').forEach(cb => cb.addEventListener('change', updateCollabSummary));
+        updateCollabSummary();
+        collabSearch.addEventListener('input', () => {
+            const q = stripAccents(collabSearch.value.trim().toLowerCase());
+            let anyVisible = false;
+            collabList.querySelectorAll('.close-collab-item').forEach(item => {
+                const match = item.dataset.search.includes(q);
+                item.style.display = match ? 'flex' : 'none';
+                if (match) anyVisible = true;
+            });
+            collabEmpty.style.display = anyVisible ? 'none' : 'block';
+        });
+    }
+
     const outcomeSelect = document.getElementById('close-outcome');
     const outcomeHint = document.getElementById('close-outcome-hint');
     const photosWrap = document.getElementById('close-photos-wrap');
