@@ -1195,6 +1195,12 @@ const ROLE_META = {
     PCM_PCO: { label: 'PCM + PCO — Manutenção e Operacional', canBook: ['Manutenção Preventiva', 'Manutenção Corretiva', 'Limpeza Sodexo', 'Limpeza Mecanizada'], readOnly: false },
     ENG_CONF: { label: 'Engenheiro de Confiabilidade', canBook: [], readOnly: true },
     ENG_EST: { label: 'Engenheiro Estrutural', canBook: [], readOnly: true },
+    // Mesmo formato de acesso que Engenheiro/Visitante (só leitura, não
+    // agenda nem encerra nada) -- existe como rótulo próprio só pra deixar
+    // claro, na hora de cadastrar, que é um contato do lado Vale
+    // acompanhando o serviço, não um engenheiro da Sodexo. Marcar "Exporta
+    // Relatórios" pra esse usuário libera ele gerar/filtrar o BOOK sozinho.
+    CLIENTE_VALE: { label: 'Cliente Vale (Acompanhamento)', canBook: [], readOnly: true },
     ADMIN: { label: 'Admin Master', canBook: ['Manutenção Preventiva', 'Manutenção Corretiva', 'Limpeza Sodexo', 'Limpeza Mecanizada'], readOnly: false },
     VISITANTE: { label: 'Visitante (Somente Leitura)', canBook: [], readOnly: true },
     // Perfil de campo, mobile-only: tela simplificada própria (fora do
