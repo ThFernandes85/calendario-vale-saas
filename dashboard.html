@@ -1220,7 +1220,7 @@ body.book-preview-mode .book-preview-toolbar {
     <div class="content-container" id="view-importacao">
         <div>
             <h2 style="font-size: 22px; margin-bottom: 6px; font-weight: 600;">Importação em Massa</h2>
-            <p style="color: var(--text-secondary); font-size: 14px;">
+            <p id="import-intro-text" style="color: var(--text-secondary); font-size: 14px;">
                 Suba uma planilha (.xlsx) com os lançamentos e as fotos correspondentes de uma vez só. Se a OM já existir
                 em um bloqueio aberto, ele é encerrado com esses dados; se já existir encerrado, só as fotos são
                 corrigidas; se não existir, um bloqueio novo é criado e já encerrado. Ou marque "Só programar" para
@@ -1231,7 +1231,7 @@ body.book-preview-mode .book-preview-toolbar {
 
         <div class="card-section">
             <div class="filter-title" style="margin-bottom:12px;">1. Selecione os arquivos</div>
-            <div class="m-field">
+            <div class="m-field" id="import-schedule-only-wrap">
                 <label class="m-checkbox">
                     <input type="checkbox" id="import-schedule-only-mode" style="width:auto;">
                     Só programar (sem fotos) — planilha da Sodexo, fotos e encerramento ficam para depois
@@ -3384,6 +3384,7 @@ function onProfileChanged() {
     const chartBoxManut = document.getElementById('chart-box-manut');
     if (chartBoxManut) chartBoxManut.style.display = canSeeAvailabilityChart() ? 'flex' : 'none';
     applyEquipTerminology();
+    updateImportUiLabels();
     renderSiteSelect();
     renderAssetMgmtPanel();
     renderAgendaEquipSelect();
@@ -4866,6 +4867,41 @@ function validateScheduleOnlyRow(row, idx) {
     return result;
 }
 
+// Modo S11D: sem OM (a planilha não tem essa coluna) e sem fotos na
+// importação -- cada linha só cria o bloqueio já na agenda, em aberto; o
+// Encarregado encerra individualmente depois, no Mobile, com fotos e o
+// colaborador que executou. Diferente do "Só programar" da Sodexo (que usa
+// HORAS + início padrão 08:00, pensado pra várias OMs/equipamentos em
+// paralelo), aqui HORA_INICIO/HORA_FIM vêm direto da planilha -- múltiplas
+// linhas na mesma área/dia são um caso legítimo (ver activeOmConflict).
+function validateS11dDemandRow(row, idx) {
+    const tag = String(row.TAG || '').trim().toUpperCase();
+    const observacao = String(row.OBSERVACAO || '').trim() || defaultCloseObservationFor('ENCERRADA');
+    const result = {
+        idx, tag, om: null, tipo: SODEXO_CLEANING_TYPE, responsavel: '', observacao,
+        fotoAntesName: '', fotoDepoisName: '', error: null, action: null, targetBookingId: null,
+        date: null, startMin: null, endMin: null
+    };
+
+    if (!tag) { result.error = 'TAG (Área) não informada.'; return result; }
+    if (!ALL_EQUIP.some(e => e.tag === tag)) { result.error = `Área "${tag}" não encontrada neste site.`; return result; }
+
+    const dateStr = parseImportDate(row.DATA);
+    if (!dateStr) { result.error = 'Data inválida (use dd/mm/aaaa).'; return result; }
+    result.date = dateStr;
+
+    const startStr = parseImportTime(row.HORA_INICIO);
+    const endStr = parseImportTime(row.HORA_FIM);
+    if (!startStr || !endStr) { result.error = 'Hora início/fim inválida (use hh:mm).'; return result; }
+    const startMin = timeToMinutes(startStr);
+    const endMin = timeToMinutes(endStr);
+    if (endMin <= startMin) { result.error = 'Hora fim deve ser depois da hora início.'; return result; }
+    result.startMin = startMin; result.endMin = endMin;
+
+    result.action = 'create-only';
+    return result;
+}
+
 // Cada OM do dia é um equipamento (turma/frente) diferente trabalhando em
 // paralelo -- não uma pessoa só encadeando tarefa após tarefa. Por isso
 // todas começam no mesmo horário padrão (08:00), cada uma durando só a sua
@@ -4897,7 +4933,7 @@ function enforceDailyLimit(rows) {
         if (group.length <= MAX_SCHEDULE_ONLY_PER_DAY) return;
         group.sort((a, b) => a.idx - b.idx);
         group.slice(MAX_SCHEDULE_ONLY_PER_DAY).forEach(r => {
-            r.error = `Mais de ${MAX_SCHEDULE_ONLY_PER_DAY} OMs para ${formatDateBR(date)} -- divida em lotes menores.`;
+            r.error = `Mais de ${MAX_SCHEDULE_ONLY_PER_DAY} lançamentos para ${formatDateBR(date)} -- divida em lotes menores.`;
         });
     });
 }
@@ -4905,7 +4941,11 @@ function enforceDailyLimit(rows) {
 async function analyzeImportSpreadsheet() {
     const xlsxInput = document.getElementById('import-xlsx-file');
     const photosInput = document.getElementById('import-photos-files');
-    const scheduleOnly = document.getElementById('import-schedule-only-mode').checked;
+    // S11D não tem OM nem fecha pela importação -- é sempre o modo
+    // "programar em aberto" (equivalente ao "Só programar" da Sodexo, mas
+    // com horário explícito por linha em vez de HORAS + início padrão).
+    const s11dMode = isClientApprovalSite();
+    const scheduleOnly = s11dMode || document.getElementById('import-schedule-only-mode').checked;
     const xlsxFile = xlsxInput.files[0];
     if (!xlsxFile) { toast('Selecione a planilha (.xlsx).', 'error'); return; }
 
@@ -4926,8 +4966,12 @@ async function analyzeImportSpreadsheet() {
 
     const seenOms = {};
     importParsedRows = rows.map((row, idx) => {
-        const result = scheduleOnly ? validateScheduleOnlyRow(row, idx) : validateImportRow(row, idx);
-        if (!result.error) {
+        const result = s11dMode ? validateS11dDemandRow(row, idx)
+            : (scheduleOnly ? validateScheduleOnlyRow(row, idx) : validateImportRow(row, idx));
+        // O S11D não tem OM (toda linha vem com om null) -- o check de
+        // duplicidade de OM dentro da planilha não faz sentido aqui, e
+        // várias limpezas na mesma área/dia são um caso legítimo.
+        if (!result.error && !s11dMode) {
             if (seenOms[result.om] !== undefined) {
                 result.error = `OM duplicada dentro da própria planilha (já aparece na linha ${seenOms[result.om] + 2}).`;
             } else {
@@ -4936,7 +4980,8 @@ async function analyzeImportSpreadsheet() {
         }
         return result;
     });
-    if (scheduleOnly) { assignDefaultStartTimes(importParsedRows); enforceDailyLimit(importParsedRows); }
+    if (!s11dMode && scheduleOnly) assignDefaultStartTimes(importParsedRows);
+    if (scheduleOnly) enforceDailyLimit(importParsedRows);
     renderImportPreview();
 }
 
@@ -5073,13 +5118,27 @@ async function runImportConfirmed() {
 document.getElementById('btn-import-analyze').addEventListener('click', analyzeImportSpreadsheet);
 document.getElementById('btn-import-confirm').addEventListener('click', runImportConfirmed);
 
-document.getElementById('import-schedule-only-mode').addEventListener('change', (e) => {
-    const scheduleOnly = e.target.checked;
-    document.getElementById('import-photos-wrap').style.display = scheduleOnly ? 'none' : 'block';
-    document.getElementById('import-xlsx-label').textContent = scheduleOnly
-        ? 'Planilha (.xlsx) — colunas: TAG, OM, DATA, HORAS, DESCRICAO (sem horário de início -- toda OM do dia começa às 08:00, em paralelo)'
-        : 'Planilha (.xlsx) — colunas: TAG, OM, DATA, HORA_INICIO, HORA_FIM, TIPO, RESPONSAVEL, OBSERVACAO, FOTO_ANTES, FOTO_DEPOIS';
-});
+// Atualiza os textos/visibilidade da tela de Importação em Massa conforme o
+// site ativo -- S11D não tem OM nem fecha pela importação (fotos e
+// colaborador ficam pro encerramento individual no Mobile), então o modo
+// "Só programar" nem aparece como opção lá, é o único jeito de importar.
+function updateImportUiLabels() {
+    const s11dMode = isClientApprovalSite();
+    const scheduleOnlyEl = document.getElementById('import-schedule-only-mode');
+    const scheduleOnlyChecked = scheduleOnlyEl.checked;
+    const scheduleOnlyWrap = document.getElementById('import-schedule-only-wrap');
+    if (scheduleOnlyWrap) scheduleOnlyWrap.style.display = s11dMode ? 'none' : 'block';
+    document.getElementById('import-photos-wrap').style.display = (s11dMode || scheduleOnlyChecked) ? 'none' : 'block';
+    document.getElementById('import-xlsx-label').textContent = s11dMode
+        ? 'Planilha (.xlsx) — colunas: TAG, DATA, HORA_INICIO, HORA_FIM, OBSERVACAO (cria a limpeza já na agenda, em aberto -- fotos e colaborador ficam para o encerramento individual no Mobile)'
+        : (scheduleOnlyChecked
+            ? 'Planilha (.xlsx) — colunas: TAG, OM, DATA, HORAS, DESCRICAO (sem horário de início -- toda OM do dia começa às 08:00, em paralelo)'
+            : 'Planilha (.xlsx) — colunas: TAG, OM, DATA, HORA_INICIO, HORA_FIM, TIPO, RESPONSAVEL, OBSERVACAO, FOTO_ANTES, FOTO_DEPOIS');
+    document.getElementById('import-intro-text').textContent = s11dMode
+        ? 'Suba uma planilha (.xlsx) com a programação diária de limpezas do S11D (Área/Tag, data e horário). Cada linha cria um bloqueio já na agenda, em aberto -- o Encarregado encerra individualmente depois, no Mobile, com fotos e o colaborador que executou o serviço.'
+        : 'Suba uma planilha (.xlsx) com os lançamentos e as fotos correspondentes de uma vez só. Se a OM já existir em um bloqueio aberto, ele é encerrado com esses dados; se já existir encerrado, só as fotos são corrigidas; se não existir, um bloqueio novo é criado e já encerrado. Ou marque "Só programar" para lançar a programação semanal da Sodexo (OM, equipamento, data, horas) sem fotos -- cada bloqueio fica aberto na agenda até alguém encerrar manualmente com as fotos de antes/depois.';
+}
+document.getElementById('import-schedule-only-mode').addEventListener('change', updateImportUiLabels);
 
 /* =========================================================
    MAPA DE CALOR
