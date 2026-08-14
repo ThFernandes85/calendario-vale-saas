@@ -159,6 +159,8 @@ header {
 #audit-section.audit-collapsed #audit-content { display: none; }
 #closed-bookings-section.closed-bookings-collapsed .profile-toggle-btn svg { transform: rotate(-90deg); }
 #closed-bookings-section.closed-bookings-collapsed #closed-bookings-content { display: none; }
+#equip-value-section.equip-value-collapsed .profile-toggle-btn svg { transform: rotate(-90deg); }
+#equip-value-section.equip-value-collapsed #equip-value-content { display: none; }
 
 .btn-area-filter {
     background-color: #1c2533; border: 1px solid var(--border-color); color: var(--text-primary);
@@ -782,26 +784,9 @@ body.book-preview-mode .book-preview-toolbar {
                         <label>Nome de Exibição</label>
                         <input type="text" id="new-area-label" placeholder="ex: Nova Área" style="min-width:160px;">
                     </div>
-                    <div class="agenda-field">
-                        <label>m² (opcional)</label>
-                        <input type="number" id="new-area-m2" step="0.01" min="0" placeholder="ex: 16,5" style="min-width:100px;">
-                    </div>
-                    <div class="agenda-field">
-                        <label>R$/m² (opcional)</label>
-                        <input type="number" id="new-area-valor-m2" step="0.01" min="0" placeholder="ex: 2,89" style="min-width:100px;">
-                    </div>
                     <button class="btn-primary" id="btn-add-area" style="align-self:flex-end;">+ Adicionar Área</button>
                 </div>
                 <div style="height:14px;"></div>
-                <div id="area-value-table-wrap" style="display:none;">
-                    <div class="audit-table-wrap">
-                        <table class="audit-table">
-                            <thead><tr><th>Código</th><th>Nome</th><th>m²</th><th>R$/m²</th><th>Valor Calculado</th><th>Ações</th></tr></thead>
-                            <tbody id="area-value-tbody"></tbody>
-                        </table>
-                    </div>
-                    <div style="height:14px;"></div>
-                </div>
                 <div class="agenda-toolbar">
                     <div class="agenda-field">
                         <label>Área de Destino</label>
@@ -810,6 +795,14 @@ body.book-preview-mode .book-preview-toolbar {
                     <div class="agenda-field">
                         <label>Tag do Equipamento</label>
                         <input type="text" id="new-equip-tag" placeholder="ex: 99TC01" style="min-width:160px;">
+                    </div>
+                    <div class="agenda-field">
+                        <label>m² (opcional)</label>
+                        <input type="number" id="new-equip-m2" step="0.01" min="0" placeholder="ex: 19,5" style="min-width:100px;">
+                    </div>
+                    <div class="agenda-field">
+                        <label>R$/m² (opcional)</label>
+                        <input type="number" id="new-equip-valor-m2" step="0.01" min="0" placeholder="ex: 2,89" style="min-width:100px;">
                     </div>
                     <button class="btn-primary" id="btn-add-equip" style="align-self:flex-end;">+ Adicionar Equipamento</button>
                 </div>
@@ -844,6 +837,24 @@ body.book-preview-mode .book-preview-toolbar {
                         <select id="del-equip-tag" style="min-width:200px;"></select>
                     </div>
                     <button class="btn-danger" id="btn-delete-equip" style="align-self:flex-end;">Excluir Equipamento</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="card-section" id="equip-value-section" style="display:none;">
+            <div class="filter-title-row">
+                <div class="filter-title" style="margin-bottom:0;">Metragens e Valores dos Ativos</div>
+                <button type="button" id="btn-toggle-equip-value" class="profile-toggle-btn" title="Minimizar/Expandir">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
+                </button>
+            </div>
+            <div id="equip-value-content">
+                <p style="color: var(--text-secondary); font-size: 12.5px; margin-top:8px;">m² e R$/m² de cada ativo (sub-área) -- usado pra calcular o valor da limpeza mostrado nas Aprovações Vale.</p>
+                <div class="audit-table-wrap" style="margin-top:10px;">
+                    <table class="audit-table">
+                        <thead><tr><th>Tag</th><th>Área</th><th>m²</th><th>R$/m²</th><th>Valor Calculado</th><th>Ações</th></tr></thead>
+                        <tbody id="equip-value-tbody"></tbody>
+                    </table>
                 </div>
             </div>
         </div>
@@ -1266,11 +1277,12 @@ const DATABASE = {};
 const AREA_LABEL = {};
 const ALL_EQUIP = [];
 function areaOf(tag) { const e = ALL_EQUIP.find(x => x.tag === tag); return e ? e.area : null; }
-// m²/valor por área -- informativo (ex: limpeza predial do S11D), sem
-// motor de faturamento nenhum por trás. { m2, valorM2 } por código de área.
-const AREA_META = {};
-function areaValorCalculado(areaCode) {
-    const m = AREA_META[areaCode];
+// m²/valor por ATIVO (sub-área, ex: STAFF01 dentro da área TAMANDUÁ) --
+// informativo (ex: limpeza predial do S11D), sem motor de faturamento
+// nenhum por trás. { m2, valorM2 } por tag de equipamento.
+const EQUIP_META = {};
+function equipValorCalculado(tag) {
+    const m = EQUIP_META[tag];
     return (m && m.m2 != null && m.valorM2 != null) ? m.m2 * m.valorM2 : null;
 }
 
@@ -4437,13 +4449,13 @@ function valeApprovedTotalValue(from, to) {
         if (t && b.date > t) return false;
         return true;
     });
-    const total = itens.reduce((sum, b) => sum + (areaValorCalculado(b.area) || 0), 0);
+    const total = itens.reduce((sum, b) => sum + (equipValorCalculado(b.tag) || 0), 0);
     return { total, count: itens.length, from: f, to: t };
 }
 
 function valeAreaInfoLine(booking) {
-    const valor = areaValorCalculado(booking.area);
-    const meta = AREA_META[booking.area];
+    const valor = equipValorCalculado(booking.tag);
+    const meta = EQUIP_META[booking.tag];
     if (!meta || (meta.m2 == null && meta.valorM2 == null)) return '';
     const partes = [];
     if (meta.m2 != null) partes.push(`${meta.m2} m²`);
@@ -5273,20 +5285,18 @@ async function toggleUserActive(id) {
 async function loadSiteDatabase() {
     Object.keys(DATABASE).forEach(k => delete DATABASE[k]);
     Object.keys(AREA_LABEL).forEach(k => delete AREA_LABEL[k]);
-    Object.keys(AREA_META).forEach(k => delete AREA_META[k]);
+    Object.keys(EQUIP_META).forEach(k => delete EQUIP_META[k]);
     ALL_EQUIP.length = 0;
-    const { data: areas, error: areasErr } = await sb.from('areas').select('code, label, m2, valor_m2').eq('site_key', state.currentSite);
+    const { data: areas, error: areasErr } = await sb.from('areas').select('code, label').eq('site_key', state.currentSite);
     if (areasErr) { toast('Erro ao carregar áreas: ' + areasErr.message, 'error'); return; }
-    (areas || []).forEach(a => {
-        DATABASE[a.code] = []; AREA_LABEL[a.code] = a.label;
-        AREA_META[a.code] = { m2: a.m2 == null ? null : Number(a.m2), valorM2: a.valor_m2 == null ? null : Number(a.valor_m2) };
-    });
-    const { data: equip, error: equipErr } = await sb.from('equipment').select('tag, area_code').eq('site_key', state.currentSite);
+    (areas || []).forEach(a => { DATABASE[a.code] = []; AREA_LABEL[a.code] = a.label; });
+    const { data: equip, error: equipErr } = await sb.from('equipment').select('tag, area_code, m2, valor_m2').eq('site_key', state.currentSite);
     if (equipErr) { toast('Erro ao carregar equipamentos: ' + equipErr.message, 'error'); return; }
     (equip || []).forEach(e => {
         if (!DATABASE[e.area_code]) DATABASE[e.area_code] = [];
         DATABASE[e.area_code].push(e.tag);
         ALL_EQUIP.push({ tag: e.tag, area: e.area_code });
+        EQUIP_META[e.tag] = { m2: e.m2 == null ? null : Number(e.m2), valorM2: e.valor_m2 == null ? null : Number(e.valor_m2) };
     });
 }
 
@@ -5314,60 +5324,68 @@ function renderAssetMgmtPanel() {
             `<optgroup label="${escapeHtml(AREA_LABEL[area] || area)}">${DATABASE[area].map(tag => `<option value="${tag}">${tag} (${escapeHtml(AREA_LABEL[area] || area)})</option>`).join('')}</optgroup>`
         ).join('');
     }
-    renderAreaValueTable();
+    document.getElementById('equip-value-section').style.display = state.profileKey === 'ADMIN' ? 'flex' : 'none';
+    renderEquipValueTable();
 }
 
-// Tabela de m²/valor por área -- é a única forma de dar valor a áreas
-// criadas antes desses campos existirem (ex: as do S11D, cadastradas nesta
-// sessão antes desta feature).
-function renderAreaValueTable() {
-    const wrap = document.getElementById('area-value-table-wrap');
-    const tbody = document.getElementById('area-value-tbody');
-    if (!wrap || !tbody) return;
-    const codes = Object.keys(DATABASE);
-    wrap.style.display = codes.length ? 'block' : 'none';
-    tbody.innerHTML = codes.map(code => {
-        const meta = AREA_META[code] || { m2: null, valorM2: null };
-        const valor = areaValorCalculado(code);
+// Tabela de m²/valor por ATIVO (sub-área, ex: STAFF01) -- é a única forma
+// de dar valor a ativos criados antes desses campos existirem (ex: os do
+// S11D, cadastrados antes desta feature).
+function renderEquipValueTable() {
+    const tbody = document.getElementById('equip-value-tbody');
+    if (!tbody) return;
+    tbody.innerHTML = ALL_EQUIP.map(({ tag, area }) => {
+        const meta = EQUIP_META[tag] || { m2: null, valorM2: null };
+        const valor = equipValorCalculado(tag);
         return `
         <tr>
-            <td>${escapeHtml(code)}</td>
-            <td>${escapeHtml(AREA_LABEL[code] || code)}</td>
+            <td>${escapeHtml(tag)}</td>
+            <td>${escapeHtml(AREA_LABEL[area] || area)}</td>
             <td>${meta.m2 != null ? meta.m2 : '—'}</td>
             <td>${meta.valorM2 != null ? 'R$ ' + meta.valorM2.toFixed(2) : '—'}</td>
             <td>${valor != null ? 'R$ ' + valor.toFixed(2) : '—'}</td>
-            <td><button class="btn-secondary" style="padding:5px 9px; font-size:11px;" onclick="openEditAreaValueModal('${code}')">Editar</button></td>
+            <td><button class="btn-secondary" style="padding:5px 9px; font-size:11px;" onclick="openEditEquipValueModal('${tag}')">Editar</button></td>
         </tr>`;
-    }).join('');
+    }).join('') || `<tr><td colspan="6" style="text-align:center; color:var(--text-muted);">Nenhum ativo cadastrado neste site ainda.</td></tr>`;
 }
 
-function openEditAreaValueModal(code) {
+function openEditEquipValueModal(tag) {
     if (state.profileKey !== 'ADMIN') { showAccessDenied('Apenas o Admin Master pode gerenciar áreas e equipamentos.'); return; }
-    const meta = AREA_META[code] || { m2: null, valorM2: null };
+    const meta = EQUIP_META[tag] || { m2: null, valorM2: null };
     openModal(`
-        <div class="modal-header"><h3>Editar Valor — ${escapeHtml(AREA_LABEL[code] || code)}</h3><button class="modal-close" onclick="closeModal()">&times;</button></div>
+        <div class="modal-header"><h3>Editar Valor — ${escapeHtml(tag)}</h3><button class="modal-close" onclick="closeModal()">&times;</button></div>
         <div class="modal-body">
-            <div class="m-field"><label>m²</label><input type="number" id="edit-area-m2" step="0.01" min="0" value="${meta.m2 != null ? meta.m2 : ''}"></div>
-            <div class="m-field"><label>R$/m²</label><input type="number" id="edit-area-valor-m2" step="0.01" min="0" value="${meta.valorM2 != null ? meta.valorM2 : ''}"></div>
+            <div class="m-field"><label>m²</label><input type="number" id="edit-equip-m2" step="0.01" min="0" value="${meta.m2 != null ? meta.m2 : ''}"></div>
+            <div class="m-field"><label>R$/m²</label><input type="number" id="edit-equip-valor-m2" step="0.01" min="0" value="${meta.valorM2 != null ? meta.valorM2 : ''}"></div>
         </div>
         <div class="modal-footer">
             <button class="btn-secondary" onclick="closeModal()">Cancelar</button>
-            <button class="btn-primary" onclick="saveAreaValue('${code}')">Salvar</button>
+            <button class="btn-primary" onclick="saveEquipValue('${tag}')">Salvar</button>
         </div>
     `);
 }
-async function saveAreaValue(code) {
-    const m2Raw = document.getElementById('edit-area-m2').value;
-    const valorRaw = document.getElementById('edit-area-valor-m2').value;
+async function saveEquipValue(tag) {
+    const m2Raw = document.getElementById('edit-equip-m2').value;
+    const valorRaw = document.getElementById('edit-equip-valor-m2').value;
     const m2 = m2Raw === '' ? null : Number(m2Raw);
     const valorM2 = valorRaw === '' ? null : Number(valorRaw);
-    const { error } = await sb.from('areas').update({ m2, valor_m2: valorM2 }).eq('site_key', state.currentSite).eq('code', code);
-    if (error) { toast('Erro ao salvar valor da área: ' + error.message, 'error'); return; }
-    AREA_META[code] = { m2, valorM2 };
+    const { error } = await sb.from('equipment').update({ m2, valor_m2: valorM2 }).eq('site_key', state.currentSite).eq('tag', tag);
+    if (error) { toast('Erro ao salvar valor do ativo: ' + error.message, 'error'); return; }
+    EQUIP_META[tag] = { m2, valorM2 };
     closeModal();
-    toast(`Valor de "${AREA_LABEL[code] || code}" salvo.`);
-    renderAreaValueTable();
+    toast(`Valor de "${tag}" salvo.`);
+    renderEquipValueTable();
 }
+
+const LS_EQUIPVALUE_COLLAPSED = 'vale_saas_equipvalue_collapsed_v1';
+function applyEquipValueCollapse(collapsed) {
+    document.getElementById('equip-value-section').classList.toggle('equip-value-collapsed', collapsed);
+    localStorage.setItem(LS_EQUIPVALUE_COLLAPSED, collapsed ? '1' : '0');
+}
+document.getElementById('btn-toggle-equip-value').addEventListener('click', () => {
+    applyEquipValueCollapse(!document.getElementById('equip-value-section').classList.contains('equip-value-collapsed'));
+});
+applyEquipValueCollapse(localStorage.getItem(LS_EQUIPVALUE_COLLAPSED) === '1');
 
 async function moveEquipment(tag, newArea) {
     const item = ALL_EQUIP.find(e => e.tag === tag);
@@ -5432,21 +5450,14 @@ document.getElementById('btn-add-area').addEventListener('click', async () => {
     if (state.profileKey !== 'ADMIN') { showAccessDenied('Apenas o Admin Master pode gerenciar áreas e equipamentos.'); return; }
     const codeRaw = document.getElementById('new-area-code').value.trim().toUpperCase().replace(/[^A-Z0-9_-]/g, '');
     const label = document.getElementById('new-area-label').value.trim();
-    const m2Raw = document.getElementById('new-area-m2').value;
-    const valorRaw = document.getElementById('new-area-valor-m2').value;
-    const m2 = m2Raw === '' ? null : Number(m2Raw);
-    const valorM2 = valorRaw === '' ? null : Number(valorRaw);
     if (!codeRaw || !label) { toast('Informe o código e o nome de exibição da nova área.', 'error'); return; }
     if (DATABASE[codeRaw]) { toast('Já existe uma área com esse código.', 'error'); return; }
-    const { error } = await sb.from('areas').insert({ site_key: state.currentSite, code: codeRaw, label, m2, valor_m2: valorM2 });
+    const { error } = await sb.from('areas').insert({ site_key: state.currentSite, code: codeRaw, label });
     if (error) { toast('Erro ao criar área: ' + error.message, 'error'); return; }
     DATABASE[codeRaw] = [];
     AREA_LABEL[codeRaw] = label;
-    AREA_META[codeRaw] = { m2, valorM2 };
     document.getElementById('new-area-code').value = '';
     document.getElementById('new-area-label').value = '';
-    document.getElementById('new-area-m2').value = '';
-    document.getElementById('new-area-valor-m2').value = '';
     toast(`Área "${label}" adicionada com sucesso.`);
     renderAssetMgmtPanel();
     renderAtivos(); renderAgendaEquipSelect(); renderDashboard();
@@ -5456,13 +5467,20 @@ document.getElementById('btn-add-equip').addEventListener('click', async () => {
     if (state.profileKey !== 'ADMIN') { showAccessDenied('Apenas o Admin Master pode gerenciar áreas e equipamentos.'); return; }
     const areaKey = document.getElementById('new-equip-area').value;
     const tag = document.getElementById('new-equip-tag').value.trim().toUpperCase();
+    const m2Raw = document.getElementById('new-equip-m2').value;
+    const valorRaw = document.getElementById('new-equip-valor-m2').value;
+    const m2 = m2Raw === '' ? null : Number(m2Raw);
+    const valorM2 = valorRaw === '' ? null : Number(valorRaw);
     if (!areaKey || !tag) { toast('Selecione a área e informe a tag do equipamento.', 'error'); return; }
     if (ALL_EQUIP.some(e => e.tag === tag)) { toast('Já existe um equipamento com essa tag no complexo.', 'error'); return; }
-    const { error } = await sb.from('equipment').insert({ site_key: state.currentSite, area_code: areaKey, tag });
+    const { error } = await sb.from('equipment').insert({ site_key: state.currentSite, area_code: areaKey, tag, m2, valor_m2: valorM2 });
     if (error) { toast('Erro ao adicionar equipamento: ' + error.message, 'error'); return; }
     DATABASE[areaKey].push(tag);
     ALL_EQUIP.push({ tag, area: areaKey });
+    EQUIP_META[tag] = { m2, valorM2 };
     document.getElementById('new-equip-tag').value = '';
+    document.getElementById('new-equip-m2').value = '';
+    document.getElementById('new-equip-valor-m2').value = '';
     toast(`Equipamento "${tag}" adicionado à área ${AREA_LABEL[areaKey] || areaKey}.`);
     renderAssetMgmtPanel();
     renderAtivos(); renderAgendaEquipSelect(); renderDashboard();

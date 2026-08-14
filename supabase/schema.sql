@@ -108,10 +108,12 @@ alter table public.bookings add column if not exists closed_by uuid references p
 -- ============================================================
 alter table public.sites add column if not exists client_approval_workflow boolean not null default false;
 
--- m² e R$/m² -- só pra exibir o valor calculado (m² × R$/m²) da limpeza
--- daquela área; não é um motor de faturamento.
-alter table public.areas add column if not exists m2 numeric;
-alter table public.areas add column if not exists valor_m2 numeric;
+-- m² e R$/m² -- ficam no ATIVO (sub-área, ex: STAFF01), não na área "mãe"
+-- (ex: TAMANDUÁ), já que cada sub-área tem sua própria metragem. Só pra
+-- exibir o valor calculado (m² × R$/m²) da limpeza daquele ativo; não é um
+-- motor de faturamento.
+alter table public.equipment add column if not exists m2 numeric;
+alter table public.equipment add column if not exists valor_m2 numeric;
 
 -- Decisão MAIS RECENTE do Cliente Vale sobre um bloqueio (o histórico
 -- completo de decisões/reclassificações fica registrado no audit_log, uma
