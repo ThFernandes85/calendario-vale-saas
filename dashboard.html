@@ -1038,7 +1038,7 @@ body.book-preview-mode .book-preview-toolbar {
 
         <div class="card-section" id="closed-bookings-section">
             <div class="filter-title-row">
-                <div class="filter-title" style="margin-bottom:0;">Bloqueios Encerrados / Reprogramados / Pendentes</div>
+                <div class="filter-title" id="closed-bookings-title" style="margin-bottom:0;">Bloqueios Encerrados / Reprogramados / Pendentes</div>
                 <button type="button" id="btn-toggle-closed-bookings" class="profile-toggle-btn" title="Minimizar/Expandir">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
                 </button>
@@ -3843,23 +3843,30 @@ const CLOSURE_STATUS_LABELS = {
 function renderClosedBookingsSummary() {
     const el = document.getElementById('closed-bookings-summary');
     if (!el) return;
+    // Mesma troca "OM"/"Bloqueio" -> "Atividade" do resto do S11D -- esta
+    // seção também sai impressa junto com o BOOK (view-relatorios continua
+    // ativa por trás durante a impressão), então o termo tem que bater.
+    const s11d = isClientApprovalSite();
+    const titleEl = document.getElementById('closed-bookings-title');
+    if (titleEl) titleEl.textContent = s11d ? 'Atividades Encerradas / Reprogramadas / Pendentes' : 'Bloqueios Encerrados / Reprogramados / Pendentes';
+    const unidade = s11d ? 'Atividades' : 'OMs';
     const b = sodexoCleaningBreakdown();
     const n = v => b ? v : 0;
     el.innerHTML = `
         <div class="kpi-card" style="--accent: var(--color-limpeza);">
-            <div class="kpi-label">OMs Programadas (Limpeza Sodexo)</div>
+            <div class="kpi-label">${unidade} Programadas (Limpeza Sodexo)</div>
             <div class="kpi-value">${n(b && b.total)}</div>
         </div>
         <div class="kpi-card" style="--accent: #2ed573;">
-            <div class="kpi-label">OMs Realizadas pela Sodexo</div>
+            <div class="kpi-label">${unidade} Realizadas pela Sodexo</div>
             <div class="kpi-value">${n(b && b.atendido)}</div>
         </div>
         <div class="kpi-card" style="--accent: var(--color-operacao);">
-            <div class="kpi-label">OMs Pendentes Vale</div>
+            <div class="kpi-label">${unidade} Pendentes Vale</div>
             <div class="kpi-value">${n(b && b.pendenteVale)}</div>
         </div>
         <div class="kpi-card" style="--accent: #ef4444;">
-            <div class="kpi-label">OMs Pendentes Sodexo</div>
+            <div class="kpi-label">${unidade} Pendentes Sodexo</div>
             <div class="kpi-value">${n(b && b.pendenteSodexo)}</div>
         </div>`;
 }
@@ -3895,7 +3902,10 @@ function renderClosedBookings() {
                 ${isAdmin ? `<button class="btn-danger" style="padding:5px 9px; font-size:11px;" onclick="openDeleteBookingModal('${b.id}')">Excluir</button>` : '—'}
             </td>
         </tr>
-    `).join('') || `<tr><td colspan="9" style="text-align:center; color:var(--text-muted);">${statusFilter === 'ALL' ? 'Nenhum bloqueio encerrado, reprogramado ou pendente no período selecionado.' : `Nenhum bloqueio "${escapeHtml(CLOSURE_STATUS_LABELS[statusFilter] || statusFilter)}" no período selecionado.`}</td></tr>`;
+    `).join('') || `<tr><td colspan="9" style="text-align:center; color:var(--text-muted);">${isClientApprovalSite()
+        ? (statusFilter === 'ALL' ? 'Nenhuma atividade encerrada, reprogramada ou pendente no período selecionado.' : `Nenhuma atividade "${escapeHtml(CLOSURE_STATUS_LABELS[statusFilter] || statusFilter)}" no período selecionado.`)
+        : (statusFilter === 'ALL' ? 'Nenhum bloqueio encerrado, reprogramado ou pendente no período selecionado.' : `Nenhum bloqueio "${escapeHtml(CLOSURE_STATUS_LABELS[statusFilter] || statusFilter)}" no período selecionado.`)
+    }</td></tr>`;
 }
 document.getElementById('closed-status-filter').addEventListener('change', renderClosedBookings);
 
@@ -4274,21 +4284,24 @@ function buildAderenciaBookHtml() {
     const encerradaCount = itens.filter(b => b.closureStatus === 'ENCERRADA').length;
     const pendenteCount = itens.length - encerradaCount;
     const filtroTxt = `Filtro: ${BOOK_STATUS_FILTER_LABELS[statusFilter] || BOOK_STATUS_FILTER_LABELS.ALL}`;
+    // S11D não tem "bloqueio" (conceito de equipamento travado) -- é
+    // "atividade" de limpeza por área, então o texto do BOOK muda junto.
+    const s11d = isClientApprovalSite();
 
     const header = `
         <div style="font-size:18px; font-weight:800; border-bottom:2px solid #000; padding-bottom:10px; margin-bottom:18px;">
             BOOK de Aderência — Limpeza Sodexo — ${escapeHtml(SITES[state.currentSite] || state.currentSite)}
             <small style="display:block; font-size:11px; font-weight:400; color:#444; margin-top:4px;">
                 ${escapeHtml(periodTxt)} — ${escapeHtml(notaTxt)}<br>
-                ${escapeHtml(filtroTxt)} — ${itens.length} bloqueio(s) nesta lista — ${encerradaCount} encerrado(s) com evidência fotográfica, ${pendenteCount} pendente(s) —
+                ${escapeHtml(filtroTxt)} — ${itens.length} ${s11d ? 'atividade(s)' : 'bloqueio(s)'} nesta lista — ${encerradaCount} encerrado(s) com evidência fotográfica, ${pendenteCount} pendente(s) —
                 Gerado em ${new Date().toLocaleString('pt-BR')} por ${escapeHtml(activeProfile().user)} (${state.profileKey})
             </small>
         </div>`;
 
     if (!itens.length) {
         const semNadaTxt = statusFilter === 'ALL'
-            ? 'Nenhum bloqueio de Limpeza Sodexo encerrado ou pendente no período selecionado.'
-            : `Nenhum bloqueio "${BOOK_STATUS_FILTER_LABELS[statusFilter]}" no período selecionado.`;
+            ? (s11d ? 'Nenhuma atividade de Limpeza Sodexo encerrada ou pendente no período selecionado.' : 'Nenhum bloqueio de Limpeza Sodexo encerrado ou pendente no período selecionado.')
+            : (s11d ? `Nenhuma atividade "${BOOK_STATUS_FILTER_LABELS[statusFilter]}" no período selecionado.` : `Nenhum bloqueio "${BOOK_STATUS_FILTER_LABELS[statusFilter]}" no período selecionado.`);
         return header + `<div style="padding:20px; color:#444;">${escapeHtml(semNadaTxt)}</div>`;
     }
 
