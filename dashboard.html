@@ -1000,7 +1000,7 @@ body.book-preview-mode .book-preview-toolbar {
                 <div class="kpi-sub" id="kpi-sodexo-nota-sub">Só desconta quando encerrado como Pendente Sodexo</div>
             </div>
             <div class="kpi-card" style="--accent: var(--color-admin);">
-                <div class="kpi-label">Total Geral — OM Programada × OM Realizada</div>
+                <div class="kpi-label" id="kpi-sodexo-total-label">Total Geral — OM Programada × OM Realizada</div>
                 <div class="kpi-value" id="kpi-sodexo-total">—</div>
                 <div class="kpi-sub" id="kpi-sodexo-total-sub">Atividades de Limpeza Sodexo no período</div>
             </div>
@@ -3770,12 +3770,23 @@ function renderSodexoScore() {
     const notaEl = document.getElementById('kpi-sodexo-nota');
     if (!notaEl) return;
     const notaSub = document.getElementById('kpi-sodexo-nota-sub');
+    const totalLabel = document.getElementById('kpi-sodexo-total-label');
     const totalEl = document.getElementById('kpi-sodexo-total');
     const totalSub = document.getElementById('kpi-sodexo-total-sub');
     const valeEl = document.getElementById('kpi-sodexo-vale');
     const pendenteEl = document.getElementById('kpi-sodexo-pendente');
     const valeSub = document.getElementById('kpi-sodexo-vale-sub');
     const pendenteSub = document.getElementById('kpi-sodexo-pendente-sub');
+
+    // S11D não tem OM (é programado por área/dia) -- os cards de nota da
+    // Sodexo (também impressos no BOOK, junto com a lista de limpezas)
+    // trocam "OM" por "Atividade" pra não confundir quem lê o PDF. "OM" é
+    // sigla (maiúscula sempre); "atividade" só fica maiúscula quando abre a
+    // frase, daí as duas variantes (unidade/unidadeMin).
+    const s11d = isClientApprovalSite();
+    const unidade = s11d ? 'Atividade' : 'OM';
+    const unidadeMin = s11d ? 'atividade' : 'OM';
+    totalLabel.textContent = `Total Geral — ${unidade} Programada × ${unidade} Realizada`;
 
     const b = sodexoCleaningBreakdown();
     if (!b) {
@@ -3790,13 +3801,13 @@ function renderSodexoScore() {
     notaSub.textContent = `Só desconta quando encerrado como Pendente Sodexo — ${totalTxt}`;
 
     totalEl.textContent = `${b.total} × ${b.atendido}`;
-    totalSub.textContent = `OM Programada × OM Realizada — ${totalTxt}`;
+    totalSub.textContent = `${unidade} Programada × ${unidade} Realizada — ${totalTxt}`;
 
     valeEl.textContent = `${b.pendenteVale} (${b.pctPendenteVale}%)`;
-    valeSub.textContent = `${b.pendenteVale} OM(s) pendente(s) Vale — não desconta da nota da Sodexo — ${totalTxt}`;
+    valeSub.textContent = `${b.pendenteVale} ${unidadeMin}(s) pendente(s) Vale — não desconta da nota da Sodexo — ${totalTxt}`;
 
     pendenteEl.textContent = `${b.pendenteSodexo} (${b.pctPendenteSodexo}%)`;
-    pendenteSub.textContent = `${b.pendenteSodexo} OM(s) pendente(s) Sodexo — desconta da nota de Limpeza — ${totalTxt}`;
+    pendenteSub.textContent = `${b.pendenteSodexo} ${unidadeMin}(s) pendente(s) Sodexo — desconta da nota de Limpeza — ${totalTxt}`;
 }
 
 let chartTop5 = null, chartTop5Limpeza = null, chartArea = null, chartAderenciaHistorico = null;
