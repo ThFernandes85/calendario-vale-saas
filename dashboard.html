@@ -1553,6 +1553,47 @@ async function loadPersisted() {
     else state.auditLog = (audit || []).map(mapAuditFromDb);
 }
 
+// Atualização em segundo plano (polling) -- sem isso, quando o Encarregado
+// encerra algo pelo Mobile, quem tá com a tela do computador aberta (Admin
+// Master, PCM, PCO, Técnico de Planejamento e GU) só via a mudança dando F5
+// manualmente. Roda a cada 20s, só enquanto a aba está em primeiro plano
+// (visibilitychange) e só pros perfis de tela cheia -- o Encarregado usa a
+// tela mobile própria, com fila offline (reconcileOfflineQueueFlags), e
+// substituir state.bookings por completo aqui apagaria um lançamento local
+// ainda não sincronizado.
+let bgRefreshInProgress = false;
+async function backgroundRefreshTick() {
+    if (bgRefreshInProgress) return;
+    if (!state.currentUser || !state.currentSite) return;
+    if (state.profileKey === 'ENCARREGADO') return;
+    if (document.visibilityState !== 'visible') return;
+    bgRefreshInProgress = true;
+    try {
+        const [{ data: bookings, error: bErr }, { data: audit, error: aErr }] = await Promise.all([
+            fetchAllRows('bookings', 'date', true),
+            fetchAllRows('audit_log', 'data_hora', false)
+        ]);
+        // Falha passageira de rede -- tenta de novo no próximo ciclo, sem
+        // apagar o que já está na tela (diferente de loadPersisted, que
+        // zera state.bookings no erro -- aceitável num carregamento inicial,
+        // mas não aqui, onde a tela já tem dados válidos sendo exibidos).
+        if (bErr || aErr) return;
+        state.bookings = (bookings || []).map(mapBookingFromDb);
+        state.auditLog = (audit || []).map(mapAuditFromDb);
+
+        renderWeekGrid(); renderAtivos(); renderDashboard(); updateUpcomingBadge();
+        const activeView = document.querySelector('.content-container.view-active');
+        if (activeView) {
+            if (activeView.id === 'view-relatorios') renderCharts();
+            if (activeView.id === 'view-mapacalor') renderHeatmap();
+            if (activeView.id === 'view-aprovacoes') renderValeApprovals();
+        }
+    } finally {
+        bgRefreshInProgress = false;
+    }
+}
+setInterval(backgroundRefreshTick, 20000);
+
 /* =========================================================
    SITES (múltiplas unidades operacionais: Mutuca, etc.)
    ========================================================= */
