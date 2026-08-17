@@ -163,6 +163,8 @@ header {
 #equip-value-section.equip-value-collapsed #equip-value-content { display: none; }
 #collab-mgmt-section.collab-mgmt-collapsed .profile-toggle-btn svg { transform: rotate(-90deg); }
 #collab-mgmt-section.collab-mgmt-collapsed #collab-mgmt-content { display: none; }
+#ativos-grid-section.ativos-grid-collapsed .profile-toggle-btn svg { transform: rotate(-90deg); }
+#ativos-grid-section.ativos-grid-collapsed #container-equipamentos { display: none; }
 
 .btn-area-filter {
     background-color: #1c2533; border: 1px solid var(--border-color); color: var(--text-primary);
@@ -898,7 +900,7 @@ body.book-preview-mode .book-preview-toolbar {
             </div>
         </div>
 
-        <div class="equip-grid-section">
+        <div class="equip-grid-section" id="ativos-grid-section">
             <div class="section-header-box">
                 <div class="box-title" id="grid-title">Equipamentos da Área: TOD</div>
                 <div class="agenda-legend">
@@ -907,6 +909,9 @@ body.book-preview-mode .book-preview-toolbar {
                     <div class="lg-item"><span class="status-dot st-limpeza"></span>Limpeza</div>
                     <div class="lg-item"><span class="status-dot st-critico"></span>Crítico</div>
                 </div>
+                <button type="button" id="btn-toggle-ativos-grid" class="profile-toggle-btn" title="Minimizar/Expandir">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
+                </button>
             </div>
             <div class="grid-equipamentos" id="container-equipamentos"></div>
         </div>
@@ -1448,11 +1453,19 @@ function equipTermAllPhrase() { return isClientApprovalSite() ? 'Todas as Áreas
 function applyEquipTerminology() {
     const t = equipTerm(), tp = equipTerm(true);
     const setText = (id, text) => { const el = document.getElementById(id); if (el) el.textContent = text; };
+    // Mover/Renomear/Excluir agem sobre o ATIVO individual (a sub-área,
+    // ex: "ACADEMIA FEMININA"), não sobre a área-mãe que o agrupa (ex:
+    // "Áreas Comuns ECII") -- essa segunda já tem seu próprio controle
+    // "Excluir Área" (btn-delete-area). Chamar as duas coisas de "Área" ao
+    // mesmo tempo gerava confusão real (usuário procurando excluir a
+    // área-mãe achava o campo errado) -- por isso o nível do ativo usa
+    // "Sub-área" no S11D, reservando "Área" pra operação no grupo inteiro.
+    const tSub = isClientApprovalSite() ? 'Sub-área' : 'Equipamento';
     setText('ativos-page-title', isClientApprovalSite() ? 'Gerenciamento de Áreas' : 'Gerenciamento de Equipamentos Industriais');
-    setText('lbl-new-equip-tag', isClientApprovalSite() ? 'Tag da Área' : 'Tag do Equipamento');
-    setText('lbl-move-equip-tag', `${t} a Mover`);
-    setText('lbl-rename-equip-tag', `${t} a Renomear`);
-    setText('lbl-del-equip-tag', `${t} a Excluir`);
+    setText('lbl-new-equip-tag', isClientApprovalSite() ? 'Tag da Sub-área' : 'Tag do Equipamento');
+    setText('lbl-move-equip-tag', `${tSub} a Mover`);
+    setText('lbl-rename-equip-tag', `${tSub} a Renomear`);
+    setText('lbl-del-equip-tag', `${tSub} a Excluir`);
     setText('lbl-agenda-equip', t);
     setText('chart-top5-manut-title', `Top 5 ${tp} - Maior Taxa de Indisponibilidade (Manutenção)`);
     setText('chart-top5-limpeza-title', `Top 5 ${tp} - Maior Volume de Limpeza`);
@@ -1460,10 +1473,10 @@ function applyEquipTerminology() {
     setText('lbl-heatmap-kpi-manut', `${t} com Mais Manutenções`);
     setText('lbl-heatmap-kpi-limpeza', `${t} com Mais Limpezas`);
     setText('lbl-heatmap-table-title', `Intervenções por ${t} e Tipo`);
-    setText('btn-add-equip', `+ Adicionar ${t}`);
-    setText('btn-move-equip', `Mover ${t}`);
-    setText('btn-rename-equip', `Renomear ${t}`);
-    setText('btn-delete-equip', `Excluir ${t}`);
+    setText('btn-add-equip', `+ Adicionar ${tSub}`);
+    setText('btn-move-equip', `Mover ${tSub}`);
+    setText('btn-rename-equip', `Renomear ${tSub}`);
+    setText('btn-delete-equip', `Excluir ${tSub}`);
     setText('lbl-kpi-livres', `${tp} Livres`);
 }
 // Gráfico de Indisponibilidade (Manutenção) é indicador de PCM -- fica fora
@@ -3572,6 +3585,21 @@ function renderAtivos() {
         container.appendChild(card);
     });
 }
+
+// Sites com muitos ativos (ex: S11D, 180+ sub-áreas) deixavam a grade de
+// cards ocupando a tela inteira antes mesmo da barra de filtro de área --
+// minimizar/expandir junto com o título, mesmo padrão já usado em Auditoria,
+// Bloqueios Encerrados etc.
+const LS_ATIVOSGRID_COLLAPSED = 'vale_saas_ativosgrid_collapsed_v1';
+function applyAtivosGridCollapse(collapsed) {
+    document.getElementById('ativos-grid-section').classList.toggle('ativos-grid-collapsed', collapsed);
+    localStorage.setItem(LS_ATIVOSGRID_COLLAPSED, collapsed ? '1' : '0');
+}
+document.getElementById('btn-toggle-ativos-grid').addEventListener('click', () => {
+    applyAtivosGridCollapse(!document.getElementById('ativos-grid-section').classList.contains('ativos-grid-collapsed'));
+});
+applyAtivosGridCollapse(localStorage.getItem(LS_ATIVOSGRID_COLLAPSED) === '1');
+
 /* =========================================================
    RENDER: CALENDÁRIO DE PROCESSOS
    ========================================================= */
