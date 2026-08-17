@@ -11,6 +11,22 @@
 
 create extension if not exists "pgcrypto";
 
+-- ============================================================
+-- MULTI-EMPRESA (Fase 1 -- fundação de isolamento entre empresas)
+-- Hoje só existe a empresa "Sodexo", mas a plataforma foi pensada pra um
+-- dia atender mais de uma empresa ao mesmo tempo (cada uma com seus
+-- próprios sites/usuários/dados, sem nenhuma enxergar a outra). "Sodexo"
+-- continua sendo o nome fixo da empresa operadora da plataforma -- é o
+-- lado "cliente" de cada site (hoje "Vale") que no futuro varia por
+-- empresa; essa parte de marca/rótulo fica pra uma fase posterior, esta
+-- aqui é só o isolamento de dados no banco.
+-- ---------- COMPANIES ----------
+create table if not exists public.companies (
+  key text primary key,
+  label text not null,
+  created_at timestamptz default now()
+);
+
 -- ---------- SITES ----------
 create table if not exists public.sites (
   key text primary key,
@@ -182,6 +198,45 @@ create table if not exists public.audit_log (
   profile_id uuid references public.profiles(id) on delete set null
 );
 
+-- ---------- MULTI-EMPRESA: colunas de empresa + dado inicial ----------
+-- site e usuário sempre pertencem a exatamente uma empresa; audit_log
+-- também guarda a empresa (inclusive nas linhas "globais", sem site_key,
+-- como login/logout) pra dar pra filtrar por empresa sem depender do site.
+alter table public.sites    add column if not exists company_key text references public.companies(key);
+alter table public.profiles add column if not exists company_key text references public.companies(key);
+alter table public.audit_log add column if not exists company_key text references public.companies(key);
+
+-- Empresa única de hoje -- todo dado que já existe fica associado a ela
+-- (backfill idempotente: só preenche linhas que ainda estão null).
+insert into public.companies (key, label) values ('SODEXO', 'Sodexo')
+on conflict (key) do nothing;
+update public.sites     set company_key = 'SODEXO' where company_key is null;
+update public.profiles  set company_key = 'SODEXO' where company_key is null;
+update public.audit_log set company_key = 'SODEXO' where company_key is null;
+-- "set not null" é idempotente -- não faz nada se a coluna já não aceita
+-- null, então rodar o script de novo nunca dá erro aqui.
+alter table public.sites    alter column company_key set not null;
+alter table public.profiles alter column company_key set not null;
+
+-- Carimba company_key em toda linha nova de audit_log no servidor (nunca
+-- confiando em valor vindo do cliente) -- puxa do site quando a linha tem
+-- site_key, ou do próprio perfil de quem está logado quando é uma entrada
+-- global (site_key null, ex: login/logout).
+create or replace function public.stamp_audit_company()
+returns trigger language plpgsql security definer as $$
+begin
+  if new.site_key is not null then
+    new.company_key := (select company_key from public.sites where key = new.site_key);
+  else
+    new.company_key := (select company_key from public.profiles where id = auth.uid());
+  end if;
+  return new;
+end;
+$$;
+drop trigger if exists trg_stamp_audit_company on public.audit_log;
+create trigger trg_stamp_audit_company before insert on public.audit_log
+for each row execute function public.stamp_audit_company();
+
 -- ============================================================
 -- FUNÇÕES AUXILIARES (usadas nas políticas de segurança abaixo)
 -- `create or replace` atualiza a função sem apagar tabelas nem dados.
@@ -195,15 +250,45 @@ returns boolean language sql stable security definer as $$
   );
 $$;
 
+-- Empresa do usuário logado -- null pra quem não tem linha em `profiles`
+-- (ex: sessão Visitante/anônima), tratado à parte dentro de has_site_access.
+create or replace function public.my_company()
+returns text language sql stable security definer as $$
+  select company_key from public.profiles where id = auth.uid();
+$$;
+
+-- Pré-requisito de empresa: o site tem que pertencer à MESMA empresa do
+-- usuário logado, sempre -- mesmo pro Admin (Admin de uma empresa nunca
+-- enxerga site de outra). Essa checagem sozinha já isola quase todo o
+-- resto do app, porque quase toda política de segurança abaixo passa por
+-- esta função (áreas, ativos, agendamentos, colaboradores, auditoria).
 create or replace function public.has_site_access(p_site_key text)
 returns boolean language sql stable security definer as $$
   select
-    public.is_admin()
-    or coalesce((auth.jwt() ->> 'is_anonymous')::boolean, false)  -- Visitante: leitura em todos os sites
-    or exists (
-      select 1 from public.profile_sites ps
-      join public.profiles p on p.id = ps.profile_id
-      where ps.profile_id = auth.uid() and ps.site_key = p_site_key and p.active = true
+    exists (
+      select 1 from public.sites s
+      where s.key = p_site_key and s.company_key = public.my_company()
+    )
+    and (
+      public.is_admin()
+      or (
+        -- Visitante (login anônimo) não tem linha em `profiles`, então
+        -- my_company() acima dá null pra ele -- a empresa dele vem do
+        -- token de login em vez disso (ver app: signInAnonymously com
+        -- company_key nos metadados). Sem esse dado no token, não vê nada
+        -- -- comportamento seguro por padrão, não um "vê tudo" acidental.
+        coalesce((auth.jwt() ->> 'is_anonymous')::boolean, false)
+        and exists (
+          select 1 from public.sites s
+          where s.key = p_site_key
+          and s.company_key = (auth.jwt() -> 'user_metadata' ->> 'company_key')
+        )
+      )
+      or exists (
+        select 1 from public.profile_sites ps
+        join public.profiles p on p.id = ps.profile_id
+        where ps.profile_id = auth.uid() and ps.site_key = p_site_key and p.active = true
+      )
     );
 $$;
 
@@ -216,6 +301,7 @@ $$;
 -- ROW LEVEL SECURITY
 -- (idempotente: "enable" de novo numa tabela que já tem RLS ligado não faz nada)
 -- ============================================================
+alter table public.companies enable row level security;
 alter table public.sites enable row level security;
 alter table public.areas enable row level security;
 alter table public.equipment enable row level security;
@@ -229,13 +315,22 @@ alter table public.audit_log enable row level security;
 -- policy" -- assim, rodar o script de novo para ajustar uma regra nunca
 -- dá erro de "política já existe" nem precisa apagar a tabela.
 
--- SITES: leitura para quem tem acesso; escrita só Admin
+-- COMPANIES: cada empresa só enxerga a própria linha (não tem "escrita"
+-- por RLS -- criar empresa nova é feito manualmente pelo dono da
+-- plataforma, direto no SQL Editor, igual já é feito pro primeiro Admin).
+drop policy if exists "companies_select" on public.companies;
+create policy "companies_select" on public.companies for select
+  using (key = public.my_company());
+
+-- SITES: leitura para quem tem acesso; escrita só Admin DA MESMA EMPRESA
+-- do site (nunca de outra).
 drop policy if exists "sites_select" on public.sites;
 create policy "sites_select" on public.sites for select
   using (public.has_site_access(key));
 drop policy if exists "sites_admin_write" on public.sites;
 create policy "sites_admin_write" on public.sites for all
-  using (public.is_admin()) with check (public.is_admin());
+  using (public.is_admin() and company_key = public.my_company())
+  with check (public.is_admin() and company_key = public.my_company());
 
 -- AREAS
 drop policy if exists "areas_select" on public.areas;
@@ -243,11 +338,13 @@ create policy "areas_select" on public.areas for select
   using (public.has_site_access(site_key));
 -- Técnico de Planejamento e GU também cria/gerencia áreas -- só nos sites
 -- em que tem acesso (profile_sites), diferente do Admin, que gerencia
--- qualquer site.
+-- qualquer site DA PRÓPRIA EMPRESA. has_site_access já exige que o site
+-- pertença à empresa de quem está logado (inclusive pro Admin) -- por
+-- isso ele entra como pré-requisito único, em vez de is_admin() solto.
 drop policy if exists "areas_admin_write" on public.areas;
 create policy "areas_admin_write" on public.areas for all
-  using (public.is_admin() or (public.current_role_key() = 'TECNICO_PLANEJAMENTO' and public.has_site_access(site_key)))
-  with check (public.is_admin() or (public.current_role_key() = 'TECNICO_PLANEJAMENTO' and public.has_site_access(site_key)));
+  using (public.has_site_access(site_key) and (public.is_admin() or public.current_role_key() = 'TECNICO_PLANEJAMENTO'))
+  with check (public.has_site_access(site_key) and (public.is_admin() or public.current_role_key() = 'TECNICO_PLANEJAMENTO'));
 
 -- EQUIPMENT
 drop policy if exists "equipment_select" on public.equipment;
@@ -255,8 +352,8 @@ create policy "equipment_select" on public.equipment for select
   using (public.has_site_access(site_key));
 drop policy if exists "equipment_admin_write" on public.equipment;
 create policy "equipment_admin_write" on public.equipment for all
-  using (public.is_admin() or (public.current_role_key() = 'TECNICO_PLANEJAMENTO' and public.has_site_access(site_key)))
-  with check (public.is_admin() or (public.current_role_key() = 'TECNICO_PLANEJAMENTO' and public.has_site_access(site_key)));
+  using (public.has_site_access(site_key) and (public.is_admin() or public.current_role_key() = 'TECNICO_PLANEJAMENTO'))
+  with check (public.has_site_access(site_key) and (public.is_admin() or public.current_role_key() = 'TECNICO_PLANEJAMENTO'));
 
 -- COLLABORATORS (quadro de colaboradores do S11D)
 drop policy if exists "collaborators_select" on public.collaborators;
@@ -264,24 +361,44 @@ create policy "collaborators_select" on public.collaborators for select
   using (public.has_site_access(site_key));
 drop policy if exists "collaborators_admin_write" on public.collaborators;
 create policy "collaborators_admin_write" on public.collaborators for all
-  using (public.is_admin() or (public.current_role_key() = 'TECNICO_PLANEJAMENTO' and public.has_site_access(site_key)))
-  with check (public.is_admin() or (public.current_role_key() = 'TECNICO_PLANEJAMENTO' and public.has_site_access(site_key)));
+  using (public.has_site_access(site_key) and (public.is_admin() or public.current_role_key() = 'TECNICO_PLANEJAMENTO'))
+  with check (public.has_site_access(site_key) and (public.is_admin() or public.current_role_key() = 'TECNICO_PLANEJAMENTO'));
 
--- PROFILES: cada um vê o próprio perfil; Admin vê/edita todos
+-- PROFILES: cada um vê o próprio perfil; Admin vê/edita todos DA MESMA
+-- EMPRESA (nunca de outra -- profiles não tem site_key, então o recorte
+-- de empresa é feito direto pela coluna company_key da própria tabela).
 drop policy if exists "profiles_select" on public.profiles;
 create policy "profiles_select" on public.profiles for select
-  using (id = auth.uid() or public.is_admin());
+  using (id = auth.uid() or (public.is_admin() and company_key = public.my_company()));
 drop policy if exists "profiles_admin_write" on public.profiles;
 create policy "profiles_admin_write" on public.profiles for all
-  using (public.is_admin()) with check (public.is_admin());
+  using (public.is_admin() and company_key = public.my_company())
+  with check (public.is_admin() and company_key = public.my_company());
 
--- PROFILE_SITES
+-- PROFILE_SITES (não tem company_key própria -- alcança a empresa via
+-- profiles/sites; a escrita confere os DOIS lados do vínculo, pra não
+-- deixar ligar um perfil de uma empresa a um site de outra por engano).
 drop policy if exists "profile_sites_select" on public.profile_sites;
 create policy "profile_sites_select" on public.profile_sites for select
-  using (profile_id = auth.uid() or public.is_admin());
+  using (
+    profile_id = auth.uid()
+    or (
+      public.is_admin()
+      and exists (select 1 from public.profiles p where p.id = profile_sites.profile_id and p.company_key = public.my_company())
+    )
+  );
 drop policy if exists "profile_sites_admin_write" on public.profile_sites;
 create policy "profile_sites_admin_write" on public.profile_sites for all
-  using (public.is_admin()) with check (public.is_admin());
+  using (
+    public.is_admin()
+    and exists (select 1 from public.profiles p where p.id = profile_sites.profile_id and p.company_key = public.my_company())
+    and exists (select 1 from public.sites    s where s.key = profile_sites.site_key   and s.company_key = public.my_company())
+  )
+  with check (
+    public.is_admin()
+    and exists (select 1 from public.profiles p where p.id = profile_sites.profile_id and p.company_key = public.my_company())
+    and exists (select 1 from public.sites    s where s.key = profile_sites.site_key   and s.company_key = public.my_company())
+  );
 
 -- BOOKINGS: leitura restrita ao site; criação/exclusão restrita por perfil + tipo
 drop policy if exists "bookings_select" on public.bookings;
@@ -353,14 +470,14 @@ drop policy if exists "audit_select" on public.audit_log;
 create policy "audit_select" on public.audit_log for select
   using (
     (site_key is not null and public.has_site_access(site_key))
-    or (site_key is null and public.is_admin())
+    or (site_key is null and public.is_admin() and company_key = public.my_company())
   );
 drop policy if exists "audit_insert" on public.audit_log;
 create policy "audit_insert" on public.audit_log for insert
   with check (auth.uid() is not null);
 drop policy if exists "audit_admin_delete" on public.audit_log;
 create policy "audit_admin_delete" on public.audit_log for delete
-  using (public.is_admin());
+  using (public.is_admin() and company_key = public.my_company());
 
 -- ============================================================
 -- STORAGE: fotos de antes/depois anexadas ao encerrar um bloqueio
@@ -370,9 +487,15 @@ insert into storage.buckets (id, name, public)
 values ('closure-photos', 'closure-photos', true)
 on conflict (id) do update set public = true;
 
+-- O caminho do arquivo sempre começa com o site_key (ver uploadClosurePhoto
+-- no app: `${state.currentSite}/${booking.id}/...`) -- storage.foldername
+-- devolve os pedaços do caminho como array, então [1] é o site. Antes esta
+-- política só conferia "está logado", sem checar sequer o site, e dava pra
+-- subir arquivo em qualquer pasta -- agora reaproveita has_site_access, já
+-- com o recorte de empresa embutido.
 drop policy if exists "closure_photos_insert" on storage.objects;
 create policy "closure_photos_insert" on storage.objects for insert
-  with check (bucket_id = 'closure-photos' and auth.uid() is not null);
+  with check (bucket_id = 'closure-photos' and public.has_site_access((storage.foldername(name))[1]));
 
 drop policy if exists "closure_photos_select" on storage.objects;
 create policy "closure_photos_select" on storage.objects for select
@@ -380,7 +503,14 @@ create policy "closure_photos_select" on storage.objects for select
 
 drop policy if exists "closure_photos_admin_delete" on storage.objects;
 create policy "closure_photos_admin_delete" on storage.objects for delete
-  using (bucket_id = 'closure-photos' and public.is_admin());
+  using (
+    bucket_id = 'closure-photos'
+    and public.is_admin()
+    and exists (
+      select 1 from public.sites s
+      where s.key = (storage.foldername(name))[1] and s.company_key = public.my_company()
+    )
+  );
 
 -- ============================================================
 -- MIGRAÇÃO: renomeia o tipo 'Limpeza' para 'Limpeza Sodexo'
@@ -407,7 +537,7 @@ update public.equipment set area_code = 'TOD'
 -- equipamento já existir (mesma chave), o insert simplesmente não faz nada,
 -- em vez de duplicar ou dar erro.
 -- ============================================================
-insert into public.sites (key, label) values ('MUTUCA', 'Mutuca')
+insert into public.sites (key, label, company_key) values ('MUTUCA', 'Mutuca', 'SODEXO')
 on conflict (key) do nothing;
 
 insert into public.areas (site_key, code, label) values
@@ -452,8 +582,8 @@ on conflict (site_key, tag) do nothing;
 -- Authentication > Users > Add user (no painel do Supabase),
 -- copie o UUID dele e rode a linha abaixo trocando SEU_UUID_AQUI:
 -- ============================================================
--- insert into public.profiles (id, name, email, role, can_export, active)
--- values ('SEU_UUID_AQUI', 'Thiago Fernandes', 'seu.email@empresa.com', 'ADMIN', true, true)
+-- insert into public.profiles (id, name, email, role, can_export, active, company_key)
+-- values ('SEU_UUID_AQUI', 'Thiago Fernandes', 'seu.email@empresa.com', 'ADMIN', true, true, 'SODEXO')
 -- on conflict (id) do update set role = 'ADMIN', active = true;
 
 -- ============================================================
@@ -463,9 +593,11 @@ on conflict (site_key, tag) do nothing;
 -- histórico) e recomeçar do zero. Não existe undo depois de rodar.
 -- ============================================================
 -- drop table if exists public.audit_log cascade;
+-- drop table if exists public.collaborators cascade;
 -- drop table if exists public.bookings cascade;
 -- drop table if exists public.profile_sites cascade;
 -- drop table if exists public.profiles cascade;
 -- drop table if exists public.equipment cascade;
 -- drop table if exists public.areas cascade;
 -- drop table if exists public.sites cascade;
+-- drop table if exists public.companies cascade;

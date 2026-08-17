@@ -3,6 +3,13 @@
 // chamada, usando a service_role key — que só existe aqui no servidor,
 // nunca no navegador. Só o Admin Master logado pode chamar isso.
 //
+// IMPORTANTE (multi-empresa): esta função usa a service_role key, que
+// ignora RLS por completo -- nenhuma política do banco protege ela. Por
+// isso a checagem de empresa (company_key) é feita aqui manualmente, tanto
+// pra criar (o usuário novo sempre nasce na MESMA empresa de quem está
+// criando, nunca aceita empresa vinda do formulário) quanto pra excluir
+// (confere que o usuário-alvo pertence à mesma empresa antes de excluir).
+//
 // Como publicar (sem precisar de CLI/Node instalado):
 // 1. No painel do Supabase, abra "Edge Functions" no menu lateral.
 // 2. Clique em "Deploy a new function", nomeie como "admin-manage-user".
@@ -46,10 +53,11 @@ Deno.serve(async (req) => {
     const admin = createClient(supabaseUrl, serviceKey);
 
     const { data: callerProfile } = await admin
-      .from('profiles').select('role, active').eq('id', caller.id).single();
+      .from('profiles').select('role, active, company_key').eq('id', caller.id).single();
     if (!callerProfile || callerProfile.role !== 'ADMIN' || !callerProfile.active) {
       return json({ error: 'Apenas o Admin Master pode gerenciar usuários.' }, 403);
     }
+    const callerCompany = callerProfile.company_key;
 
     const body = await req.json();
 
@@ -57,6 +65,16 @@ Deno.serve(async (req) => {
       const { name, email, password, role, canExport, active, sites } = body;
       if (!name || !email || !role) return json({ error: 'Preencha nome, e-mail e perfil.' }, 400);
       if (!password || password.length < 6) return json({ error: 'Informe uma senha inicial com no mínimo 6 caracteres.' }, 400);
+
+      // Recusa (em vez de filtrar em silêncio) se algum site pedido não for
+      // da mesma empresa de quem está criando o usuário.
+      if (Array.isArray(sites) && sites.length) {
+        const { data: validSites } = await admin.from('sites').select('key').eq('company_key', callerCompany).in('key', sites);
+        const validKeys = new Set((validSites || []).map((s: { key: string }) => s.key));
+        if (sites.some((k: string) => !validKeys.has(k))) {
+          return json({ error: 'Um ou mais sites informados não pertencem à sua empresa.' }, 400);
+        }
+      }
 
       // Cria a conta já com a senha definida pelo Admin e o e-mail confirmado
       // de cara — a pessoa já consegue logar, sem precisar clicar em link nenhum.
@@ -68,6 +86,7 @@ Deno.serve(async (req) => {
       const newId = created.user.id;
       const { error: profErr } = await admin.from('profiles').insert({
         id: newId, name, email, role, can_export: canExport, active,
+        company_key: callerCompany, // carimbado no servidor -- nunca vem do formulário
       });
       if (profErr) { await admin.auth.admin.deleteUser(newId); return json({ error: profErr.message || 'Falha ao criar o perfil (motivo desconhecido no banco).' }, 400); }
 
@@ -81,6 +100,12 @@ Deno.serve(async (req) => {
       const { id } = body;
       if (!id) return json({ error: 'ID do usuário não informado.' }, 400);
       if (id === caller.id) return json({ error: 'Você não pode excluir sua própria conta enquanto estiver logado.' }, 400);
+
+      const { data: targetProfile } = await admin.from('profiles').select('company_key').eq('id', id).single();
+      if (!targetProfile || targetProfile.company_key !== callerCompany) {
+        return json({ error: 'Usuário não encontrado nesta empresa.' }, 404);
+      }
+
       const { error: delErr } = await admin.auth.admin.deleteUser(id);
       if (delErr) return json({ error: delErr.message || 'Falha ao excluir a conta de login (verifique se ela não tem agendamentos/histórico vinculados).' }, 400);
       return json({ ok: true });

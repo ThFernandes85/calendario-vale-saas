@@ -3439,7 +3439,12 @@ document.getElementById('login-form').addEventListener('submit', async e => {
 });
 document.getElementById('btn-guest-login').addEventListener('click', async () => {
     document.getElementById('login-error').style.display = 'none';
-    const { data, error } = await sb.auth.signInAnonymously();
+    // A empresa do Visitante vem junto no token de login (não tem linha em
+    // `profiles`, então o banco não consegue descobrir a empresa dele de
+    // outro jeito -- ver has_site_access no schema.sql). Sem isso, login
+    // Visitante passa a não enxergar nenhum site depois da Fase 1 de
+    // multi-empresa.
+    const { data, error } = await sb.auth.signInAnonymously({ options: { data: { company_key: 'SODEXO' } } });
     if (error) { toast('Não foi possível entrar como visitante: ' + error.message, 'error'); return; }
     await loginAs({ id: data.user.id, name: 'Visitante', username: 'visitante', role: 'VISITANTE', canExport: false, active: true, sites: [] });
 });
