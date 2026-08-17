@@ -1435,6 +1435,10 @@ function canViewValeApprovals() { return canDecideValeApprovals() || state.profi
 // áreas) -- é ele quem estrutura o site (ex: S11D) no dia a dia, não só o
 // Admin Master.
 function canManageAssets() { return state.profileKey === 'ADMIN' || state.profileKey === 'TECNICO_PLANEJAMENTO'; }
+// Corrigir Fotos é Admin Master em qualquer site; no S11D o Técnico de
+// Planejamento e GU também pode -- ele que acompanha a evidência fotográfica
+// das limpezas no dia a dia por lá, mas isso não vale pro Mutuca.
+function canFixPhotos() { return state.profileKey === 'ADMIN' || (state.profileKey === 'TECNICO_PLANEJAMENTO' && isClientApprovalSite()); }
 // S11D (limpeza predial) fala em "Área"/"Sub-área", nunca "Equipamento" --
 // esse termo só faz sentido pro Mutuca (máquina industrial de verdade).
 // Usado em todo texto de tela que hoje diz "Equipamento", condicionado ao
@@ -2367,7 +2371,7 @@ const FIXABLE_PHOTO_STATUSES = ['ENCERRADA', 'APROVADO_VALE', 'REPROVADO_VALE', 
 // closurePhotoSlotsFor pra cobrir tanto os 2 slots do Mutuca (antes/depois)
 // quanto os 3 do S11D (antes/durante/depois).
 function openFixPhotosModal(id) {
-    if (state.profileKey !== 'ADMIN') { showAccessDenied('Apenas o Admin Master pode corrigir fotos.'); return; }
+    if (!canFixPhotos()) { showAccessDenied('Apenas o Admin Master (e o Técnico de Planejamento e GU no S11D) pode corrigir fotos.'); return; }
     const booking = state.bookings.find(b => b.id === id);
     if (!booking) return;
     const preview = (url) => url
@@ -2403,7 +2407,7 @@ function openFixPhotosModal(id) {
 }
 
 async function confirmFixPhotos(id) {
-    if (state.profileKey !== 'ADMIN') { showAccessDenied('Apenas o Admin Master pode corrigir fotos.'); return; }
+    if (!canFixPhotos()) { showAccessDenied('Apenas o Admin Master (e o Técnico de Planejamento e GU no S11D) pode corrigir fotos.'); return; }
     const booking = state.bookings.find(b => b.id === id);
     if (!booking) return;
     const slots = closurePhotoSlotsFor(booking);
@@ -3981,7 +3985,7 @@ function renderClosedBookings() {
             <td>${escapeHtml(CLOSURE_STATUS_LABELS[b.closureStatus] || b.closureStatus)}</td>
             <td>${escapeHtml(b.closureReason || '—')}</td>
             <td>
-                ${isAdmin && b.type === SODEXO_CLEANING_TYPE && FIXABLE_PHOTO_STATUSES.includes(b.closureStatus) ? `<button class="btn-secondary" style="padding:5px 9px; font-size:11px; margin-right:6px;" onclick="openFixPhotosModal('${b.id}')">Corrigir Fotos</button>` : ''}
+                ${canFixPhotos() && b.type === SODEXO_CLEANING_TYPE && FIXABLE_PHOTO_STATUSES.includes(b.closureStatus) ? `<button class="btn-secondary" style="padding:5px 9px; font-size:11px; margin-right:6px;" onclick="openFixPhotosModal('${b.id}')">Corrigir Fotos</button>` : ''}
                 ${isAdmin ? `<button class="btn-danger" style="padding:5px 9px; font-size:11px;" onclick="openDeleteBookingModal('${b.id}')">Excluir</button>` : '—'}
             </td>
         </tr>
