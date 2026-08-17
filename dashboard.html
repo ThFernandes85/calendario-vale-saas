@@ -165,6 +165,8 @@ header {
 #collab-mgmt-section.collab-mgmt-collapsed #collab-mgmt-content { display: none; }
 #ativos-grid-section.ativos-grid-collapsed .profile-toggle-btn svg { transform: rotate(-90deg); }
 #ativos-grid-section.ativos-grid-collapsed #container-equipamentos { display: none; }
+#users-section.users-collapsed .profile-toggle-btn svg { transform: rotate(-90deg); }
+#users-section.users-collapsed #users-content { display: none; }
 
 .btn-area-filter {
     background-color: #1c2533; border: 1px solid var(--border-color); color: var(--text-primary);
@@ -1210,26 +1212,33 @@ body.book-preview-mode .book-preview-toolbar {
             <p style="color: var(--text-secondary); font-size: 14px;">Crie e gerencie contas de PCM, PCO e Engenharia. Apenas o Admin Master pode gerenciar usuários e permissões de exportação.</p>
         </div>
 
-        <div class="card-section">
+        <div class="card-section" id="users-section">
             <div class="audit-toolbar">
                 <div class="filter-title" style="margin-bottom:0;">Contas Cadastradas</div>
-                <button class="btn-primary" id="btn-new-user">+ Novo Usuário</button>
+                <div style="display:flex; align-items:center; gap:10px;">
+                    <button class="btn-primary" id="btn-new-user">+ Novo Usuário</button>
+                    <button type="button" id="btn-toggle-users" class="profile-toggle-btn" title="Minimizar/Expandir">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
+                    </button>
+                </div>
             </div>
-            <div style="height:14px;"></div>
-            <div class="agenda-field" style="max-width:280px;">
-                <label>Filtrar por Site</label>
-                <select id="users-site-filter"><option value="ALL">Todos os Sites</option></select>
-            </div>
-            <div style="height:16px;"></div>
-            <div class="audit-table-wrap">
-                <table class="audit-table">
-                    <thead>
-                        <tr>
-                            <th>Nome</th><th>Usuário</th><th>Perfil</th><th>Sites com Acesso</th><th>Exporta Relatórios</th><th>Status</th><th>Ações</th>
-                        </tr>
-                    </thead>
-                    <tbody id="users-tbody"></tbody>
-                </table>
+            <div id="users-content">
+                <div style="height:14px;"></div>
+                <div class="agenda-field" style="max-width:280px;">
+                    <label>Filtrar por Site</label>
+                    <select id="users-site-filter"><option value="ALL">Todos os Sites</option></select>
+                </div>
+                <div style="height:16px;"></div>
+                <div class="audit-table-wrap">
+                    <table class="audit-table">
+                        <thead>
+                            <tr>
+                                <th>Nome</th><th>Usuário</th><th>Perfil</th><th>Sites com Acesso</th><th>Exporta Relatórios</th><th>Status</th><th>Ações</th>
+                            </tr>
+                        </thead>
+                        <tbody id="users-tbody"></tbody>
+                    </table>
+                </div>
             </div>
         </div>
     </div>
@@ -5470,6 +5479,16 @@ function renderUsersView() {
     `).join('') || `<tr><td colspan="7" style="text-align:center; color:var(--text-muted);">Nenhum usuário com acesso a este site.</td></tr>`;
 }
 document.getElementById('btn-new-user').addEventListener('click', () => openUserModal(null));
+
+const LS_USERS_COLLAPSED = 'vale_saas_users_collapsed_v1';
+function applyUsersCollapse(collapsed) {
+    document.getElementById('users-section').classList.toggle('users-collapsed', collapsed);
+    localStorage.setItem(LS_USERS_COLLAPSED, collapsed ? '1' : '0');
+}
+document.getElementById('btn-toggle-users').addEventListener('click', () => {
+    applyUsersCollapse(!document.getElementById('users-section').classList.contains('users-collapsed'));
+});
+applyUsersCollapse(localStorage.getItem(LS_USERS_COLLAPSED) === '1');
 
 /* Chama a Edge Function e extrai a mensagem de erro real do corpo da
    resposta — o cliente Supabase só devolve "non-2xx status code" em
