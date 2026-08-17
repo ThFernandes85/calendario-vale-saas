@@ -1215,6 +1215,11 @@ body.book-preview-mode .book-preview-toolbar {
                 <div class="filter-title" style="margin-bottom:0;">Contas Cadastradas</div>
                 <button class="btn-primary" id="btn-new-user">+ Novo Usuário</button>
             </div>
+            <div style="height:14px;"></div>
+            <div class="agenda-field" style="max-width:280px;">
+                <label>Filtrar por Site</label>
+                <select id="users-site-filter"><option value="ALL">Todos os Sites</option></select>
+            </div>
             <div style="height:16px;"></div>
             <div class="audit-table-wrap">
                 <table class="audit-table">
@@ -5420,10 +5425,29 @@ function renderHeatmap() {
 /* =========================================================
    RENDER: USUÁRIOS & ACESSOS (Admin Master)
    ========================================================= */
+// Um usuário pode ter acesso a mais de um site ao mesmo tempo (ex: Admin
+// Master sempre tem "Todos") -- o filtro por site não separa em grupos
+// estanques, só mostra quem tem acesso àquele site específico (inclui
+// quem também tem acesso a outros); é a forma de reduzir a bagunça na
+// lista sem fingir que cada usuário pertence a um site só.
+function renderUsersSiteFilter() {
+    const sel = document.getElementById('users-site-filter');
+    if (!sel) return;
+    const current = sel.value || 'ALL';
+    sel.innerHTML = `<option value="ALL">Todos os Sites</option>` +
+        Object.keys(SITES).map(k => `<option value="${k}">${escapeHtml(SITES[k] || k)}</option>`).join('');
+    sel.value = Object.keys(SITES).includes(current) ? current : 'ALL';
+}
+document.getElementById('users-site-filter').addEventListener('change', renderUsersView);
+
 function renderUsersView() {
     if (state.profileKey !== 'ADMIN') return;
+    renderUsersSiteFilter();
+    const siteFilter = document.getElementById('users-site-filter').value || 'ALL';
+    const filteredUsers = siteFilter === 'ALL' ? state.users
+        : state.users.filter(u => u.role === 'ADMIN' || (u.sites || []).includes(siteFilter));
     const tbody = document.getElementById('users-tbody');
-    tbody.innerHTML = state.users.map(u => `
+    tbody.innerHTML = filteredUsers.map(u => `
         <tr>
             <td>${escapeHtml(u.name)}</td>
             <td>${escapeHtml(u.username)}</td>
@@ -5438,7 +5462,7 @@ function renderUsersView() {
                 <button class="btn-danger" style="padding:6px 10px; font-size:11.5px;" onclick="openDeleteUserModal('${u.id}')">Excluir</button>
             </td>
         </tr>
-    `).join('');
+    `).join('') || `<tr><td colspan="7" style="text-align:center; color:var(--text-muted);">Nenhum usuário com acesso a este site.</td></tr>`;
 }
 document.getElementById('btn-new-user').addEventListener('click', () => openUserModal(null));
 
