@@ -472,6 +472,7 @@ body.book-preview-mode .book-preview-toolbar {
 .book-photo-box .book-photo-fail-msg { display: none; font-size: 11px; color: #c00; text-align: center; padding: 8px; }
 .book-photo-box.failed img { display: none; }
 .book-photo-box.failed .book-photo-fail-msg { display: block; }
+#view-book.book-cards-collapsed #book-cards-wrap { display: none; }
 
 @media print {
     aside, header, .filter-section, .agenda-toolbar, .audit-toolbar button, #btn-heatmap-print, #btn-print-full-report, #btn-print-book, #book-period-wrap, #toast-container, .book-preview-toolbar { display: none !important; }
@@ -505,6 +506,9 @@ body.book-preview-mode .book-preview-toolbar {
     body.print-report-mode #view-relatorios { break-after: page; }
 
     body.print-book-mode #view-book { display: flex !important; }
+    /* O minimizar de fotos é só conveniência de tela -- no PDF/impressão as
+       fotos sempre saem, esteja a prévia minimizada ou não naquele momento. */
+    body.print-book-mode #view-book.book-cards-collapsed #book-cards-wrap { display: block !important; }
 }
 
 /* ---- TELA MOBILE: ENCARREGADO ---- */
@@ -1286,6 +1290,7 @@ body.book-preview-mode .book-preview-toolbar {
         <button class="btn-secondary" id="btn-book-back">&#8592; Voltar</button>
         <div id="book-loading-progress" style="font-size:12.5px; color:var(--text-secondary); display:none;"></div>
         <div style="flex:1;"></div>
+        <button class="btn-secondary" id="btn-book-toggle-photos">&#9660; Minimizar Fotos</button>
         <button class="btn-secondary" id="btn-book-retry-photos">&#8635; Recarregar fotos com falha</button>
         <button class="btn-primary" id="btn-book-print-now">Imprimir / Exportar PDF</button>
     </div>
@@ -4648,7 +4653,7 @@ function buildAderenciaBookHtml() {
         const semNadaTxt = statusFilter === 'ALL'
             ? (s11d ? 'Nenhuma atividade de Limpeza Sodexo encerrada ou pendente no período selecionado.' : 'Nenhum bloqueio de Limpeza Sodexo encerrado ou pendente no período selecionado.')
             : (s11d ? `Nenhuma atividade "${BOOK_STATUS_FILTER_LABELS[statusFilter]}" no período selecionado.` : `Nenhum bloqueio "${BOOK_STATUS_FILTER_LABELS[statusFilter]}" no período selecionado.`);
-        return header + `<div style="padding:20px; color:#444;">${escapeHtml(semNadaTxt)}</div>`;
+        return header + `<div id="book-cards-wrap" style="padding:20px; color:#444;">${escapeHtml(semNadaTxt)}</div>`;
     }
 
     const cards = itens.map(b => {
@@ -4683,7 +4688,7 @@ function buildAderenciaBookHtml() {
     `;
     }).join('');
 
-    return header + cards;
+    return header + `<div id="book-cards-wrap">${cards}</div>`;
 }
 
 // A montagem do BOOK (HTML + todas as fotos carregando do Storage) já
@@ -4783,6 +4788,21 @@ function retryFailedBookPhotos() {
 }
 document.getElementById('btn-book-retry-photos').addEventListener('click', retryFailedBookPhotos);
 
+// Minimiza/expande a grade de cards do BOOK (fica visível só o cabeçalho com
+// o resumo/nota de aderência) -- útil sobretudo enquanto as fotos ainda
+// estão carregando, pra não ficar olhando pra uma tela cheia de caixas
+// cinza vazias. No PDF/impressão sai tudo de qualquer jeito (ver @media
+// print), o minimizar é só conveniência de tela.
+function setBookCardsCollapsed(collapsed) {
+    const container = document.getElementById('view-book');
+    container.classList.toggle('book-cards-collapsed', collapsed);
+    const btn = document.getElementById('btn-book-toggle-photos');
+    if (btn) btn.innerHTML = collapsed ? '&#9654; Expandir Fotos' : '&#9660; Minimizar Fotos';
+}
+document.getElementById('btn-book-toggle-photos').addEventListener('click', () => {
+    setBookCardsCollapsed(!document.getElementById('view-book').classList.contains('book-cards-collapsed'));
+});
+
 function previewAderenciaBook() {
     if (!canExportReports()) { showAccessDenied('Perfil sem privilégios para extrair o BOOK de aderência.'); return; }
     bookPreviousView = document.querySelector('.content-container.view-active').id.replace('view-', '');
@@ -4791,12 +4811,13 @@ function previewAderenciaBook() {
     container.classList.add('view-active');
     document.body.classList.add('print-book-mode', 'book-preview-mode');
     window.scrollTo(0, 0);
+    setBookCardsCollapsed(true);
     const progressEl = document.getElementById('book-loading-progress');
     loadBookImagesRobust(container, (feitas, total) => {
         if (!progressEl || !total) return;
         if (feitas < total) { progressEl.style.display = 'block'; progressEl.textContent = `Carregando fotos... ${feitas}/${total}`; }
         else progressEl.style.display = 'none';
-    });
+    }).then(() => setBookCardsCollapsed(false));
 }
 document.getElementById('btn-print-book').addEventListener('click', previewAderenciaBook);
 document.getElementById('btn-book-back').addEventListener('click', closeBookPreview);
