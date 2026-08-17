@@ -3549,7 +3549,7 @@ async function logout() {
     document.getElementById('login-error').style.display = 'none';
     document.getElementById('login-forgot-note').style.display = 'none';
     document.getElementById('login-recovery-card').style.display = 'none';
-    document.getElementById('login-card').style.display = 'flex';
+    document.getElementById('login-card').style.display = 'block';
     applyRememberedEmail();
     document.getElementById('login-screen').style.display = 'flex';
     document.querySelector('aside').style.display = 'none';
@@ -3655,7 +3655,7 @@ sb.auth.onAuthStateChange((eventName) => {
     if (eventName === 'PASSWORD_RECOVERY') {
         document.getElementById('login-screen').style.display = 'flex';
         document.getElementById('login-card').style.display = 'none';
-        document.getElementById('login-recovery-card').style.display = 'flex';
+        document.getElementById('login-recovery-card').style.display = 'block';
     }
 });
 document.getElementById('login-recovery-form').addEventListener('submit', async e => {
@@ -3682,7 +3682,7 @@ document.getElementById('login-recovery-form').addEventListener('submit', async 
     await sb.auth.signOut();
     document.getElementById('login-recovery-form').reset();
     document.getElementById('login-recovery-card').style.display = 'none';
-    document.getElementById('login-card').style.display = 'flex';
+    document.getElementById('login-card').style.display = 'block';
     const errLogin = document.getElementById('login-error');
     errLogin.textContent = 'Senha alterada com sucesso. Faça login com a nova senha.';
     errLogin.style.background = 'oklch(0.28 0.09 155 / .18)'; errLogin.style.borderColor = 'oklch(0.7 0.14 155 / .35)'; errLogin.style.color = 'oklch(0.78 0.14 155)';
