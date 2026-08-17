@@ -1,5 +1,5 @@
 -- ============================================================
--- SaaS VALE — schema (Supabase / Postgres)
+-- TerraVia Ops — schema (Supabase / Postgres)
 -- Cole este script INTEIRO no SQL Editor do Supabase e clique em "Run".
 --
 -- Este script é SEGURO de rodar quantas vezes precisar em produção: ele
@@ -210,6 +210,13 @@ alter table public.audit_log add column if not exists company_key text reference
 -- (backfill idempotente: só preenche linhas que ainda estão null).
 insert into public.companies (key, label) values ('SODEXO', 'Sodexo')
 on conflict (key) do nothing;
+
+-- "Cliente Integrado": nome do cliente final que essa empresa atende (ex:
+-- hoje a Sodexo atende a Vale) -- mostrado no badge da barra lateral.
+-- Editável só por SQL por enquanto (criar/editar empresa continua manual).
+alter table public.companies add column if not exists client_label text;
+update public.companies set client_label = 'Vale' where key = 'SODEXO' and client_label is null;
+
 update public.sites     set company_key = 'SODEXO' where company_key is null;
 update public.profiles  set company_key = 'SODEXO' where company_key is null;
 update public.audit_log set company_key = 'SODEXO' where company_key is null;
@@ -318,9 +325,18 @@ alter table public.audit_log enable row level security;
 -- COMPANIES: cada empresa só enxerga a própria linha (não tem "escrita"
 -- por RLS -- criar empresa nova é feito manualmente pelo dono da
 -- plataforma, direto no SQL Editor, igual já é feito pro primeiro Admin).
+-- O Visitante (anônimo) não tem linha em `profiles`, então `my_company()`
+-- não funciona pra ele -- mesmo tratamento especial que `has_site_access`
+-- já dá, olhando a empresa direto no token de login.
 drop policy if exists "companies_select" on public.companies;
 create policy "companies_select" on public.companies for select
-  using (key = public.my_company());
+  using (
+    key = public.my_company()
+    or (
+      coalesce((auth.jwt() ->> 'is_anonymous')::boolean, false)
+      and key = (auth.jwt() -> 'user_metadata' ->> 'company_key')
+    )
+  );
 
 -- SITES: leitura para quem tem acesso; escrita só Admin DA MESMA EMPRESA
 -- do site (nunca de outra).

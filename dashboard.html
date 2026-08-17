@@ -73,9 +73,7 @@ aside.collapsed .sidebar-topbar { justify-content: center; }
 
 .client-box { background: rgba(255, 255, 255, 0.02); border: 1px solid var(--border-color); border-radius: 8px; padding: 15px; text-align: center; margin-bottom: 20px; }
 .client-title { font-size: 10px; text-transform: uppercase; color: var(--text-secondary); letter-spacing: 1.5px; margin-bottom: 10px; display: block; }
-.vale-logo { font-size: 24px; font-weight: 900; letter-spacing: 1px; display: flex; align-items: center; justify-content: center; gap: 4px; }
-.vale-v { color: #007c5a; }
-.vale-a { color: #f39200; }
+.client-logo { font-size: 22px; font-weight: 900; letter-spacing: .5px; text-transform: uppercase; color: var(--color-admin); text-align: center; }
 
 /* --- USUÁRIO LOGADO (RBAC) --- */
 .profile-box { background: rgba(255,255,255,0.02); border: 1px solid var(--border-color); border-radius: 8px; padding: 14px; margin-bottom: 20px; }
@@ -743,7 +741,7 @@ body.book-preview-mode .book-preview-toolbar {
 
         <div class="client-box">
             <span class="client-title">Cliente Integrado</span>
-            <div class="vale-logo"><span class="vale-v">V</span><span class="vale-a">A</span>LE</div>
+            <div class="client-logo" id="client-logo-badge">—</div>
         </div>
 
         <div class="profile-box" id="site-box">
@@ -3485,6 +3483,20 @@ async function ensureAccessibleSite() {
     state.agendaTag = ALL_EQUIP.length ? ALL_EQUIP_TAG : null;
 }
 
+// Badge "Cliente Integrado" da sidebar -- puxa da tabela `companies` o nome
+// do cliente final que a empresa logada atende (hoje só existe Sodexo→Vale,
+// mas cada empresa no futuro tem o seu próprio `client_label`). O RLS de
+// `companies_select` já filtra pra devolver só a linha da própria empresa
+// (inclusive pro Visitante anônimo), então a query nem precisa de filtro.
+async function loadClientBadge() {
+    const badge = document.getElementById('client-logo-badge');
+    try {
+        const { data } = await sb.from('companies').select('client_label').single();
+        badge.textContent = (data && data.client_label) || 'Vale';
+    } catch (e) {
+        badge.textContent = 'Vale';
+    }
+}
 async function loginAs(user, options) {
     const logEvent = !options || options.logEvent !== false;
     state.currentUser = user;
@@ -3493,6 +3505,7 @@ async function loginAs(user, options) {
     state.currentSite = localStorage.getItem(LS_ACTIVE_SITE) || 'MUTUCA';
     if (!SITES[state.currentSite]) state.currentSite = Object.keys(SITES)[0] || 'MUTUCA';
     await ensureAccessibleSite();
+    loadClientBadge();
     document.getElementById('login-screen').style.display = 'none';
     if (logEvent) {
         await addAuditEntry({ tag: '—', acao: 'Login', justificativa: 'Acesso ao sistema autenticado.' });
