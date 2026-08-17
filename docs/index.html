@@ -840,6 +840,14 @@ body.book-preview-mode .book-preview-toolbar {
                     </div>
                     <button class="btn-danger" id="btn-delete-equip" style="align-self:flex-end;">Excluir Equipamento</button>
                 </div>
+                <div style="height:14px;"></div>
+                <div class="agenda-toolbar">
+                    <div class="agenda-field">
+                        <label>Área a Excluir (com todos os ativos dela)</label>
+                        <select id="del-area-code" style="min-width:200px;"></select>
+                    </div>
+                    <button class="btn-danger" id="btn-delete-area" style="align-self:flex-end;">Excluir Área</button>
+                </div>
             </div>
         </div>
 
@@ -5638,6 +5646,8 @@ function renderAssetMgmtPanel() {
             `<optgroup label="${escapeHtml(AREA_LABEL[area] || area)}">${DATABASE[area].map(tag => `<option value="${tag}">${tag} (${escapeHtml(AREA_LABEL[area] || area)})</option>`).join('')}</optgroup>`
         ).join('');
     }
+    const delAreaSel = document.getElementById('del-area-code');
+    if (delAreaSel) delAreaSel.innerHTML = Object.keys(DATABASE).map(k => `<option value="${k}">${escapeHtml(AREA_LABEL[k] || k)} (${DATABASE[k].length} ativo(s))</option>`).join('');
     document.getElementById('equip-value-section').style.display = canManageAssets() ? 'flex' : 'none';
     renderEquipValueTable();
     // Cadastro de colaboradores só faz sentido no workflow S11D -- os
@@ -5907,6 +5917,62 @@ document.getElementById('btn-delete-equip').addEventListener('click', () => {
     const tag = document.getElementById('del-equip-tag').value;
     if (!tag) { toast('Selecione o equipamento a excluir.', 'error'); return; }
     openDeleteEquipModal(tag);
+});
+
+// Exclui a área inteira e todos os ativos (sub-áreas) dentro dela de uma
+// vez -- sem isso, limpar uma área errada (ex: importada duplicada) exigia
+// excluir ativo por ativo, um de cada vez, o que é inviável quando são
+// dezenas/centenas deles (caso do S11D). `equipment.area_code` não tem FK
+// pra `areas.code` (é só texto), então o exclusão dos ativos precisa ser
+// feita à parte, antes de excluir a área.
+function openDeleteAreaModal(areaCode) {
+    if (!DATABASE[areaCode]) return;
+    const tags = DATABASE[areaCode];
+    const bookingCount = state.bookings.filter(b => tags.includes(b.tag)).length;
+    openModal(`
+        <div class="modal-header"><h3>Excluir Área</h3><button class="modal-close" onclick="closeModal()">&times;</button></div>
+        <div class="modal-body">
+            <div class="access-denied-icon">&#9888;</div>
+            <div class="access-denied-text">
+                Tem certeza que deseja excluir permanentemente a área <b>${escapeHtml(AREA_LABEL[areaCode] || areaCode)}</b>?
+                Isso apaga também os <b>${tags.length} ativo(s)</b> cadastrados dentro dela.
+                ${bookingCount > 0 ? `Existem <b>${bookingCount} agendamento(s)</b> ligados a esses ativos, que deixarão de aparecer no calendário. ` : ''}
+                O histórico de auditoria já registrado não é afetado. Esta ação não pode ser desfeita.
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn-secondary" onclick="closeModal()">Cancelar</button>
+            <button class="btn-danger" onclick="confirmDeleteArea('${areaCode}')">Excluir Área e Ativos</button>
+        </div>
+    `);
+}
+async function confirmDeleteArea(areaCode) {
+    if (!DATABASE[areaCode]) return;
+    const { error: equipErr } = await sb.from('equipment').delete().eq('site_key', state.currentSite).eq('area_code', areaCode);
+    if (equipErr) { toast('Erro ao excluir os ativos da área: ' + equipErr.message, 'error'); return; }
+    const { error: areaErr } = await sb.from('areas').delete().eq('site_key', state.currentSite).eq('code', areaCode);
+    if (areaErr) { toast('Erro ao excluir a área: ' + areaErr.message, 'error'); return; }
+
+    const removedTags = DATABASE[areaCode];
+    for (let i = ALL_EQUIP.length - 1; i >= 0; i--) {
+        if (ALL_EQUIP[i].area === areaCode) ALL_EQUIP.splice(i, 1);
+    }
+    removedTags.forEach(tag => { delete EQUIP_META[tag]; });
+    delete DATABASE[areaCode];
+    delete AREA_LABEL[areaCode];
+    if (state.currentArea === areaCode) state.currentArea = 'ALL';
+    if (removedTags.includes(state.agendaTag)) state.agendaTag = ALL_EQUIP.length ? ALL_EQUIP[0].tag : null;
+
+    closeModal();
+    toast(`Área excluída com sucesso (${removedTags.length} ativo(s) removido(s) junto).`, 'warn');
+    renderAssetMgmtPanel();
+    renderAtivos(); renderAgendaEquipSelect(); renderDashboard(); renderWeekGrid();
+}
+document.getElementById('btn-delete-area').addEventListener('click', () => {
+    if (!canManageAssets()) { showAccessDenied('Apenas o Admin Master e o Técnico de Planejamento e GU podem excluir áreas.'); return; }
+    const areaCode = document.getElementById('del-area-code').value;
+    if (!areaCode) { toast('Selecione a área a excluir.', 'error'); return; }
+    openDeleteAreaModal(areaCode);
 });
 
 // Registra o service worker (necessário pro Chrome/Android oferecer
