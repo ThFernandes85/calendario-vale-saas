@@ -1725,7 +1725,8 @@ function mapBookingFromDb(row) {
         valeDecisionReason: row.vale_decision_reason, valeDecidedAt: row.vale_decided_at,
         collaborators: row.collaborators || [],
         isExtra: !!row.is_extra, lostHours: row.lost_hours == null ? null : Number(row.lost_hours),
-        receiverName: row.receiver_name, receiverRegistration: row.receiver_registration
+        receiverName: row.receiver_name, receiverRegistration: row.receiver_registration,
+        activityDescription: row.activity_description || null
     };
 }
 function mapAuditFromDb(row) {
@@ -2191,7 +2192,11 @@ function openBookingModal(tag, dateStr, startHour) {
             <div class="m-field"><label>Data</label><input type="text" value="${formatDateBR(dateStr)}" disabled></div>
             <div class="m-field"><label>Horário de Início *</label><input type="time" id="bk-start" value="${defaultStart}"></div>
             <div class="m-field"><label>Horário de Término *</label><input type="time" id="bk-end" value="${defaultEnd}"></div>
-            <div class="m-field"><label>Tipo de Bloqueio</label><select id="bk-type">${options}</select></div>
+            <div class="m-field" id="bk-type-wrap" style="${isMaterialsContractSite() ? 'display:none;' : ''}"><label>Tipo de Bloqueio</label><select id="bk-type">${options}</select></div>
+            ${isMaterialsContractSite() ? `<div class="m-field" id="bk-activity-desc-wrap">
+                <label>Descrição da Atividade *</label>
+                <input type="text" id="bk-activity-desc" maxlength="120" placeholder="Ex: Recebimento de bobinas, Inventário mensal...">
+            </div>` : ''}
             <div class="m-field" id="bk-om-wrap" style="${isClientApprovalSite() ? 'display:none;' : ''}"><label>Número da OM *</label><input type="text" id="bk-om" maxlength="12" inputmode="numeric" placeholder="Ex: 123456789012"></div>
             <div class="m-field" id="bk-emergencial-wrap" style="display:none;">
                 <label class="m-checkbox"><input type="checkbox" id="bk-emergencial" style="width:auto;"> Corretiva emergencial (marca como crítico)</label>
@@ -2216,7 +2221,12 @@ async function submitBooking(tag) {
     const dateStr = pendingBookingDate;
     const startStr = document.getElementById('bk-start').value;
     const endStr = document.getElementById('bk-end').value;
-    const type = document.getElementById('bk-type').value;
+    // Sites de Contrato de Controle de Materiais não têm "Limpeza
+    // Sodexo"/"Limpeza Mecanizada" de verdade -- o tipo interno fica travado
+    // em SODEXO_CLEANING_TYPE (é o que já sustenta OM/nota/extras/BOOK), e a
+    // pessoa descreve a atividade real em texto livre.
+    const type = isMaterialsContractSite() ? SODEXO_CLEANING_TYPE : document.getElementById('bk-type').value;
+    const activityDesc = isMaterialsContractSite() ? document.getElementById('bk-activity-desc').value.trim() : null;
     const isExtra = isMaterialsContractSite() && (areaOf(tag) === EXTRA_AREA_CODE || (document.getElementById('bk-extra') && document.getElementById('bk-extra').checked));
     const omRequired = !isClientApprovalSite() && !isExtra;
     const omRaw = document.getElementById('bk-om').value.trim();
@@ -2226,6 +2236,7 @@ async function submitBooking(tag) {
 
     if (!canBookType(type)) { showAccessDenied(`O perfil ativo não pode agendar bloqueios do tipo "${type}".`); return; }
     if (!startStr || !endStr) { toast('Informe o horário de início e de término.', 'error'); return; }
+    if (isMaterialsContractSite() && activityDesc.length < 3) { toast('Descreva a atividade (mínimo 3 caracteres).', 'error'); return; }
     if (omRequired && !/^\d{1,12}$/.test(om)) { toast('Informe o número da OM (somente dígitos, até 12 caracteres).', 'error'); return; }
     if (justification.length < 5) { toast('Informe uma justificativa técnica válida (mínimo 5 caracteres).', 'error'); return; }
 
@@ -2241,7 +2252,7 @@ async function submitBooking(tag) {
         site_key: state.currentSite, tag, area_code: areaOf(tag), date: dateStr,
         start_min: startMin, end_min: endMin, type, emergencial: finalEmergencial, om, justification,
         operator_id: state.currentUser.id, operator_label: `${activeProfile().user} (${state.profileKey})`,
-        is_extra: isExtra
+        is_extra: isExtra, activity_description: activityDesc
     }).select().single();
     if (error) { toast('Erro ao salvar agendamento: ' + error.message, 'error'); return; }
     const booking = mapBookingFromDb(data);
@@ -2335,7 +2346,7 @@ function openDetailModal(booking) {
         <div class="modal-header"><h3>${booking.tag} — Detalhes do Bloqueio</h3><button class="modal-close" onclick="closeModal()">&times;</button></div>
         <div class="modal-body">
             <div class="m-info-row"><span>Área</span><b>${AREA_LABEL[booking.area] || booking.area}</b></div>
-            <div class="m-info-row"><span>Tipo</span><b>${escapeHtml(booking.type)}${booking.emergencial ? ' (Emergencial)' : ''}</b></div>
+            <div class="m-info-row"><span>${booking.activityDescription ? 'Atividade' : 'Tipo'}</span><b>${escapeHtml(booking.activityDescription || booking.type)}${booking.emergencial ? ' (Emergencial)' : ''}</b></div>
             <div class="m-info-row"><span>OM</span><b>${escapeHtml(booking.om || '—')}</b></div>
             <div class="m-info-row"><span>Data</span><b>${formatDateBR(booking.date)}</b></div>
             <div class="m-info-row"><span>Horário</span><b>${minutesToTime(booking.startMin)} — ${minutesToTime(booking.endMin)}</b></div>
@@ -3091,11 +3102,11 @@ async function queueClosureOffline(booking) {
 // entra na lista/agenda local na hora, com um id temporário, e só vira um
 // registro de verdade no servidor quando a fila for sincronizada.
 async function queueNewBookingOffline(tag, v) {
-    const { type, dateStr, startMin, endMin, om, justification, isExtra } = v;
+    const { type, dateStr, startMin, endMin, om, justification, isExtra, activityDescription } = v;
     const tempId = 'offline_new_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
     const booking = {
         id: tempId, tag, area: areaOf(tag), date: dateStr, startMin, endMin, type,
-        emergencial: false, om, justification, isExtra: !!isExtra,
+        emergencial: false, om, justification, isExtra: !!isExtra, activityDescription: activityDescription || null,
         operatorId: state.currentUser.id, operator: `${activeProfile().user} (${state.profileKey})`,
         createdAt: new Date().toISOString(), closureStatus: null, closureReason: null, closedAt: null,
         closurePhotoBefore: null, closurePhotoAfter: null, closurePhotosExtra: [], pendingOfflineCreate: true,
@@ -3104,6 +3115,7 @@ async function queueNewBookingOffline(tag, v) {
     await offlineQueueAdd({
         id: tempId + '_create', kind: 'create', bookingId: tempId,
         tag, area: areaOf(tag), om, type, dateStr, startMin, endMin, justification, isExtra: !!isExtra,
+        activityDescription: activityDescription || null,
         createdAt: Date.now(),
     });
     toast('Sem conexão -- OM guardada no celular. Será criada sozinha quando a internet voltar.', 'warn');
@@ -3131,7 +3143,7 @@ async function trySyncOfflineQueue() {
                 start_min: record.startMin, end_min: record.endMin, type: record.type, emergencial: false,
                 om: record.om, justification: record.justification,
                 operator_id: state.currentUser.id, operator_label: `${activeProfile().user} (${state.profileKey})`,
-                is_extra: !!record.isExtra
+                is_extra: !!record.isExtra, activity_description: record.activityDescription || null
             }).select().single();
             if (error) break; // ainda sem sinal de verdade -- para tudo, tenta de novo na próxima
 
@@ -3376,7 +3388,7 @@ function renderMobileEquipList() {
         ${coldStartAlertHtml}
         ${offlineAlertHtml}
         ${alertHtml}
-        <input type="text" id="mobile-equip-search" class="mobile-search" placeholder="${isClientApprovalSite() ? 'Buscar por área...' : 'Buscar equipamento...'}">
+        <input type="text" id="mobile-equip-search" class="mobile-search" placeholder="${(isClientApprovalSite() || isMaterialsContractSite()) ? 'Buscar por área...' : 'Buscar equipamento...'}">
         <div id="mobile-equip-list" class="mobile-equip-list">${cards}</div>`;
     const syncNowBtn = document.getElementById('mobile-sync-now-btn');
     if (syncNowBtn) syncNowBtn.addEventListener('click', () => {
@@ -3450,9 +3462,13 @@ function renderMobileNewForm(tag) {
         <div class="mobile-card">
             <div class="mobile-card-title">${escapeHtml(tag)} — ${escapeHtml(AREA_LABEL[area] || area || '')}</div>
             <div class="mobile-card-sub">Nenhum lançamento em aberto para este equipamento. Crie um novo para poder encerrar.</div>
-            <div class="m-field"><label>Tipo</label>
+            <div class="m-field" id="mobile-new-type-wrap" style="${isMaterialsContractSite() ? 'display:none;' : ''}"><label>Tipo</label>
                 <select id="mobile-new-type">${p.canBook.map(t => `<option value="${t}" ${t === SODEXO_CLEANING_TYPE ? 'selected' : ''}>${t}</option>`).join('')}</select>
             </div>
+            ${isMaterialsContractSite() ? `<div class="m-field" id="mobile-new-activity-desc-wrap">
+                <label>Descrição da Atividade *</label>
+                <input type="text" id="mobile-new-activity-desc" maxlength="120" placeholder="Ex: Recebimento de bobinas, Inventário mensal...">
+            </div>` : ''}
             <div class="m-field"><label>Data *</label><input type="date" id="mobile-new-date" value="${todayStr()}" max="${todayStr()}"></div>
             <div style="display:flex; gap:12px;">
                 <div class="m-field" style="flex:1;"><label>Hora início *</label><input type="time" id="mobile-new-start" value="${minutesToTime(nowMinutes())}"></div>
@@ -3473,7 +3489,11 @@ function renderMobileNewForm(tag) {
 // validateClosureForm, compartilhada entre o caminho online normal e a
 // fila offline (queueNewBookingOffline).
 function validateNewBookingForm(tag) {
-    const type = document.getElementById('mobile-new-type').value;
+    // Em site de Contrato de Materiais o "Tipo" fica travado em
+    // SODEXO_CLEANING_TYPE por baixo dos panos (mesmo motivo do desktop, ver
+    // submitBooking) -- a pessoa só descreve a atividade em texto livre.
+    const type = isMaterialsContractSite() ? SODEXO_CLEANING_TYPE : document.getElementById('mobile-new-type').value;
+    const activityDescription = isMaterialsContractSite() ? document.getElementById('mobile-new-activity-desc').value.trim() : null;
     const dateStr = document.getElementById('mobile-new-date').value;
     const startStr = document.getElementById('mobile-new-start').value;
     const endStr = document.getElementById('mobile-new-end').value;
@@ -3485,6 +3505,7 @@ function validateNewBookingForm(tag) {
     if (!canBookType(type)) return { ok: false, accessDenied: true, type };
     if (!dateStr) return { ok: false, message: 'Informe a data do serviço.' };
     if (!startStr || !endStr) return { ok: false, message: 'Informe o horário de início e de término.' };
+    if (isMaterialsContractSite() && activityDescription.length < 3) return { ok: false, message: 'Descreva a atividade (mínimo 3 caracteres).' };
     if (omRequired && !/^\d{1,12}$/.test(om)) return { ok: false, message: 'Informe o número da OM (somente dígitos, até 12 caracteres).' };
     if (justification.length < 5) return { ok: false, message: 'Informe uma justificativa técnica válida (mínimo 5 caracteres).' };
 
@@ -3495,7 +3516,7 @@ function validateNewBookingForm(tag) {
     const omConflict = activeOmConflict(tag, om);
     if (omConflict) return { ok: false, omConflict };
 
-    return { ok: true, type, dateStr, startMin, endMin, om, justification, isExtra };
+    return { ok: true, type, dateStr, startMin, endMin, om, justification, isExtra, activityDescription };
 }
 
 async function submitMobileNewBooking(tag) {
@@ -3507,7 +3528,7 @@ async function submitMobileNewBooking(tag) {
         return;
     }
     if (!navigator.onLine) { await queueNewBookingOffline(tag, v); return; }
-    const { type, dateStr, startMin, endMin, om, justification, isExtra } = v;
+    const { type, dateStr, startMin, endMin, om, justification, isExtra, activityDescription } = v;
 
     const btn = document.getElementById('mobile-new-submit');
     btn.disabled = true; btn.textContent = 'Criando...';
@@ -3516,7 +3537,7 @@ async function submitMobileNewBooking(tag) {
         site_key: state.currentSite, tag, area_code: areaOf(tag), date: dateStr,
         start_min: startMin, end_min: endMin, type, emergencial: false, om, justification,
         operator_id: state.currentUser.id, operator_label: `${activeProfile().user} (${state.profileKey})`,
-        is_extra: isExtra
+        is_extra: isExtra, activity_description: activityDescription
     }).select().single();
     if (error) {
         toast('Erro ao criar lançamento: ' + error.message, 'error');
@@ -4733,7 +4754,7 @@ function renderClosedBookings() {
             <td><span class="tag-chip">${escapeHtml(b.tag)}</span></td>
             <td>${escapeHtml(AREA_LABEL[b.area] || b.area || '')}</td>
             <td>${formatDateBR(b.date)}</td>
-            <td>${escapeHtml(b.type)}${b.isExtra ? ' <span class="tag-chip" style="background:rgba(245,158,11,0.15); color:#b45309;">Extra</span>' : ''}</td>
+            <td>${escapeHtml(b.activityDescription || b.type)}${b.isExtra ? ' <span class="tag-chip" style="background:rgba(245,158,11,0.15); color:#b45309;">Extra</span>' : ''}</td>
             <td>${escapeHtml(CLOSURE_STATUS_LABELS[b.closureStatus] || b.closureStatus)}</td>
             <td>${escapeHtml(b.closureReason || '—')}</td>
             <td>
@@ -5263,6 +5284,7 @@ function buildAderenciaBookHtml() {
             <div style="font-size:12px; color:#444; margin-bottom:10px;">
                 ${formatDateBR(b.date)} · ${minutesToTime(b.startMin)}–${minutesToTime(b.endMin)} · OM ${escapeHtml(b.om || '—')} · Responsável: ${escapeHtml(b.operator)}${valeCollaboratorLine(b)}
             </div>
+            ${b.activityDescription ? `<div style="font-size:12px; margin-bottom:10px;"><b>Atividade:</b> ${escapeHtml(b.activityDescription)}</div>` : ''}
             <div style="font-size:12px; margin-bottom:10px;"><b>Observação do Encarregado:</b> ${escapeHtml(b.closureReason || '—')}</div>
             ${VALE_DECISION_META[b.closureStatus] ? `<div style="font-size:12px; margin-bottom:10px;"><b>Motivo da decisão da Vale (${escapeHtml(VALE_DECISION_META[b.closureStatus].label)}):</b> ${escapeHtml(b.valeDecisionReason || '—')}</div>` : ''}
             <div style="display:flex; gap:12px; flex-wrap:wrap;">

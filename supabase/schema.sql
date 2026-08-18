@@ -174,6 +174,14 @@ alter table public.bookings add column if not exists is_extra boolean not null d
 alter table public.bookings add column if not exists lost_hours numeric;
 alter table public.bookings add column if not exists receiver_name text;
 alter table public.bookings add column if not exists receiver_registration text;
+-- `activity_description`: sites de Contrato de Controle de Materiais não
+-- fazem "Limpeza Sodexo"/"Limpeza Mecanizada" de verdade -- por baixo dos
+-- panos o `type` continua um desses dois valores fixos (pra não quebrar
+-- RLS/nota de aderência/BOOK/extras, que já são construídos em cima desses
+-- valores), mas a pessoa descreve em texto livre a atividade real (ex:
+-- "Recebimento de bobinas"), guardada aqui e exibida no lugar do tipo nas
+-- telas desses sites.
+alter table public.bookings add column if not exists activity_description text;
 
 -- Recria o check de closure_status pra incluir os 4 status novos do
 -- workflow S11D, sem perder nenhum dos 5 originais.
