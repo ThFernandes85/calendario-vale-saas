@@ -1520,6 +1520,11 @@ const ROLE_META = {
     // agendamento que PCO (Limpeza Sodexo/Mecanizada), já que o site é só
     // limpeza predial, sem Manutenção.
     TECNICO_PLANEJAMENTO: { label: 'Técnico de Planejamento e GU', canBook: ['Limpeza Sodexo', 'Limpeza Mecanizada'], readOnly: false },
+    // Gestor operacional de um site (ex: Fábrica Materiais/Viga Materiais):
+    // mesmo acesso de agendar/encerrar que PCM+PCO, mais gerenciar áreas e
+    // equipamentos (ver canManageAssets) e exportar relatórios/BOOK -- mas
+    // nunca gerencia outros usuários nem decide aprovação da Vale no S11D.
+    GERENTE: { label: 'Gerente', canBook: ['Manutenção Preventiva', 'Manutenção Corretiva', 'Limpeza Sodexo', 'Limpeza Mecanizada'], readOnly: false },
     ADMIN: { label: 'Admin Master', canBook: ['Manutenção Preventiva', 'Manutenção Corretiva', 'Limpeza Sodexo', 'Limpeza Mecanizada'], readOnly: false },
     VISITANTE: { label: 'Visitante (Somente Leitura)', canBook: [], readOnly: true },
     // Perfil de campo, mobile-only: tela simplificada própria (fora do
@@ -1601,7 +1606,7 @@ function canBookType(type) { const p = activeProfile(); return !p.readOnly && p.
 // seletor de Tipo de Bloqueio comum. Mesmos papéis liberados na RLS
 // (bookings_insert) do schema.sql.
 function canRegisterLostHours() {
-    return ['ADMIN', 'PCO', 'PCM_PCO', 'TECNICO_PLANEJAMENTO', 'ENCARREGADO'].includes(state.profileKey);
+    return ['ADMIN', 'PCO', 'PCM_PCO', 'TECNICO_PLANEJAMENTO', 'ENCARREGADO', 'GERENTE'].includes(state.profileKey);
 }
 function canExportReports() { return activeProfile().canExport; }
 // Aprovar/reprovar/marcar pendência é uma permissão própria, independente
@@ -1618,7 +1623,7 @@ function canViewValeApprovals() { return canDecideValeApprovals() || state.profi
 // Técnico de Planejamento e GU também cria/gerencia áreas e ativos (sub-
 // áreas) -- é ele quem estrutura o site (ex: S11D) no dia a dia, não só o
 // Admin Master.
-function canManageAssets() { return state.profileKey === 'ADMIN' || state.profileKey === 'TECNICO_PLANEJAMENTO'; }
+function canManageAssets() { return state.profileKey === 'ADMIN' || state.profileKey === 'TECNICO_PLANEJAMENTO' || state.profileKey === 'GERENTE'; }
 // Corrigir Fotos é Admin Master em qualquer site; no S11D o Técnico de
 // Planejamento e GU também pode -- ele que acompanha a evidência fotográfica
 // das limpezas no dia a dia por lá, mas isso não vale pro Mutuca.

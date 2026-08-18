@@ -68,7 +68,11 @@ create table if not exists public.profiles (
 -- existente não ganha a nova lista do "check" acima sozinha). CLIENTE_VALE
 -- é o contato da Vale que aprova/reprova as limpezas do S11D.
 -- TECNICO_PLANEJAMENTO é o técnico de Planejamento e GU do S11D (agenda e
--- acompanha o valor das limpezas do site).
+-- acompanha o valor das limpezas do site). GERENTE é o gestor operacional
+-- de um site (Fábrica Materiais/Viga Materiais e além) -- mesmo acesso de
+-- agendar/encerrar que PCM_PCO, mais gerenciar áreas/equipamentos e
+-- exportar relatórios; nunca gerencia outros usuários nem decide aprovação
+-- da Vale no S11D (isso continua exclusivo de Admin/Cliente Vale/Técnico).
 do $$
 begin
   if exists (
@@ -79,7 +83,7 @@ begin
     alter table public.profiles drop constraint profiles_role_check;
   end if;
   alter table public.profiles add constraint profiles_role_check
-    check (role in ('ADMIN','PCM','PCO','PCM_PCO','ENG_CONF','ENG_EST','ENCARREGADO','CLIENTE_VALE','TECNICO_PLANEJAMENTO'));
+    check (role in ('ADMIN','PCM','PCO','PCM_PCO','ENG_CONF','ENG_EST','ENCARREGADO','CLIENTE_VALE','TECNICO_PLANEJAMENTO','GERENTE'));
 end $$;
 
 -- WhatsApp do Encarregado (opcional -- nem todo mundo vai ter cadastrado de
@@ -447,8 +451,8 @@ create policy "areas_select" on public.areas for select
 -- isso ele entra como pré-requisito único, em vez de is_admin() solto.
 drop policy if exists "areas_admin_write" on public.areas;
 create policy "areas_admin_write" on public.areas for all
-  using (public.has_site_access(site_key) and (public.is_admin() or public.current_role_key() = 'TECNICO_PLANEJAMENTO'))
-  with check (public.has_site_access(site_key) and (public.is_admin() or public.current_role_key() = 'TECNICO_PLANEJAMENTO'));
+  using (public.has_site_access(site_key) and (public.is_admin() or public.current_role_key() in ('TECNICO_PLANEJAMENTO','GERENTE')))
+  with check (public.has_site_access(site_key) and (public.is_admin() or public.current_role_key() in ('TECNICO_PLANEJAMENTO','GERENTE')));
 
 -- EQUIPMENT
 drop policy if exists "equipment_select" on public.equipment;
@@ -456,8 +460,8 @@ create policy "equipment_select" on public.equipment for select
   using (public.has_site_access(site_key));
 drop policy if exists "equipment_admin_write" on public.equipment;
 create policy "equipment_admin_write" on public.equipment for all
-  using (public.has_site_access(site_key) and (public.is_admin() or public.current_role_key() = 'TECNICO_PLANEJAMENTO'))
-  with check (public.has_site_access(site_key) and (public.is_admin() or public.current_role_key() = 'TECNICO_PLANEJAMENTO'));
+  using (public.has_site_access(site_key) and (public.is_admin() or public.current_role_key() in ('TECNICO_PLANEJAMENTO','GERENTE')))
+  with check (public.has_site_access(site_key) and (public.is_admin() or public.current_role_key() in ('TECNICO_PLANEJAMENTO','GERENTE')));
 
 -- COLLABORATORS (quadro de colaboradores do S11D)
 drop policy if exists "collaborators_select" on public.collaborators;
@@ -465,8 +469,8 @@ create policy "collaborators_select" on public.collaborators for select
   using (public.has_site_access(site_key));
 drop policy if exists "collaborators_admin_write" on public.collaborators;
 create policy "collaborators_admin_write" on public.collaborators for all
-  using (public.has_site_access(site_key) and (public.is_admin() or public.current_role_key() = 'TECNICO_PLANEJAMENTO'))
-  with check (public.has_site_access(site_key) and (public.is_admin() or public.current_role_key() = 'TECNICO_PLANEJAMENTO'));
+  using (public.has_site_access(site_key) and (public.is_admin() or public.current_role_key() in ('TECNICO_PLANEJAMENTO','GERENTE')))
+  with check (public.has_site_access(site_key) and (public.is_admin() or public.current_role_key() in ('TECNICO_PLANEJAMENTO','GERENTE')));
 
 -- PROFILES: cada um vê o próprio perfil; Admin vê/edita todos DA MESMA
 -- EMPRESA (nunca de outra -- profiles não tem site_key, então o recorte
@@ -520,6 +524,8 @@ create policy "bookings_insert" on public.bookings for insert
       or (public.current_role_key() = 'PCM_PCO' and type in ('Manutenção Preventiva','Manutenção Corretiva','Limpeza Sodexo','Limpeza Mecanizada','Horas Perdidas'))
       -- Técnico de Planejamento e GU (S11D) programa as limpezas do site.
       or (public.current_role_key() = 'TECNICO_PLANEJAMENTO' and type in ('Limpeza Sodexo','Limpeza Mecanizada','Horas Perdidas'))
+      -- Gerente (gestor operacional de site, ex: Fábrica/Viga Materiais).
+      or (public.current_role_key() = 'GERENTE' and type in ('Manutenção Preventiva','Manutenção Corretiva','Limpeza Sodexo','Limpeza Mecanizada','Horas Perdidas'))
     )
   );
 drop policy if exists "bookings_delete" on public.bookings;
@@ -536,6 +542,7 @@ create policy "bookings_delete" on public.bookings for delete
       or (public.current_role_key() = 'ENCARREGADO' and type in ('Limpeza Sodexo','Limpeza Mecanizada','Horas Perdidas') and operator_id = auth.uid())
       or (public.current_role_key() = 'PCM_PCO' and type in ('Manutenção Preventiva','Manutenção Corretiva','Limpeza Sodexo','Limpeza Mecanizada','Horas Perdidas'))
       or (public.current_role_key() = 'TECNICO_PLANEJAMENTO' and type in ('Limpeza Sodexo','Limpeza Mecanizada','Horas Perdidas'))
+      or (public.current_role_key() = 'GERENTE' and type in ('Manutenção Preventiva','Manutenção Corretiva','Limpeza Sodexo','Limpeza Mecanizada','Horas Perdidas'))
     )
   );
 drop policy if exists "bookings_update" on public.bookings;
@@ -552,6 +559,7 @@ create policy "bookings_update" on public.bookings for update
       -- (a decisão do workflow S11D) -- nunca em Manutenção.
       or (public.current_role_key() = 'CLIENTE_VALE' and type = 'Limpeza Sodexo')
       or (public.current_role_key() = 'TECNICO_PLANEJAMENTO' and type in ('Limpeza Sodexo','Limpeza Mecanizada'))
+      or (public.current_role_key() = 'GERENTE' and type in ('Manutenção Preventiva','Manutenção Corretiva','Limpeza Sodexo','Limpeza Mecanizada'))
     )
   )
   with check (
@@ -564,6 +572,7 @@ create policy "bookings_update" on public.bookings for update
       or (public.current_role_key() = 'PCM_PCO' and type in ('Manutenção Preventiva','Manutenção Corretiva','Limpeza Sodexo','Limpeza Mecanizada'))
       or (public.current_role_key() = 'CLIENTE_VALE' and type = 'Limpeza Sodexo')
       or (public.current_role_key() = 'TECNICO_PLANEJAMENTO' and type in ('Limpeza Sodexo','Limpeza Mecanizada'))
+      or (public.current_role_key() = 'GERENTE' and type in ('Manutenção Preventiva','Manutenção Corretiva','Limpeza Sodexo','Limpeza Mecanizada'))
     )
   );
 
