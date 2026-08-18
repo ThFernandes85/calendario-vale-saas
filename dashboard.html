@@ -6,10 +6,10 @@
 <title>TerraVia Ops - Monitoramento e Agendamento de Ativos</title>
 <link rel="icon" type="image/svg+xml" href="assets/terravia-favicon.svg">
 <link rel="manifest" href="manifest.json">
-<link rel="apple-touch-icon" href="assets/sodexo-icon.png">
+<link rel="apple-touch-icon" href="assets/terravia-icon-180.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="Sodexo Limpeza">
+<meta name="apple-mobile-web-app-title" content="TerraVia Ops">
 <meta name="theme-color" content="#0c1017">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -2560,6 +2560,15 @@ function closurePhotosRequired(booking, outcome) {
 // antes/durante/depois no workflow S11D (bate com o relatório de
 // referência do cliente, que sempre traz 3-4 fotos por atividade).
 function closurePhotoSlotsFor(booking) {
+    // Fábrica/Viga Materiais não fazem limpeza de verdade -- não existe
+    // "antes"/"depois" de um recebimento/entrega de material, só a evidência
+    // de que aconteceu. Reaproveita o slot "antes" (mesma coluna do banco),
+    // só troca o rótulo pra não confundir o Encarregado.
+    if (booking.type === SODEXO_CLEANING_TYPE && isMaterialsContractSite()) {
+        return [
+            { tipo: 'antes', label: 'Evidência de Entrega' },
+        ];
+    }
     if (booking.type === SODEXO_CLEANING_TYPE && isClientApprovalSite()) {
         return [
             { tipo: 'antes', label: 'Antes' },
@@ -3566,7 +3575,7 @@ function renderMobileLostHoursForm() {
             <div class="mobile-card-sub">Tempo ocioso aguardando material no almoxarifado -- sempre entra como Pendente Vale.</div>
             <div class="m-field"><label>Horas Perdidas *</label><input type="number" id="mlh-hours" min="0.1" step="0.1" placeholder="Ex: 2.5"></div>
             <div class="m-field"><label>Colaborador Responsável</label><input type="text" id="mlh-collab" placeholder="Nome (opcional)"></div>
-            <div class="m-field"><label>Foto de Evidência</label><input type="file" id="mlh-photo" accept="image/*" capture="environment"></div>
+            <div class="m-field"><label>Foto de Evidência</label><input type="file" id="mlh-photo" accept="image/*"></div>
             <div class="m-field"><label>Nome de Quem Recebeu</label><input type="text" id="mlh-receiver-name" placeholder="Opcional"></div>
             <div class="m-field"><label>Matrícula de Quem Recebeu</label><input type="text" id="mlh-receiver-reg" placeholder="Opcional"></div>
             <div class="m-field"><label>Justificativa *</label><textarea id="mlh-just" rows="3" maxlength="300" placeholder="Ex: Atraso na liberação do material..."></textarea></div>
@@ -5289,7 +5298,7 @@ function buildAderenciaBookHtml() {
             ${VALE_DECISION_META[b.closureStatus] ? `<div style="font-size:12px; margin-bottom:10px;"><b>Motivo da decisão da Vale (${escapeHtml(VALE_DECISION_META[b.closureStatus].label)}):</b> ${escapeHtml(b.valeDecisionReason || '—')}</div>` : ''}
             <div style="display:flex; gap:12px; flex-wrap:wrap;">
                 <div style="flex:1; min-width:200px;">
-                    <div style="font-size:11px; font-weight:600; margin-bottom:4px;">ANTES</div>
+                    <div style="font-size:11px; font-weight:600; margin-bottom:4px;">${isMaterialsContractSite() ? 'EVIDÊNCIA DE ENTREGA' : 'ANTES'}</div>
                     ${b.closurePhotoBefore ? `<div class="book-photo-box" data-src="${escapeHtml(b.closurePhotoBefore)}"><img alt=""><div class="book-photo-fail-msg">Falha ao carregar a foto</div></div>` : `<div style="font-size:11px; color:#999;">Sem foto</div>`}
                 </div>
                 ${(b.closurePhotosExtra || []).map(p => `
@@ -5297,10 +5306,11 @@ function buildAderenciaBookHtml() {
                     <div style="font-size:11px; font-weight:600; margin-bottom:4px;">${escapeHtml((p.tipo || '').toUpperCase())}</div>
                     ${p.url ? `<div class="book-photo-box" data-src="${escapeHtml(p.url)}"><img alt=""><div class="book-photo-fail-msg">Falha ao carregar a foto</div></div>` : `<div style="font-size:11px; color:#999;">Sem foto</div>`}
                 </div>`).join('')}
+                ${isMaterialsContractSite() ? '' : `
                 <div style="flex:1; min-width:200px;">
                     <div style="font-size:11px; font-weight:600; margin-bottom:4px;">DEPOIS</div>
                     ${b.closurePhotoAfter ? `<div class="book-photo-box" data-src="${escapeHtml(b.closurePhotoAfter)}"><img alt=""><div class="book-photo-fail-msg">Falha ao carregar a foto</div></div>` : `<div style="font-size:11px; color:#999;">Sem foto</div>`}
-                </div>
+                </div>`}
             </div>
         </div>
     `;
