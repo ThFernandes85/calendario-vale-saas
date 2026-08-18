@@ -82,6 +82,10 @@ begin
     check (role in ('ADMIN','PCM','PCO','PCM_PCO','ENG_CONF','ENG_EST','ENCARREGADO','CLIENTE_VALE','TECNICO_PLANEJAMENTO'));
 end $$;
 
+-- WhatsApp do Encarregado (opcional -- nem todo mundo vai ter cadastrado de
+-- cara). Usado pra alertas automáticos (ver WHATSAPP ALERTS mais abaixo).
+alter table public.profiles add column if not exists whatsapp text;
+
 -- ---------- PROFILE_SITES (quais sites cada perfil acessa) ----------
 create table if not exists public.profile_sites (
   profile_id uuid not null references public.profiles(id) on delete cascade,
@@ -179,6 +183,71 @@ create table if not exists public.collaborators (
 alter table public.bookings drop column if exists collaborator_name;
 alter table public.bookings drop column if exists collaborator_role;
 alter table public.bookings add column if not exists collaborators jsonb not null default '[]'::jsonb;
+
+-- ---------- WHATSAPP ALERTS (fila) ----------
+-- Fase de "encanamento": monta a fila de alertas certinha (quem recebe,
+-- quando, com qual texto) mas ainda NÃO manda mensagem nenhuma de verdade --
+-- falta você criar/contratar uma conta de WhatsApp Business API (Meta Cloud
+-- API direto, ou um provedor como Twilio/Z-API). Só a Edge Function
+-- `whatsapp-alerts-worker` e o trigger abaixo escrevem/leem aqui -- não tem
+-- política de RLS pra "anon"/"authenticated" de propósito, ninguém logado
+-- no app lê ou escreve nessa tabela direto.
+create table if not exists public.whatsapp_alerts_queue (
+  id uuid primary key default gen_random_uuid(),
+  site_key text references public.sites(key) on delete cascade,
+  company_key text references public.companies(key),
+  booking_id uuid references public.bookings(id) on delete cascade,
+  event_type text not null check (event_type in ('UPCOMING_BOOKING','OVERDUE_BOOKING','VALE_DECISION_MADE')),
+  recipient_profile_id uuid references public.profiles(id) on delete set null,
+  recipient_phone text not null,
+  message_body text not null,
+  status text not null default 'pending' check (status in ('pending','sent','failed')),
+  error_message text,
+  created_at timestamptz not null default now(),
+  sent_at timestamptz
+);
+
+-- Dispara quando a Vale aprova/reprova/marca pendência num S11D -- avisa o
+-- Encarregado que fez o serviço (bookings.closed_by), não quem decidiu.
+-- UPCOMING_BOOKING/OVERDUE_BOOKING não têm gatilho de linha (dependem do
+-- relógio, não de uma mudança no banco) -- são varridos periodicamente pela
+-- mesma Edge Function, agendada via Cron Jobs do Supabase.
+create or replace function public.enqueue_vale_decision_alert()
+returns trigger language plpgsql security definer as $$
+declare
+  v_company_key text;
+  v_phone text;
+  v_msg text;
+begin
+  if new.closure_status not in ('APROVADO_VALE','REPROVADO_VALE','PENDENCIA_VALE') then
+    return new;
+  end if;
+  if old.closure_status is not distinct from new.closure_status then
+    return new;
+  end if;
+  if new.closed_by is null then
+    return new;
+  end if;
+  select company_key, whatsapp into v_company_key, v_phone
+    from public.profiles where id = new.closed_by;
+  if v_phone is null or v_phone = '' then
+    return new; -- Encarregado sem WhatsApp cadastrado: não tem pra quem mandar
+  end if;
+  v_msg := case new.closure_status
+    when 'APROVADO_VALE' then 'Vale APROVOU a limpeza ' || new.tag || ' (OM ' || coalesce(new.om, '—') || ').'
+    when 'REPROVADO_VALE' then 'Vale REPROVOU a limpeza ' || new.tag || ' (OM ' || coalesce(new.om, '—') || '). Motivo: ' || coalesce(new.vale_decision_reason, '—')
+    else 'Vale marcou PENDÊNCIA na limpeza ' || new.tag || ' (OM ' || coalesce(new.om, '—') || '). Motivo: ' || coalesce(new.vale_decision_reason, '—')
+  end;
+  insert into public.whatsapp_alerts_queue
+    (site_key, company_key, booking_id, event_type, recipient_profile_id, recipient_phone, message_body)
+  values
+    (new.site_key, v_company_key, new.id, 'VALE_DECISION_MADE', new.closed_by, v_phone, v_msg);
+  return new;
+end;
+$$;
+drop trigger if exists trg_enqueue_vale_decision_alert on public.bookings;
+create trigger trg_enqueue_vale_decision_alert after update on public.bookings
+for each row execute function public.enqueue_vale_decision_alert();
 
 -- ---------- AUDIT LOG ----------
 create table if not exists public.audit_log (
@@ -317,6 +386,11 @@ alter table public.profiles enable row level security;
 alter table public.profile_sites enable row level security;
 alter table public.bookings enable row level security;
 alter table public.audit_log enable row level security;
+-- whatsapp_alerts_queue: RLS ligado, sem nenhuma política pra
+-- anon/authenticated de propósito -- só a service_role key (Edge Function e
+-- trigger `security definer`) toca nessa tabela; ninguém logado no app lê
+-- ou escreve nela diretamente.
+alter table public.whatsapp_alerts_queue enable row level security;
 
 -- Toda política abaixo é recriada com "drop policy if exists" + "create
 -- policy" -- assim, rodar o script de novo para ajustar uma regra nunca
@@ -608,6 +682,7 @@ on conflict (site_key, tag) do nothing;
 -- TODOS os dados (sites, áreas, equipamentos, perfis, agendamentos,
 -- histórico) e recomeçar do zero. Não existe undo depois de rodar.
 -- ============================================================
+-- drop table if exists public.whatsapp_alerts_queue cascade;
 -- drop table if exists public.audit_log cascade;
 -- drop table if exists public.collaborators cascade;
 -- drop table if exists public.bookings cascade;

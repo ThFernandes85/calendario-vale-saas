@@ -1,24 +1,58 @@
-// Service Worker mínimo -- existe só pra o Chrome/Android considerar o
-// site "instalável como app" (com manifest + service worker, oferece
-// "Instalar app" de verdade; sem service worker, só oferece "Criar
-// atalho", que é o problema que estávamos vendo). Não guarda nada em
-// cache de propósito -- o app sempre busca a versão mais nova na rede,
-// pra não repetir o problema de conteúdo antigo grudado no celular.
+// Service Worker -- cacheia só o "shell" do app (o próprio HTML, o
+// manifest e os ícones de docs/assets) pra ele conseguir ABRIR mesmo sem
+// sinal nenhum (uso de campo do Encarregado). Tudo o resto -- toda chamada
+// pro Supabase (auth/API/Storage), qualquer requisição de outro método
+// (POST/PUT/...), qualquer origem diferente da do próprio site -- nunca é
+// interceptado: cai fora do "if (!isShell) return" e o navegador cuida
+// sozinho, exatamente como se este arquivo nem existisse.
+//
+// Isso é deliberadamente conservador: uma versão anterior tentava
+// cachear/re-interceptar de forma mais ampla e isso quebrava navegação de
+// verdade ("Failed to fetch"), inclusive em requisições cross-origin que
+// não deveriam ter sido tocadas. Os dois primeiros checks abaixo (método e
+// origem) são o que evita repetir esse tipo de bug -- eles vêm antes de
+// qualquer lista de caminhos, sem exceção.
+const SHELL_CACHE = 'terravia-shell-v1';
+
 self.addEventListener('install', () => {
     self.skipWaiting();
 });
 
 self.addEventListener('activate', (event) => {
-    event.waitUntil(self.clients.claim());
+    event.waitUntil(
+        caches.keys()
+            .then(names => Promise.all(names.filter(n => n !== SHELL_CACHE).map(n => caches.delete(n))))
+            .then(() => self.clients.claim())
+    );
 });
 
-// Só precisa existir esse listener pro Chrome/Android considerar o site
-// instalável -- NUNCA chama respondWith(), pra não interceptar nem
-// arriscar quebrar nenhum request de verdade. O "Failed to fetch" que
-// vinha acontecendo era exatamente isso: re-fazer o fetch aqui dentro
-// falhava pra alguns tipos de requisição (rede instável, certas
-// requisições cross-origin) e derrubava a requisição inteira, inclusive
-// a própria navegação da página -- explicando telas que pareciam travadas
-// sem erro nenhum visível. Sem respondWith, o navegador cuida do fetch
-// normal, como se o service worker nem existisse pra esse request.
-self.addEventListener('fetch', () => {});
+// Responde do cache na hora se já existir uma cópia (funciona offline), e
+// SEMPRE busca uma versão nova em paralelo pra atualizar o cache pro
+// próximo carregamento -- sem precisar de nenhum número de versão pra
+// lembrar de "bumpar" a cada deploy: o cache se autoatualiza sozinho todo
+// carregamento online bem-sucedido.
+async function staleWhileRevalidate(request) {
+    const cache = await caches.open(SHELL_CACHE);
+    const cached = await cache.match(request);
+    const network = fetch(request).then(res => {
+        if (res && res.ok) cache.put(request, res.clone());
+        return res;
+    }).catch(() => null);
+    if (cached) {
+        network.catch(() => {}); // atualização em segundo plano, sem travar a resposta
+        return cached;
+    }
+    const fresh = await network;
+    return fresh || Response.error();
+}
+
+self.addEventListener('fetch', (event) => {
+    const req = event.request;
+    if (req.method !== 'GET') return;
+    const url = new URL(req.url);
+    if (url.origin !== self.location.origin) return;
+    const isShell = url.pathname === '/' || url.pathname.endsWith('/index.html')
+        || url.pathname.endsWith('/manifest.json') || url.pathname.includes('/assets/');
+    if (!isShell) return;
+    event.respondWith(staleWhileRevalidate(req));
+});

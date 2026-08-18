@@ -1721,6 +1721,7 @@ async function loadPersisted() {
     else state.bookings = (bookings || []).map(mapBookingFromDb);
     if (aErr) { toast('Erro ao carregar histórico: ' + aErr.message, 'error'); state.auditLog = []; }
     else state.auditLog = (audit || []).map(mapAuditFromDb);
+    return { error: bErr || aErr || null };
 }
 
 // Atualização em segundo plano (polling) -- sem isso, quando o Encarregado
@@ -1782,13 +1783,14 @@ function isClientApprovalSite(siteKey) {
 
 async function loadSites() {
     const { data, error } = await sb.from('sites').select('key, label, client_approval_workflow').order('label');
-    if (error) { toast('Erro ao carregar sites: ' + error.message, 'error'); SITES = {}; SITE_CONFIG = {}; return; }
+    if (error) { toast('Erro ao carregar sites: ' + error.message, 'error'); SITES = {}; SITE_CONFIG = {}; return { error }; }
     SITES = {};
     SITE_CONFIG = {};
     (data || []).forEach(s => {
         SITES[s.key] = s.label;
         SITE_CONFIG[s.key] = { clientApprovalWorkflow: !!s.client_approval_workflow };
     });
+    return { error: null };
 }
 
 function accessibleSites() {
@@ -1980,26 +1982,51 @@ async function confirmDeleteSite(key) {
     renderSiteSelect();
 }
 
+// Distingue "isso falhou porque não tem sinal" de "isso falhou porque o
+// acesso foi negado de verdade" -- um erro de permissão/dado inexistente
+// (vindo do Postgres/PostgREST) continua sendo tratado como erro real (ex:
+// desloga). Só um erro de REDE cai no fallback pro snapshot salvo. O sinal
+// principal é a própria API do navegador (`navigator.onLine`); o regex é só
+// reforço pro caso de rede instável em que o navegador ainda se considera
+// "online" mas a requisição falha mesmo assim.
+function isNetworkError(error) {
+    if (!navigator.onLine) return true;
+    const msg = String((error && error.message) || error || '').toLowerCase();
+    return /failed to fetch|networkerror|load failed|network request failed/.test(msg);
+}
+
 async function fetchUserProfile(authUser) {
     if (authUser.is_anonymous) {
         return { id: authUser.id, name: 'Visitante', username: 'visitante', role: 'VISITANTE', canExport: false, active: true, sites: [] };
     }
     const { data: profile, error } = await sb.from('profiles').select('id, name, email, role, can_export, active').eq('id', authUser.id).single();
-    if (error || !profile) return null;
+    if (error || !profile) {
+        // Sem conexão: tenta a última foto salva desse usuário em vez de
+        // tratar como "perfil não existe" (que hoje força logout) -- só
+        // funciona se ele já logou com sucesso ao menos uma vez neste
+        // aparelho antes (ver saveProfileSnapshot mais abaixo).
+        if (error && isNetworkError(error)) {
+            const cached = await getProfileSnapshot(authUser.id).catch(() => null);
+            if (cached) return { ...cached, offlineSnapshot: true };
+        }
+        return null;
+    }
     const { data: siteLinks } = await sb.from('profile_sites').select('site_key').eq('profile_id', authUser.id);
-    return {
+    const result = {
         id: profile.id, name: profile.name, username: profile.email, role: profile.role,
         canExport: profile.can_export, active: profile.active,
         sites: (siteLinks || []).map(s => s.site_key)
     };
+    saveProfileSnapshot(result);
+    return result;
 }
 async function loadProfiles() {
-    const { data: profiles, error } = await sb.from('profiles').select('id, name, email, role, can_export, active');
+    const { data: profiles, error } = await sb.from('profiles').select('id, name, email, role, can_export, active, whatsapp');
     if (error) { toast('Erro ao carregar usuários: ' + error.message, 'error'); state.users = []; return; }
     const { data: siteLinks } = await sb.from('profile_sites').select('profile_id, site_key');
     state.users = (profiles || []).map(p => ({
         id: p.id, name: p.name, username: p.email, role: p.role,
-        canExport: p.can_export, active: p.active,
+        canExport: p.can_export, active: p.active, whatsapp: p.whatsapp,
         sites: (siteLinks || []).filter(s => s.profile_id === p.id).map(s => s.site_key)
     }));
 }
@@ -2730,18 +2757,64 @@ async function confirmCloseBooking(id) {
    ========================================================= */
 const OFFLINE_DB_NAME = 'saas_vale_offline_v1';
 const OFFLINE_STORE = 'pending_closures';
+// Guardam uma "foto" do último login/carregamento bem-sucedido do
+// Encarregado -- é o que permite o app ABRIR (não só continuar funcionando)
+// sem sinal nenhum. Ver applyEncarregadoOfflineSnapshot() mais abaixo.
+const OFFLINE_PROFILE_STORE = 'profile_snapshot';
+const OFFLINE_DATA_STORE = 'data_snapshot';
 
 function openOfflineDB() {
     return new Promise((resolve, reject) => {
-        const req = indexedDB.open(OFFLINE_DB_NAME, 1);
+        // Subir a versão (1 -> 2) preserva os dados que já existem nas
+        // stores antigas -- não afeta a fila de fechamentos pendentes.
+        const req = indexedDB.open(OFFLINE_DB_NAME, 2);
         req.onupgradeneeded = () => {
             if (!req.result.objectStoreNames.contains(OFFLINE_STORE)) {
                 req.result.createObjectStore(OFFLINE_STORE, { keyPath: 'id' });
+            }
+            if (!req.result.objectStoreNames.contains(OFFLINE_PROFILE_STORE)) {
+                req.result.createObjectStore(OFFLINE_PROFILE_STORE, { keyPath: 'id' });
+            }
+            if (!req.result.objectStoreNames.contains(OFFLINE_DATA_STORE)) {
+                req.result.createObjectStore(OFFLINE_DATA_STORE, { keyPath: 'siteKey' });
             }
         };
         req.onsuccess = () => resolve(req.result);
         req.onerror = () => reject(req.error);
     });
+}
+async function idbPut(storeName, record) {
+    const db = await openOfflineDB();
+    return new Promise((resolve, reject) => {
+        const tx = db.transaction(storeName, 'readwrite');
+        tx.objectStore(storeName).put(record);
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => reject(tx.error);
+    });
+}
+async function idbGet(storeName, key) {
+    const db = await openOfflineDB();
+    return new Promise((resolve, reject) => {
+        const tx = db.transaction(storeName, 'readonly');
+        const req = tx.objectStore(storeName).get(key);
+        req.onsuccess = () => resolve(req.result || null);
+        req.onerror = () => reject(req.error);
+    });
+}
+// Só o Encarregado tem snapshot salvo -- não é pra guardar dado de tela de
+// Admin/PCM/PCO no IndexedDB do celular de campo.
+function saveProfileSnapshot(profile) {
+    if (!profile || profile.role !== 'ENCARREGADO') return;
+    idbPut(OFFLINE_PROFILE_STORE, profile).catch(() => {});
+}
+function getProfileSnapshot(userId) {
+    return idbGet(OFFLINE_PROFILE_STORE, userId);
+}
+function saveSiteSnapshot(siteKey, snapshot) {
+    idbPut(OFFLINE_DATA_STORE, { siteKey, ...snapshot, savedAt: new Date().toISOString() }).catch(() => {});
+}
+function getSiteSnapshot(siteKey) {
+    return idbGet(OFFLINE_DATA_STORE, siteKey);
 }
 async function offlineQueueAdd(record) {
     const db = await openOfflineDB();
@@ -3022,6 +3095,16 @@ function renderMobileEquipList() {
     const pendentesRestantes = pendentes.length - pendentesVisiveis.length;
     const atrasadasCount = pendentes.filter(b => daysSinceServiceDate(b) >= OVERDUE_THRESHOLD_DAYS).length;
 
+    // Abriu sem sinal nenhum -- os dados vieram da última foto salva neste
+    // aparelho (ver applyEncarregadoOfflineSnapshot), não é uma consulta ao
+    // vivo. Precisa deixar isso bem visível: um ativo pode ter mudado de
+    // status desde então.
+    const coldStartAlertHtml = state.offlineColdStart ? `
+        <div class="mobile-alert mobile-alert-offline">
+            <div class="mobile-alert-title">📴 Modo offline -- sem conexão</div>
+            <div class="mobile-alert-sub">Mostrando os últimos dados salvos neste celular${state.offlineSnapshotSavedAt ? ' (' + new Date(state.offlineSnapshotSavedAt).toLocaleString('pt-BR') + ')' : ''}. Pode estar desatualizado.</div>
+        </div>` : '';
+
     // Lançamentos guardados neste aparelho esperando internet -- só existem
     // no dispositivo que os criou (IndexedDB é local), então nunca aparecem
     // pra outro encarregado logado num celular diferente.
@@ -3072,6 +3155,7 @@ function renderMobileEquipList() {
             </button>`;
     }).join('');
     body.innerHTML = `
+        ${coldStartAlertHtml}
         ${offlineAlertHtml}
         ${alertHtml}
         <input type="text" id="mobile-equip-search" class="mobile-search" placeholder="${isClientApprovalSite() ? 'Buscar por área...' : 'Buscar equipamento...'}">
@@ -3482,9 +3566,11 @@ async function ensureAccessibleSite() {
         state.currentSite = fallback || null;
         if (fallback) localStorage.setItem(LS_ACTIVE_SITE, fallback);
     }
+    let siteErr = null;
     if (state.currentSite) {
-        await loadSiteDatabase();
-        await loadPersisted();
+        const dbResult = await loadSiteDatabase();
+        const persistResult = await loadPersisted();
+        siteErr = (dbResult && dbResult.error) || (persistResult && persistResult.error) || null;
     } else {
         // usuário sem nenhum site liberado: não deixa dados de outro site visíveis
         Object.keys(DATABASE).forEach(k => delete DATABASE[k]);
@@ -3495,6 +3581,36 @@ async function ensureAccessibleSite() {
     }
     state.currentArea = 'ALL';
     state.agendaTag = ALL_EQUIP.length ? ALL_EQUIP_TAG : null;
+    return { error: siteErr };
+}
+
+// Aplica a última "foto" salva localmente (ver saveSiteSnapshot) quando o
+// Encarregado abre o app sem sinal nenhum -- é isso que permite abrir de
+// verdade (não só continuar funcionando depois de já aberto). Só chamado
+// quando o carregamento ao vivo falhou por erro de REDE (isNetworkError).
+async function applyEncarregadoOfflineSnapshot(user) {
+    const siteKey = (user.sites && user.sites[0]) || localStorage.getItem(LS_ACTIVE_SITE);
+    if (!siteKey) return false;
+    const snap = await getSiteSnapshot(siteKey).catch(() => null);
+    if (!snap) return false;
+    SITES = { [siteKey]: snap.siteLabel || siteKey };
+    SITE_CONFIG = { [siteKey]: { clientApprovalWorkflow: !!snap.clientApprovalWorkflow } };
+    state.currentSite = siteKey;
+    localStorage.setItem(LS_ACTIVE_SITE, siteKey);
+    Object.keys(DATABASE).forEach(k => delete DATABASE[k]);
+    Object.assign(DATABASE, snap.database || {});
+    Object.keys(AREA_LABEL).forEach(k => delete AREA_LABEL[k]);
+    Object.assign(AREA_LABEL, snap.areaLabel || {});
+    Object.keys(EQUIP_META).forEach(k => delete EQUIP_META[k]);
+    Object.assign(EQUIP_META, snap.equipMeta || {});
+    ALL_EQUIP.length = 0; ALL_EQUIP.push(...(snap.allEquip || []));
+    COLLABORATORS.length = 0; COLLABORATORS.push(...(snap.collaborators || []));
+    state.bookings = snap.bookings || [];
+    state.auditLog = [];
+    state.currentArea = 'ALL';
+    state.agendaTag = ALL_EQUIP.length ? ALL_EQUIP_TAG : null;
+    state.offlineSnapshotSavedAt = snap.savedAt || null;
+    return true;
 }
 
 // Badge "Cliente Integrado" da sidebar -- puxa da tabela `companies` o nome
@@ -3515,13 +3631,35 @@ async function loginAs(user, options) {
     const logEvent = !options || options.logEvent !== false;
     state.currentUser = user;
     state.profileKey = user.role;
-    await loadSites();
-    state.currentSite = localStorage.getItem(LS_ACTIVE_SITE) || 'MUTUCA';
-    if (!SITES[state.currentSite]) state.currentSite = Object.keys(SITES)[0] || 'MUTUCA';
-    await ensureAccessibleSite();
-    loadClientBadge();
+    state.offlineColdStart = false;
+    const sitesResult = await loadSites();
+    let offline = false;
+    if (user.role === 'ENCARREGADO' && sitesResult && sitesResult.error && isNetworkError(sitesResult.error)) {
+        offline = await applyEncarregadoOfflineSnapshot(user);
+    }
+    if (!offline) {
+        state.currentSite = localStorage.getItem(LS_ACTIVE_SITE) || 'MUTUCA';
+        if (!SITES[state.currentSite]) state.currentSite = Object.keys(SITES)[0] || 'MUTUCA';
+        const { error: siteErr } = await ensureAccessibleSite();
+        if (user.role === 'ENCARREGADO' && siteErr && isNetworkError(siteErr)) {
+            offline = await applyEncarregadoOfflineSnapshot(user);
+        } else if (user.role === 'ENCARREGADO' && !siteErr) {
+            // Carregou tudo ao vivo com sucesso -- atualiza a "foto" local,
+            // pra próxima vez que faltar sinal ela não estar desatualizada.
+            saveSiteSnapshot(state.currentSite, {
+                siteLabel: SITES[state.currentSite],
+                clientApprovalWorkflow: isClientApprovalSite(state.currentSite),
+                database: DATABASE, areaLabel: AREA_LABEL, allEquip: ALL_EQUIP,
+                equipMeta: EQUIP_META, collaborators: COLLABORATORS, bookings: state.bookings
+            });
+        }
+    }
+    state.offlineColdStart = offline;
+    if (!offline) loadClientBadge();
     document.getElementById('login-screen').style.display = 'none';
-    if (logEvent) {
+    // Sem rede, nem tenta registrar o login (é uma chamada de rede também) --
+    // fica só o que já está salvo localmente, sem travar a abertura da tela.
+    if (logEvent && !offline) {
         await addAuditEntry({ tag: '—', acao: 'Login', justificativa: 'Acesso ao sistema autenticado.' });
     }
 
@@ -5806,6 +5944,7 @@ function openUserModal(id) {
             <div class="m-field"><label>Nome Completo</label><input type="text" id="um-name" value="${editing ? escapeHtml(editing.name) : ''}"></div>
             <div class="m-field"><label>E-mail</label><input type="email" id="um-username" value="${editing ? escapeHtml(editing.username) : ''}" ${editing ? 'disabled' : ''}></div>
             ${!editing ? `<div class="m-field"><label>Senha Inicial</label><input type="text" id="um-password" placeholder="Mínimo 6 caracteres" autocomplete="new-password"></div>` : ''}
+            <div class="m-field"><label>WhatsApp (opcional)</label><input type="tel" id="um-whatsapp" placeholder="Ex: 5531999999999" value="${editing && editing.whatsapp ? escapeHtml(editing.whatsapp) : ''}"></div>
             <div class="m-field"><label>Perfil</label>
                 <select id="um-role">${roles.map(r => `<option value="${r}" ${editing && editing.role === r ? 'selected' : ''}>${ROLE_META[r].label}</option>`).join('')}</select>
             </div>
@@ -5861,6 +6000,7 @@ async function saveUser(id) {
     const canExport = document.getElementById('um-export').checked;
     const active = document.getElementById('um-active').checked;
     const sites = [...document.querySelectorAll('.um-site-cb:checked')].map(cb => cb.value);
+    const whatsapp = document.getElementById('um-whatsapp').value.trim();
 
     if (!name || !email) { toast('Preencha nome e e-mail.', 'error'); return; }
     if (role === 'ENCARREGADO' && sites.length === 0) { toast('Selecione o site deste encarregado.', 'error'); return; }
@@ -5871,7 +6011,7 @@ async function saveUser(id) {
         if (password.length < 6) { toast('Informe uma senha inicial com no mínimo 6 caracteres.', 'error'); return; }
         const btn = document.getElementById('um-save-btn');
         btn.disabled = true; btn.textContent = 'Criando...';
-        const { errMsg } = await invokeAdminFn({ action: 'create', name, email, password, role, canExport: role === 'ADMIN' ? true : canExport, active, sites });
+        const { errMsg } = await invokeAdminFn({ action: 'create', name, email, password, role, canExport: role === 'ADMIN' ? true : canExport, active, sites, whatsapp });
         if (errMsg) { toast('Erro ao criar usuário: ' + errMsg, 'error'); btn.disabled = false; btn.textContent = 'Criar Conta'; return; }
         closeModal();
         toast(`Conta de ${name} criada com sucesso. Avise a pessoa da senha inicial por fora do sistema.`);
@@ -5880,7 +6020,7 @@ async function saveUser(id) {
     }
 
     const { error } = await sb.from('profiles').update({
-        name, role, can_export: role === 'ADMIN' ? true : canExport, active
+        name, role, can_export: role === 'ADMIN' ? true : canExport, active, whatsapp: whatsapp || null
     }).eq('id', id);
     if (error) { toast('Erro ao salvar: ' + error.message, 'error'); return; }
     await sb.from('profile_sites').delete().eq('profile_id', id);
@@ -5969,6 +6109,10 @@ async function toggleUserActive(id) {
 
 /* Limpa e recarrega DATABASE/AREA_LABEL/ALL_EQUIP a partir das tabelas
    Supabase `areas`/`equipment` para o site ativo. */
+// Retorna { error } quando alguma etapa falha -- os chamadores mais antigos
+// (troca de site, refresh manual) seguem só dando `await` e ignorando o
+// retorno, sem quebrar nada; ensureAccessibleSite() é o único que usa esse
+// retorno, pra saber se deve cair no snapshot offline do Encarregado.
 async function loadSiteDatabase() {
     Object.keys(DATABASE).forEach(k => delete DATABASE[k]);
     Object.keys(AREA_LABEL).forEach(k => delete AREA_LABEL[k]);
@@ -5976,10 +6120,10 @@ async function loadSiteDatabase() {
     ALL_EQUIP.length = 0;
     COLLABORATORS.length = 0;
     const { data: areas, error: areasErr } = await sb.from('areas').select('code, label').eq('site_key', state.currentSite);
-    if (areasErr) { toast('Erro ao carregar áreas: ' + areasErr.message, 'error'); return; }
+    if (areasErr) { toast('Erro ao carregar áreas: ' + areasErr.message, 'error'); return { error: areasErr }; }
     (areas || []).forEach(a => { DATABASE[a.code] = []; AREA_LABEL[a.code] = a.label; });
     const { data: equip, error: equipErr } = await sb.from('equipment').select('tag, area_code, m2, valor_m2').eq('site_key', state.currentSite);
-    if (equipErr) { toast('Erro ao carregar equipamentos: ' + equipErr.message, 'error'); return; }
+    if (equipErr) { toast('Erro ao carregar equipamentos: ' + equipErr.message, 'error'); return { error: equipErr }; }
     (equip || []).forEach(e => {
         if (!DATABASE[e.area_code]) DATABASE[e.area_code] = [];
         DATABASE[e.area_code].push(e.tag);
@@ -5990,9 +6134,10 @@ async function loadSiteDatabase() {
     // a pena consultar essa tabela pros outros sites.
     if (isClientApprovalSite()) {
         const { data: collaborators, error: collabErr } = await sb.from('collaborators').select('id, name, role').eq('site_key', state.currentSite).order('name');
-        if (collabErr) { toast('Erro ao carregar colaboradores: ' + collabErr.message, 'error'); return; }
+        if (collabErr) { toast('Erro ao carregar colaboradores: ' + collabErr.message, 'error'); return { error: collabErr }; }
         (collaborators || []).forEach(c => COLLABORATORS.push({ id: c.id, name: c.name, role: c.role }));
     }
+    return { error: null };
 }
 
 function renderAssetMgmtPanel() {

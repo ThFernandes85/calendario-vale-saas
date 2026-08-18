@@ -62,7 +62,7 @@ Deno.serve(async (req) => {
     const body = await req.json();
 
     if (body.action === 'create') {
-      const { name, email, password, role, canExport, active, sites } = body;
+      const { name, email, password, role, canExport, active, sites, whatsapp } = body;
       if (!name || !email || !role) return json({ error: 'Preencha nome, e-mail e perfil.' }, 400);
       if (!password || password.length < 6) return json({ error: 'Informe uma senha inicial com no mínimo 6 caracteres.' }, 400);
 
@@ -85,7 +85,7 @@ Deno.serve(async (req) => {
 
       const newId = created.user.id;
       const { error: profErr } = await admin.from('profiles').insert({
-        id: newId, name, email, role, can_export: canExport, active,
+        id: newId, name, email, role, can_export: canExport, active, whatsapp: whatsapp || null,
         company_key: callerCompany, // carimbado no servidor -- nunca vem do formulário
       });
       if (profErr) { await admin.auth.admin.deleteUser(newId); return json({ error: profErr.message || 'Falha ao criar o perfil (motivo desconhecido no banco).' }, 400); }
