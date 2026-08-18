@@ -735,6 +735,7 @@ body.book-preview-mode .book-preview-toolbar {
             <div style="font-size:15px; font-weight:700; color:#fff;">Limpeza · <span id="mobile-site-label"></span></div>
             <div style="font-size:12px; color:var(--text-secondary);" id="mobile-user-label"></div>
         </div>
+        <button type="button" class="btn-secondary" id="btn-mobile-lost-hours" style="display:none; margin-right:8px;">📦 Hora Perdida</button>
         <button type="button" class="btn-secondary" id="btn-mobile-logout">Sair</button>
     </div>
     <div id="mobile-encarregado-body"></div>
@@ -1074,6 +1075,10 @@ body.book-preview-mode .book-preview-toolbar {
                     <label>&nbsp;</label>
                     <button id="btn-cancel-day" style="background:#ef4444; color:#fff; border:none; border-radius:8px; padding:9px 14px; font-size:13px; font-weight:600; cursor:pointer;">Cancelar Todos do Dia</button>
                 </div>
+                <div class="agenda-field" id="btn-lost-hours-wrap" style="display:none;">
+                    <label>&nbsp;</label>
+                    <button id="btn-lost-hours" class="btn-secondary" style="padding:9px 14px; font-size:13px; font-weight:600;">📦 Registrar Hora Perdida</button>
+                </div>
                 <div class="agenda-legend" style="margin-left:auto;">
                     <div class="lg-item"><span class="status-dot st-livre"></span>Livre</div>
                     <div class="lg-item"><span class="status-dot st-manutencao"></span>Manutenção</div>
@@ -1105,6 +1110,10 @@ body.book-preview-mode .book-preview-toolbar {
                 <div class="agenda-field" id="report-user-wrap" style="display:none;">
                     <label>Usuário (Admin Master)</label>
                     <select id="report-user"><option value="">Todos os Usuários</option></select>
+                </div>
+                <div class="agenda-field">
+                    <label>&nbsp;</label>
+                    <label class="m-checkbox" style="display:flex; align-items:center; gap:6px;"><input type="checkbox" id="report-extra-filter" style="width:auto;"> Só atividades extras</label>
                 </div>
                 <div class="day-nav">
                     <button class="today-btn" id="btn-apply-filter">Aplicar Filtro</button>
@@ -1158,6 +1167,11 @@ body.book-preview-mode .book-preview-toolbar {
                 <div class="kpi-value" id="kpi-sodexo-pendente">—</div>
                 <div class="kpi-sub" id="kpi-sodexo-pendente-sub">Desconta da nota de Limpeza</div>
             </div>
+            <div class="kpi-card" style="--accent: #f59e0b;">
+                <div class="kpi-label">Horas Perdidas (Período)</div>
+                <div class="kpi-value" id="kpi-lost-hours">—</div>
+                <div class="kpi-sub" id="kpi-lost-hours-sub">Tempo ocioso aguardando material no almoxarifado</div>
+            </div>
         </div>
 
         <div class="chart-box" style="margin-bottom:18px;">
@@ -1177,6 +1191,14 @@ body.book-preview-mode .book-preview-toolbar {
             <div class="chart-box">
                 <h3>Volume de Atividades por Área (Aderência)</h3>
                 <canvas id="chart-area"></canvas>
+            </div>
+            <div class="chart-box">
+                <h3>Horas Extras — Evolução por Período</h3>
+                <canvas id="chart-horas-extras"></canvas>
+            </div>
+            <div class="chart-box">
+                <h3>Horas Perdidas — Evolução por Período</h3>
+                <canvas id="chart-horas-perdidas"></canvas>
             </div>
         </div>
 
@@ -1517,6 +1539,15 @@ const TYPE_STATUS = { 'Manutenção Preventiva': 'manutencao', 'Manutenção Cor
    tipos vira PENDENTE_VALE (nunca PENDENTE_SODEXO).
    ========================================================= */
 const SODEXO_CLEANING_TYPE = 'Limpeza Sodexo';
+// Registro de tempo ocioso aguardando material no almoxarifado (Fábrica
+// Materiais/Viga Materiais) -- indicador paralelo, nunca entra na nota de
+// aderência da limpeza (sodexoCleaningBreakdown filtra só SODEXO_CLEANING_TYPE).
+const LOST_HOURS_TYPE = 'Horas Perdidas';
+// Área "coringa" de atividades extras (Fábrica Materiais/Viga Materiais) --
+// qualquer bloqueio lançado nela já nasce marcado como extra automaticamente,
+// sem precisar do checkbox manual (ver isExtraChecked em submitBooking/
+// validateNewBookingForm).
+const EXTRA_AREA_CODE = 'J';
 function isActiveBooking(b) { return !b.closureStatus; }
 function pendingClosureStatusFor(type) { return type === SODEXO_CLEANING_TYPE ? 'PENDENTE_SODEXO' : 'PENDENTE_VALE'; }
 
@@ -1564,6 +1595,14 @@ function activeProfile() {
     return { label: role.label, user: u.name, initials: initialsOf(u.name), canBook: role.canBook, readOnly: role.readOnly, canExport: u.role === 'ADMIN' ? true : !!u.canExport };
 }
 function canBookType(type) { const p = activeProfile(); return !p.readOnly && p.canBook.includes(type); }
+// Deliberadamente fora de ROLE_META.canBook -- Horas Perdidas não usa o
+// fluxo normal de "agendar num horário livre" (2 etapas), é um registro
+// único feito depois que o atraso já aconteceu, então não deve aparecer no
+// seletor de Tipo de Bloqueio comum. Mesmos papéis liberados na RLS
+// (bookings_insert) do schema.sql.
+function canRegisterLostHours() {
+    return ['ADMIN', 'PCO', 'PCM_PCO', 'TECNICO_PLANEJAMENTO', 'ENCARREGADO'].includes(state.profileKey);
+}
 function canExportReports() { return activeProfile().canExport; }
 // Aprovar/reprovar/marcar pendência é uma permissão própria, independente
 // de `readOnly` -- o Cliente Vale continua sem poder agendar/encerrar nada
@@ -1679,7 +1718,9 @@ function mapBookingFromDb(row) {
         closurePhotoBefore: row.closure_photo_before, closurePhotoAfter: row.closure_photo_after,
         closurePhotosExtra: row.closure_photos_extra || [],
         valeDecisionReason: row.vale_decision_reason, valeDecidedAt: row.vale_decided_at,
-        collaborators: row.collaborators || []
+        collaborators: row.collaborators || [],
+        isExtra: !!row.is_extra, lostHours: row.lost_hours == null ? null : Number(row.lost_hours),
+        receiverName: row.receiver_name, receiverRegistration: row.receiver_registration
     };
 }
 function mapAuditFromDb(row) {
@@ -1861,7 +1902,7 @@ async function switchSite(newSiteKey) {
     await loadPersisted();
     state.currentArea = 'ALL';
     state.agendaTag = ALL_EQUIP.length ? ALL_EQUIP_TAG : null;
-    state.reportFilter = { from: null, to: null, username: null };
+    state.reportFilter = { from: null, to: null, username: null, isExtra: false };
     state.heatmapFilter = { from: null, to: null, equip: null };
     renderSiteSelect();
     onProfileChanged();
@@ -1920,7 +1961,8 @@ function openSiteConfigModal(key) {
     openModal(`
         <div class="modal-header"><h3>Configurar Site — ${escapeHtml(label)}</h3><button class="modal-close" onclick="closeModal()">&times;</button></div>
         <div class="modal-body">
-            <div class="m-field" style="display:flex; align-items:center; gap:8px;">
+            <div class="m-field"><label>Nome do Site</label><input type="text" id="site-config-name" value="${escapeHtml(label)}"></div>
+            <div class="m-field" style="display:flex; align-items:center; gap:8px; margin-top:10px;">
                 <input type="checkbox" id="site-config-client-approval" style="width:auto;" ${current ? 'checked' : ''}>
                 <label for="site-config-client-approval" style="margin:0; cursor:pointer;">Cliente aprova cada limpeza (workflow S11D)</label>
             </div>
@@ -1936,12 +1978,18 @@ function openSiteConfigModal(key) {
     `);
 }
 async function saveSiteConfig(key) {
+    const newLabel = document.getElementById('site-config-name').value.trim();
+    if (!newLabel) { toast('Informe um nome válido para o site.', 'error'); return; }
     const checked = document.getElementById('site-config-client-approval').checked;
-    const { error } = await sb.from('sites').update({ client_approval_workflow: checked }).eq('key', key);
+    // Só o rótulo (label) muda -- a key interna do site (usada em áreas,
+    // equipamentos, agendamentos, etc.) nunca é tocada aqui.
+    const { error } = await sb.from('sites').update({ label: newLabel, client_approval_workflow: checked }).eq('key', key);
     if (error) { toast('Erro ao salvar configuração do site: ' + error.message, 'error'); return; }
+    SITES[key] = newLabel;
     SITE_CONFIG[key] = { clientApprovalWorkflow: checked };
     closeModal();
-    toast(`Configuração de "${SITES[key]}" salva.`);
+    toast(`Configuração de "${newLabel}" salva.`);
+    renderSiteSelect();
     if (key === state.currentSite) { onProfileChanged(); renderWeekGrid(); }
 }
 
@@ -2116,6 +2164,9 @@ function openBookingModal(tag, dateStr, startHour) {
             <div class="m-field" id="bk-emergencial-wrap" style="display:none;">
                 <label class="m-checkbox"><input type="checkbox" id="bk-emergencial" style="width:auto;"> Corretiva emergencial (marca como crítico)</label>
             </div>
+            <div class="m-field" id="bk-extra-wrap">
+                <label class="m-checkbox"><input type="checkbox" id="bk-extra" style="width:auto;" ${areaOf(tag) === EXTRA_AREA_CODE ? 'checked disabled' : ''}> Atividade Extra (não desconta da OM, soma a mais na nota quando concluída -- OM opcional)</label>
+            </div>
             <div class="m-field"><label>Justificativa Técnica *</label><textarea id="bk-just" rows="3" maxlength="200" placeholder="Ex: Troca de correia, Inspeção preventiva, Lavagem de canais..."></textarea></div>
         </div>
         <div class="modal-footer">
@@ -2134,7 +2185,8 @@ async function submitBooking(tag) {
     const startStr = document.getElementById('bk-start').value;
     const endStr = document.getElementById('bk-end').value;
     const type = document.getElementById('bk-type').value;
-    const omRequired = !isClientApprovalSite();
+    const isExtra = areaOf(tag) === EXTRA_AREA_CODE || document.getElementById('bk-extra').checked;
+    const omRequired = !isClientApprovalSite() && !isExtra;
     const omRaw = document.getElementById('bk-om').value.trim();
     const om = omRequired ? omRaw : (omRaw || null);
     const emergencial = document.getElementById('bk-emergencial') ? document.getElementById('bk-emergencial').checked : false;
@@ -2156,7 +2208,8 @@ async function submitBooking(tag) {
     const { data, error } = await sb.from('bookings').insert({
         site_key: state.currentSite, tag, area_code: areaOf(tag), date: dateStr,
         start_min: startMin, end_min: endMin, type, emergencial: finalEmergencial, om, justification,
-        operator_id: state.currentUser.id, operator_label: `${activeProfile().user} (${state.profileKey})`
+        operator_id: state.currentUser.id, operator_label: `${activeProfile().user} (${state.profileKey})`,
+        is_extra: isExtra
     }).select().single();
     if (error) { toast('Erro ao salvar agendamento: ' + error.message, 'error'); return; }
     const booking = mapBookingFromDb(data);
@@ -2168,6 +2221,78 @@ async function submitBooking(tag) {
     closeModal();
     toast('Agendamento confirmado com sucesso.');
     renderWeekGrid(); renderAtivos(); renderDashboard(); updateUpcomingBadge();
+}
+
+// Horas Perdidas -- diferente do agendamento normal (marca horário livre →
+// depois encerra), aqui o atraso já aconteceu: um só envio cria o registro
+// JÁ fechado como Pendente Vale (é responsabilidade do almoxarifado/Vale,
+// nunca da Sodexo). Indicador paralelo -- nunca entra na nota de limpeza
+// (sodexoCleaningBreakdown só considera SODEXO_CLEANING_TYPE).
+function openLostHoursModal() {
+    if (!canRegisterLostHours()) { showAccessDenied('Perfil sem privilégios para registrar Hora Perdida.'); return; }
+    openModal(`
+        <div class="modal-header"><h3>Registrar Hora Perdida</h3><button class="modal-close" onclick="closeModal()">&times;</button></div>
+        <div class="modal-body">
+            <div class="login-hint" style="display:block; margin-top:0;">Tempo ocioso da equipe Sodexo aguardando material no almoxarifado (atraso de retirada/entrega). Sempre entra como Pendente Vale.</div>
+            <div class="m-field"><label>Horas Perdidas *</label><input type="number" id="lh-hours" min="0.1" step="0.1" placeholder="Ex: 2.5"></div>
+            <div class="m-field"><label>Colaborador Responsável</label><input type="text" id="lh-collab" placeholder="Nome (opcional)"></div>
+            <div class="m-field"><label>Foto de Evidência</label><input type="file" id="lh-photo" accept="image/*"></div>
+            <div class="m-field"><label>Nome de Quem Recebeu</label><input type="text" id="lh-receiver-name" placeholder="Opcional"></div>
+            <div class="m-field"><label>Matrícula de Quem Recebeu</label><input type="text" id="lh-receiver-reg" placeholder="Opcional"></div>
+            <div class="m-field"><label>Justificativa *</label><textarea id="lh-just" rows="3" maxlength="300" placeholder="Ex: Atraso na liberação do material no almoxarifado..."></textarea></div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn-secondary" onclick="closeModal()">Cancelar</button>
+            <button class="btn-primary" id="lh-submit-btn" onclick="submitLostHours()">Registrar</button>
+        </div>
+    `);
+}
+document.getElementById('btn-lost-hours').addEventListener('click', openLostHoursModal);
+
+async function submitLostHours() {
+    const hoursRaw = document.getElementById('lh-hours').value;
+    const hours = parseFloat(hoursRaw);
+    const collaborator = document.getElementById('lh-collab').value.trim();
+    const receiverName = document.getElementById('lh-receiver-name').value.trim();
+    const receiverReg = document.getElementById('lh-receiver-reg').value.trim();
+    const justification = document.getElementById('lh-just').value.trim();
+    const photoFile = document.getElementById('lh-photo').files[0] || null;
+
+    if (!hoursRaw || isNaN(hours) || hours <= 0) { toast('Informe a quantidade de horas perdidas (maior que zero).', 'error'); return; }
+    if (justification.length < 5) { toast('Informe uma justificativa válida (mínimo 5 caracteres).', 'error'); return; }
+
+    const btn = document.getElementById('lh-submit-btn');
+    btn.disabled = true; btn.textContent = 'Registrando...';
+
+    const nowMin = nowMinutes();
+    const { data, error } = await sb.from('bookings').insert({
+        site_key: state.currentSite, tag: 'RETIRADA-MATERIAL', area_code: 'ALMOXARIFADO', date: todayStr(),
+        start_min: nowMin, end_min: Math.min(nowMin + 1, 23 * 60 + 59), type: LOST_HOURS_TYPE,
+        emergencial: false, om: null, justification: collaborator ? `Colaborador: ${collaborator}` : 'Horas Perdidas',
+        operator_id: state.currentUser.id, operator_label: `${activeProfile().user} (${state.profileKey})`,
+        closure_status: 'PENDENTE_VALE', closure_reason: justification, closed_at: new Date().toISOString(),
+        closed_by: state.currentUser.id, lost_hours: hours,
+        receiver_name: receiverName || null, receiver_registration: receiverReg || null
+    }).select().single();
+    if (error) { toast('Erro ao registrar: ' + error.message, 'error'); btn.disabled = false; btn.textContent = 'Registrar'; return; }
+
+    const booking = mapBookingFromDb(data);
+    if (photoFile) {
+        const url = await uploadClosurePhoto(booking, photoFile, 'evidencia', false);
+        if (url) {
+            const extra = [{ tipo: 'evidencia', url }];
+            await sb.from('bookings').update({ closure_photos_extra: extra }).eq('id', booking.id);
+            booking.closurePhotosExtra = extra;
+        }
+    }
+    state.bookings.push(booking);
+    await addAuditEntry({
+        tag: booking.tag, acao: LOST_HOURS_TYPE, justificativa: justification, dataHora: booking.createdAt,
+        agendamentoData: booking.date, agendamentoHorario: `${minutesToTime(booking.startMin)}–${minutesToTime(booking.endMin)}`
+    });
+    closeModal();
+    toast('Hora perdida registrada com sucesso.');
+    renderCharts();
 }
 
 function openDetailModal(booking) {
@@ -2881,6 +3006,25 @@ async function reconcileOfflineQueueFlags() {
                     state.bookings.push(booking);
                 }
                 booking.pendingOfflineCreate = true;
+            } else if (rec.kind === 'lost_hours') {
+                // Registro único (já nasce fechado) -- se sumiu de state.bookings
+                // depois de um reload, reconstrói do que ficou guardado na fila,
+                // senão a Hora Perdida fica invisível na tela até sincronizar
+                // (o dado em si nunca se perde, só ficaria escondido até lá).
+                if (!state.bookings.find(b => b.id === rec.bookingId)) {
+                    state.bookings.push({
+                        id: rec.bookingId, tag: 'RETIRADA-MATERIAL', area: 'ALMOXARIFADO',
+                        date: todayStr(), startMin: nowMinutes(), endMin: Math.min(nowMinutes() + 1, 23 * 60 + 59),
+                        type: LOST_HOURS_TYPE, emergencial: false, om: null,
+                        justification: rec.collaborator ? `Colaborador: ${rec.collaborator}` : 'Horas Perdidas',
+                        operatorId: state.currentUser ? state.currentUser.id : null,
+                        operator: `${activeProfile().user} (${state.profileKey})`,
+                        createdAt: new Date(rec.createdAt).toISOString(),
+                        closureStatus: 'PENDENTE_VALE', closureReason: rec.justification, closedAt: new Date(rec.createdAt).toISOString(),
+                        lostHours: rec.hours, receiverName: rec.receiverName || null, receiverRegistration: rec.receiverReg || null,
+                        closurePhotoBefore: null, closurePhotoAfter: null, closurePhotosExtra: [], pendingOfflineSync: true,
+                    });
+                }
             } else {
                 const booking = state.bookings.find(b => b.id === rec.bookingId);
                 if (booking && !booking.closureStatus) booking.pendingOfflineSync = true;
@@ -2915,11 +3059,11 @@ async function queueClosureOffline(booking) {
 // entra na lista/agenda local na hora, com um id temporário, e só vira um
 // registro de verdade no servidor quando a fila for sincronizada.
 async function queueNewBookingOffline(tag, v) {
-    const { type, dateStr, startMin, endMin, om, justification } = v;
+    const { type, dateStr, startMin, endMin, om, justification, isExtra } = v;
     const tempId = 'offline_new_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
     const booking = {
         id: tempId, tag, area: areaOf(tag), date: dateStr, startMin, endMin, type,
-        emergencial: false, om, justification,
+        emergencial: false, om, justification, isExtra: !!isExtra,
         operatorId: state.currentUser.id, operator: `${activeProfile().user} (${state.profileKey})`,
         createdAt: new Date().toISOString(), closureStatus: null, closureReason: null, closedAt: null,
         closurePhotoBefore: null, closurePhotoAfter: null, closurePhotosExtra: [], pendingOfflineCreate: true,
@@ -2927,7 +3071,7 @@ async function queueNewBookingOffline(tag, v) {
     state.bookings.push(booking);
     await offlineQueueAdd({
         id: tempId + '_create', kind: 'create', bookingId: tempId,
-        tag, area: areaOf(tag), om, type, dateStr, startMin, endMin, justification,
+        tag, area: areaOf(tag), om, type, dateStr, startMin, endMin, justification, isExtra: !!isExtra,
         createdAt: Date.now(),
     });
     toast('Sem conexão -- OM guardada no celular. Será criada sozinha quando a internet voltar.', 'warn');
@@ -2954,7 +3098,8 @@ async function trySyncOfflineQueue() {
                 site_key: state.currentSite, tag: record.tag, area_code: record.area, date: record.dateStr,
                 start_min: record.startMin, end_min: record.endMin, type: record.type, emergencial: false,
                 om: record.om, justification: record.justification,
-                operator_id: state.currentUser.id, operator_label: `${activeProfile().user} (${state.profileKey})`
+                operator_id: state.currentUser.id, operator_label: `${activeProfile().user} (${state.profileKey})`,
+                is_extra: !!record.isExtra
             }).select().single();
             if (error) break; // ainda sem sinal de verdade -- para tudo, tenta de novo na próxima
 
@@ -3023,6 +3168,46 @@ async function trySyncOfflineQueue() {
             syncedCount++;
         }
 
+        // Horas Perdidas -- registro único (já nasce fechado), sem etapa de
+        // criação separada, então não depende de nenhum id remapeado.
+        const lostHoursRecords = (await offlineQueueGetAll()).filter(r => r.kind === 'lost_hours');
+        for (const record of lostHoursRecords) {
+            const tempBooking = state.bookings.find(b => b.id === record.bookingId);
+            const nowMin = nowMinutes();
+            const { data, error } = await sb.from('bookings').insert({
+                site_key: state.currentSite, tag: 'RETIRADA-MATERIAL', area_code: 'ALMOXARIFADO', date: todayStr(),
+                start_min: nowMin, end_min: Math.min(nowMin + 1, 23 * 60 + 59), type: LOST_HOURS_TYPE,
+                emergencial: false, om: null, justification: record.collaborator ? `Colaborador: ${record.collaborator}` : 'Horas Perdidas',
+                operator_id: state.currentUser.id, operator_label: `${activeProfile().user} (${state.profileKey})`,
+                closure_status: 'PENDENTE_VALE', closure_reason: record.justification, closed_at: new Date().toISOString(),
+                closed_by: state.currentUser.id, lost_hours: record.hours,
+                receiver_name: record.receiverName || null, receiver_registration: record.receiverReg || null
+            }).select().single();
+            if (error) break; // ainda sem sinal de verdade -- para tudo, tenta de novo na próxima
+
+            const realBooking = mapBookingFromDb(data);
+            if (record.photoFile) {
+                const url = await uploadClosurePhoto(realBooking, record.photoFile, 'evidencia', true);
+                if (url) {
+                    const extra = [{ tipo: 'evidencia', url }];
+                    await sb.from('bookings').update({ closure_photos_extra: extra }).eq('id', realBooking.id);
+                    realBooking.closurePhotosExtra = extra;
+                }
+            }
+            if (tempBooking) {
+                const idx = state.bookings.findIndex(b => b.id === tempBooking.id);
+                if (idx !== -1) state.bookings[idx] = realBooking;
+            } else {
+                state.bookings.push(realBooking);
+            }
+            await addAuditEntry({
+                tag: realBooking.tag, acao: LOST_HOURS_TYPE, justificativa: record.justification, dataHora: realBooking.createdAt,
+                agendamentoData: realBooking.date, agendamentoHorario: `${minutesToTime(realBooking.startMin)}–${minutesToTime(realBooking.endMin)}`
+            });
+            await offlineQueueRemove(record.id);
+            syncedCount++;
+        }
+
         if (syncedCount > 0) {
             toast(`${syncedCount} lançamento(s) sincronizado(s) automaticamente.`, 'success');
             // Só re-renderiza a lista se o encarregado estiver mesmo nela --
@@ -3046,6 +3231,7 @@ let mobileSelectedTag = null;
 function renderMobileEncarregado() {
     document.getElementById('mobile-site-label').textContent = SITES[state.currentSite] || state.currentSite;
     document.getElementById('mobile-user-label').textContent = activeProfile().user;
+    document.getElementById('btn-mobile-lost-hours').style.display = canRegisterLostHours() ? '' : 'none';
     renderMobileEquipList();
     // Lista já aparece na hora com o que tem em memória -- o flag de "aguardando
     // envio" e a tentativa de sincronizar rodam depois, em segundo plano, e só
@@ -3241,6 +3427,9 @@ function renderMobileNewForm(tag) {
                 <div class="m-field" style="flex:1;"><label>Hora fim *</label><input type="time" id="mobile-new-end" value="${minutesToTime(Math.min(nowMinutes() + 60, 23 * 60 + 59))}"></div>
             </div>
             <div class="m-field" id="mobile-new-om-wrap" style="${isClientApprovalSite() ? 'display:none;' : ''}"><label>Número da OM *</label><input type="text" id="mobile-new-om" inputmode="numeric" maxlength="12" placeholder="Ex: 123456789012"></div>
+            <div class="m-field">
+                <label class="m-checkbox"><input type="checkbox" id="mobile-new-extra" style="width:auto;" ${area === EXTRA_AREA_CODE ? 'checked disabled' : ''}> Atividade Extra (OM opcional, soma a mais na nota quando concluída)</label>
+            </div>
             <div class="m-field"><label>Justificativa Técnica *</label><textarea id="mobile-new-just" rows="3" maxlength="200" placeholder="Ex: Limpeza geral, remoção de material..."></textarea></div>
         </div>
         <button type="button" class="btn-primary mobile-submit" id="mobile-new-submit">Criar e Continuar</button>
@@ -3256,7 +3445,8 @@ function validateNewBookingForm(tag) {
     const dateStr = document.getElementById('mobile-new-date').value;
     const startStr = document.getElementById('mobile-new-start').value;
     const endStr = document.getElementById('mobile-new-end').value;
-    const omRequired = !isClientApprovalSite();
+    const isExtra = areaOf(tag) === EXTRA_AREA_CODE || document.getElementById('mobile-new-extra').checked;
+    const omRequired = !isClientApprovalSite() && !isExtra;
     const omRaw = document.getElementById('mobile-new-om').value.trim();
     const om = omRequired ? omRaw : (omRaw || null);
     const justification = document.getElementById('mobile-new-just').value.trim();
@@ -3273,7 +3463,7 @@ function validateNewBookingForm(tag) {
     const omConflict = activeOmConflict(tag, om);
     if (omConflict) return { ok: false, omConflict };
 
-    return { ok: true, type, dateStr, startMin, endMin, om, justification };
+    return { ok: true, type, dateStr, startMin, endMin, om, justification, isExtra };
 }
 
 async function submitMobileNewBooking(tag) {
@@ -3285,7 +3475,7 @@ async function submitMobileNewBooking(tag) {
         return;
     }
     if (!navigator.onLine) { await queueNewBookingOffline(tag, v); return; }
-    const { type, dateStr, startMin, endMin, om, justification } = v;
+    const { type, dateStr, startMin, endMin, om, justification, isExtra } = v;
 
     const btn = document.getElementById('mobile-new-submit');
     btn.disabled = true; btn.textContent = 'Criando...';
@@ -3293,7 +3483,8 @@ async function submitMobileNewBooking(tag) {
     const { data, error } = await sb.from('bookings').insert({
         site_key: state.currentSite, tag, area_code: areaOf(tag), date: dateStr,
         start_min: startMin, end_min: endMin, type, emergencial: false, om, justification,
-        operator_id: state.currentUser.id, operator_label: `${activeProfile().user} (${state.profileKey})`
+        operator_id: state.currentUser.id, operator_label: `${activeProfile().user} (${state.profileKey})`,
+        is_extra: isExtra
     }).select().single();
     if (error) {
         toast('Erro ao criar lançamento: ' + error.message, 'error');
@@ -3308,6 +3499,107 @@ async function submitMobileNewBooking(tag) {
         om, agendamentoData: booking.date, agendamentoHorario: `${minutesToTime(booking.startMin)}–${minutesToTime(booking.endMin)}`
     });
     renderMobileCloseForm(booking);
+}
+
+// Horas Perdidas pelo celular -- mesma ideia do desktop (registro único,
+// já nasce fechado como Pendente Vale), sem depender de escolher um
+// equipamento/horário livre primeiro.
+function renderMobileLostHoursForm() {
+    const body = document.getElementById('mobile-encarregado-body');
+    body.innerHTML = `
+        <button type="button" class="mobile-back" onclick="renderMobileEquipList()">&larr; Voltar</button>
+        <div class="mobile-card">
+            <div class="mobile-card-title">📦 Registrar Hora Perdida</div>
+            <div class="mobile-card-sub">Tempo ocioso aguardando material no almoxarifado -- sempre entra como Pendente Vale.</div>
+            <div class="m-field"><label>Horas Perdidas *</label><input type="number" id="mlh-hours" min="0.1" step="0.1" placeholder="Ex: 2.5"></div>
+            <div class="m-field"><label>Colaborador Responsável</label><input type="text" id="mlh-collab" placeholder="Nome (opcional)"></div>
+            <div class="m-field"><label>Foto de Evidência</label><input type="file" id="mlh-photo" accept="image/*" capture="environment"></div>
+            <div class="m-field"><label>Nome de Quem Recebeu</label><input type="text" id="mlh-receiver-name" placeholder="Opcional"></div>
+            <div class="m-field"><label>Matrícula de Quem Recebeu</label><input type="text" id="mlh-receiver-reg" placeholder="Opcional"></div>
+            <div class="m-field"><label>Justificativa *</label><textarea id="mlh-just" rows="3" maxlength="300" placeholder="Ex: Atraso na liberação do material..."></textarea></div>
+        </div>
+        <button type="button" class="btn-primary mobile-submit" id="mlh-submit-btn">Registrar</button>
+    `;
+    document.getElementById('mlh-submit-btn').addEventListener('click', submitMobileLostHours);
+}
+
+function validateLostHoursForm(prefix) {
+    const hoursRaw = document.getElementById(`${prefix}-hours`).value;
+    const hours = parseFloat(hoursRaw);
+    const collaborator = document.getElementById(`${prefix}-collab`).value.trim();
+    const receiverName = document.getElementById(`${prefix}-receiver-name`).value.trim();
+    const receiverReg = document.getElementById(`${prefix}-receiver-reg`).value.trim();
+    const justification = document.getElementById(`${prefix}-just`).value.trim();
+    const photoFile = document.getElementById(`${prefix}-photo`) ? (document.getElementById(`${prefix}-photo`).files[0] || null) : null;
+    if (!hoursRaw || isNaN(hours) || hours <= 0) return { ok: false, message: 'Informe a quantidade de horas perdidas (maior que zero).' };
+    if (justification.length < 5) return { ok: false, message: 'Informe uma justificativa válida (mínimo 5 caracteres).' };
+    return { ok: true, hours, collaborator, receiverName, receiverReg, justification, photoFile };
+}
+
+async function submitMobileLostHours() {
+    const v = validateLostHoursForm('mlh');
+    if (!v.ok) { toast(v.message, 'error'); return; }
+    if (!navigator.onLine) { await queueLostHoursOffline(v); return; }
+
+    const btn = document.getElementById('mlh-submit-btn');
+    btn.disabled = true; btn.textContent = 'Registrando...';
+    const nowMin = nowMinutes();
+    const { data, error } = await sb.from('bookings').insert({
+        site_key: state.currentSite, tag: 'RETIRADA-MATERIAL', area_code: 'ALMOXARIFADO', date: todayStr(),
+        start_min: nowMin, end_min: Math.min(nowMin + 1, 23 * 60 + 59), type: LOST_HOURS_TYPE,
+        emergencial: false, om: null, justification: v.collaborator ? `Colaborador: ${v.collaborator}` : 'Horas Perdidas',
+        operator_id: state.currentUser.id, operator_label: `${activeProfile().user} (${state.profileKey})`,
+        closure_status: 'PENDENTE_VALE', closure_reason: v.justification, closed_at: new Date().toISOString(),
+        closed_by: state.currentUser.id, lost_hours: v.hours,
+        receiver_name: v.receiverName || null, receiver_registration: v.receiverReg || null
+    }).select().single();
+    if (error) {
+        toast('Erro ao registrar: ' + error.message, 'error');
+        btn.disabled = false; btn.textContent = 'Registrar';
+        return;
+    }
+    const booking = mapBookingFromDb(data);
+    if (v.photoFile) {
+        const url = await uploadClosurePhoto(booking, v.photoFile, 'evidencia', false);
+        if (url) {
+            const extra = [{ tipo: 'evidencia', url }];
+            await sb.from('bookings').update({ closure_photos_extra: extra }).eq('id', booking.id);
+            booking.closurePhotosExtra = extra;
+        }
+    }
+    state.bookings.push(booking);
+    await addAuditEntry({
+        tag: booking.tag, acao: LOST_HOURS_TYPE, justificativa: v.justification, dataHora: booking.createdAt,
+        agendamentoData: booking.date, agendamentoHorario: `${minutesToTime(booking.startMin)}–${minutesToTime(booking.endMin)}`
+    });
+    toast('Hora perdida registrada com sucesso.');
+    renderMobileEquipList();
+}
+
+// Sem sinal: guarda tudo (incluindo a foto, como File cru -- sobrevive ao
+// clone estruturado do IndexedDB, igual já acontece na fila de fechamento)
+// numa entrada própria da fila offline, sincronizada em trySyncOfflineQueue.
+async function queueLostHoursOffline(v) {
+    const tempId = 'offline_lh_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
+    const nowMin = nowMinutes();
+    const booking = {
+        id: tempId, tag: 'RETIRADA-MATERIAL', area: 'ALMOXARIFADO', date: todayStr(),
+        startMin: nowMin, endMin: Math.min(nowMin + 1, 23 * 60 + 59), type: LOST_HOURS_TYPE,
+        emergencial: false, om: null, justification: v.collaborator ? `Colaborador: ${v.collaborator}` : 'Horas Perdidas',
+        operatorId: state.currentUser.id, operator: `${activeProfile().user} (${state.profileKey})`,
+        createdAt: new Date().toISOString(), closureStatus: 'PENDENTE_VALE', closureReason: v.justification,
+        closedAt: new Date().toISOString(), lostHours: v.hours, receiverName: v.receiverName || null,
+        receiverRegistration: v.receiverReg || null, closurePhotoBefore: null, closurePhotoAfter: null,
+        closurePhotosExtra: [], pendingOfflineSync: true,
+    };
+    state.bookings.push(booking);
+    await offlineQueueAdd({
+        id: tempId + '_lh', kind: 'lost_hours', bookingId: tempId,
+        hours: v.hours, collaborator: v.collaborator, receiverName: v.receiverName, receiverReg: v.receiverReg,
+        justification: v.justification, photoFile: v.photoFile || null, createdAt: Date.now(),
+    });
+    toast('Sem conexão -- guardado no celular. Será enviado sozinho quando a internet voltar.', 'warn');
+    renderMobileEquipList();
 }
 
 function renderMobileCloseForm(booking) {
@@ -3709,6 +4001,7 @@ async function logout() {
     document.getElementById('mobile-encarregado-screen').style.display = 'none';
 }
 document.getElementById('btn-mobile-logout').addEventListener('click', logout);
+document.getElementById('btn-mobile-lost-hours').addEventListener('click', renderMobileLostHoursForm);
 document.getElementById('btn-logout').addEventListener('click', logout);
 
 const LS_REMEMBER_EMAIL = 'terravia_remember_email';
@@ -4035,6 +4328,8 @@ const WEEKDAY_NAMES = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sext
 function renderWeekGrid() {
     const cancelDayBtn = document.getElementById('btn-cancel-day');
     if (cancelDayBtn) cancelDayBtn.style.display = state.profileKey === 'ADMIN' ? '' : 'none';
+    const lostHoursWrap = document.getElementById('btn-lost-hours-wrap');
+    if (lostHoursWrap) lostHoursWrap.style.display = canRegisterLostHours() ? '' : 'none';
     const tag = state.agendaTag;
     const grid = document.getElementById('week-grid');
     if (!tag) {
@@ -4195,13 +4490,15 @@ document.getElementById('btn-apply-filter').addEventListener('click', () => {
     state.reportFilter.from = document.getElementById('report-from').value || null;
     state.reportFilter.to = document.getElementById('report-to').value || null;
     state.reportFilter.username = document.getElementById('report-user').value || null;
+    state.reportFilter.isExtra = document.getElementById('report-extra-filter').checked;
     renderCharts();
 });
 document.getElementById('btn-clear-filter').addEventListener('click', () => {
     document.getElementById('report-from').value = '';
     document.getElementById('report-to').value = '';
     document.getElementById('report-user').value = '';
-    state.reportFilter = { from: null, to: null, username: null };
+    document.getElementById('report-extra-filter').checked = false;
+    state.reportFilter = { from: null, to: null, username: null, isExtra: false };
     renderCharts();
 });
 
@@ -4228,8 +4525,13 @@ function sodexoCleaningBreakdown(periodo) {
     // PENDENTE_VALE, respectivamente. AGUARDANDO_APROVACAO_VALE fica de
     // fora de propósito: não conta nem a favor nem contra até o Cliente
     // Vale decidir.
+    // Atividades extras (Área J ou marcadas manualmente) nunca entram no
+    // total "programado" -- só contam como bônus à parte (atendidoExtra,
+    // abaixo) quando concluídas com sucesso. É isso que permite a nota
+    // passar de 100% sem inflar o denominador.
     const fechados = state.bookings.filter(b => {
         if (b.type !== SODEXO_CLEANING_TYPE) return false;
+        if (b.isExtra) return false;
         if (!['ENCERRADA', 'PENDENTE_VALE', 'PENDENTE_SODEXO', 'APROVADO_VALE', 'REPROVADO_VALE', 'PENDENCIA_VALE'].includes(b.closureStatus)) return false;
         if (from && b.date < from) return false;
         if (to && b.date > to) return false;
@@ -4240,9 +4542,18 @@ function sodexoCleaningBreakdown(periodo) {
     const atendido = fechados.filter(b => b.closureStatus === 'ENCERRADA' || b.closureStatus === 'APROVADO_VALE').length;
     const pendenteVale = fechados.filter(b => b.closureStatus === 'PENDENTE_VALE' || b.closureStatus === 'PENDENCIA_VALE').length;
     const pendenteSodexo = fechados.filter(b => b.closureStatus === 'PENDENTE_SODEXO' || b.closureStatus === 'REPROVADO_VALE').length;
+    // Extra concluída só soma (nunca desconta) -- uma extra que falhou
+    // (Pendente Vale/Sodexo) simplesmente não gera bônus nenhum.
+    const atendidoExtra = state.bookings.filter(b => {
+        if (b.type !== SODEXO_CLEANING_TYPE || !b.isExtra) return false;
+        if (!['ENCERRADA', 'APROVADO_VALE'].includes(b.closureStatus)) return false;
+        if (from && b.date < from) return false;
+        if (to && b.date > to) return false;
+        return true;
+    }).length;
     const pct = n => Math.round((n / total) * 1000) / 10;
     return {
-        total, atendido, pendenteVale, pendenteSodexo,
+        total, atendido, pendenteVale, pendenteSodexo, atendidoExtra,
         pctAtendido: pct(atendido), pctPendenteVale: pct(pendenteVale), pctPendenteSodexo: pct(pendenteSodexo),
     };
 }
@@ -4250,10 +4561,13 @@ function sodexoCleaningBreakdown(periodo) {
 // A nota "de verdade" da Sodexo: começa em 100% e só desconta quando a
 // pendência é responsabilidade da própria Sodexo. Pendente Vale (e
 // Encerrada, claro) continuam contando como cumprido -- diferente de
-// `pctAtendido`, que só considera "cumprido" o que foi Encerrada.
+// `pctAtendido`, que só considera "cumprido" o que foi Encerrada. Extras
+// concluídas (atendidoExtra) somam por cima, podendo passar de 100% -- sem
+// nenhuma extra no período, atendidoExtra é 0 e a nota fica idêntica à de
+// antes dessa mudança.
 function sodexoAdherenceScore(b) {
     if (!b || !b.total) return null;
-    return Math.round(((b.total - b.pendenteSodexo) / b.total) * 1000) / 10;
+    return Math.round(((b.total - b.pendenteSodexo + (b.atendidoExtra || 0)) / b.total) * 1000) / 10;
 }
 function renderSodexoScore() {
     const notaEl = document.getElementById('kpi-sodexo-nota');
@@ -4300,6 +4614,7 @@ function renderSodexoScore() {
 }
 
 let chartTop5 = null, chartTop5Limpeza = null, chartArea = null, chartAderenciaHistorico = null;
+let chartHorasExtras = null, chartHorasPerdidas = null;
 
 // O layout de impressão é bem diferente do da tela (a sidebar some, a
 // largura disponível muda) -- os gráficos são criados/dimensionados
@@ -4307,7 +4622,7 @@ let chartTop5 = null, chartTop5Limpeza = null, chartArea = null, chartAderenciaH
 // entra no modo impressão de verdade (evento beforeprint), eles saem com
 // o tamanho calculado pra tela normal: distorcidos, vazando da caixa no PDF.
 window.addEventListener('beforeprint', () => {
-    [chartStatus, chartTop5, chartTop5Limpeza, chartArea, chartAderenciaHistorico].forEach(c => { if (c) c.resize(); });
+    [chartStatus, chartTop5, chartTop5Limpeza, chartArea, chartAderenciaHistorico, chartHorasExtras, chartHorasPerdidas].forEach(c => { if (c) c.resize(); });
 });
 
 const CLOSURE_STATUS_LABELS = {
@@ -4364,13 +4679,14 @@ function renderClosedBookings() {
     renderClosedBookingsSummary();
     const tbody = document.getElementById('closed-bookings-tbody');
     if (!tbody) return;
-    const { from, to } = state.reportFilter;
+    const { from, to, isExtra } = state.reportFilter;
     const isAdmin = state.profileKey === 'ADMIN';
     const statusFilterEl = document.getElementById('closed-status-filter');
     const statusFilter = statusFilterEl ? statusFilterEl.value : 'ALL';
     const rows = state.bookings.filter(b => {
         if (!b.closureStatus) return false;
         if (statusFilter !== 'ALL' && b.closureStatus !== statusFilter) return false;
+        if (isExtra && !b.isExtra) return false;
         if (from && b.date < from) return false;
         if (to && b.date > to) return false;
         return true;
@@ -4383,7 +4699,7 @@ function renderClosedBookings() {
             <td><span class="tag-chip">${escapeHtml(b.tag)}</span></td>
             <td>${escapeHtml(AREA_LABEL[b.area] || b.area || '')}</td>
             <td>${formatDateBR(b.date)}</td>
-            <td>${escapeHtml(b.type)}</td>
+            <td>${escapeHtml(b.type)}${b.isExtra ? ' <span class="tag-chip" style="background:rgba(245,158,11,0.15); color:#b45309;">Extra</span>' : ''}</td>
             <td>${escapeHtml(CLOSURE_STATUS_LABELS[b.closureStatus] || b.closureStatus)}</td>
             <td>${escapeHtml(b.closureReason || '—')}</td>
             <td>
@@ -4397,6 +4713,99 @@ function renderClosedBookings() {
     }</td></tr>`;
 }
 document.getElementById('closed-status-filter').addEventListener('change', renderClosedBookings);
+
+// Mesma resolução de período usada em sodexoCleaningBreakdown (filtro
+// explícito > período de medição atual) -- reaproveitada aqui pra manter o
+// KPI de Horas Perdidas coerente com o resto da tela de Relatórios.
+function currentReportPeriod() {
+    if (state.reportFilter.from || state.reportFilter.to) return { from: state.reportFilter.from, to: state.reportFilter.to };
+    return periodoMedicaoAtual();
+}
+
+function renderLostHoursKpi() {
+    const el = document.getElementById('kpi-lost-hours');
+    if (!el) return;
+    const sub = document.getElementById('kpi-lost-hours-sub');
+    const { from, to } = currentReportPeriod();
+    const total = state.bookings
+        .filter(b => b.type === LOST_HOURS_TYPE && (!from || b.date >= from) && (!to || b.date <= to))
+        .reduce((sum, b) => sum + (b.lostHours || 0), 0);
+    el.textContent = `${total.toFixed(1)}h`;
+    sub.textContent = total > 0 ? 'Tempo ocioso aguardando material no almoxarifado' : 'Nenhum registro no período selecionado';
+}
+
+// Soma de horas de atividades extras concluídas (Área J ou marcadas
+// manualmente) por período de medição -- linha do tempo pra mostrar ao
+// cliente o quanto de atendimento extra foi feito além do programado.
+function renderHorasExtrasChart() {
+    const ctx = document.getElementById('chart-horas-extras');
+    if (!ctx) return;
+    const periodos = lastNMeasurementPeriods(6);
+    const labels = periodos.map(p => p.label);
+    const horas = periodos.map(p => {
+        const total = state.bookings
+            .filter(b => b.type === SODEXO_CLEANING_TYPE && b.isExtra
+                && ['ENCERRADA', 'APROVADO_VALE'].includes(b.closureStatus)
+                && b.date >= p.from && b.date <= p.to)
+            .reduce((sum, b) => sum + (b.endMin - b.startMin) / 60, 0);
+        return Math.round(total * 10) / 10;
+    });
+    if (chartHorasExtras) chartHorasExtras.destroy();
+    chartHorasExtras = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels,
+            datasets: [{
+                label: 'Horas Extras', data: horas,
+                borderColor: '#f59e0b', backgroundColor: 'rgba(245,158,11,0.12)',
+                fill: true, tension: 0.3, pointRadius: 4, pointBackgroundColor: '#f59e0b',
+            }],
+        },
+        options: {
+            responsive: true, maintainAspectRatio: false,
+            plugins: { legend: { display: false }, tooltip: { callbacks: { label: (ctx) => `${ctx.parsed.y}h` } } },
+            scales: {
+                x: { ticks: { color: '#8a99ad' }, grid: { color: '#2b394e' } },
+                y: { min: 0, ticks: { color: '#8a99ad', callback: (v) => v + 'h' }, grid: { color: '#2b394e' } },
+            },
+        },
+    });
+}
+
+// Soma de horas perdidas (almoxarifado) por período de medição -- indicador
+// paralelo, nunca entra na nota de aderência de limpeza.
+function renderHorasPerdidasChart() {
+    const ctx = document.getElementById('chart-horas-perdidas');
+    if (!ctx) return;
+    const periodos = lastNMeasurementPeriods(6);
+    const labels = periodos.map(p => p.label);
+    const horas = periodos.map(p => {
+        const total = state.bookings
+            .filter(b => b.type === LOST_HOURS_TYPE && b.date >= p.from && b.date <= p.to)
+            .reduce((sum, b) => sum + (b.lostHours || 0), 0);
+        return Math.round(total * 10) / 10;
+    });
+    if (chartHorasPerdidas) chartHorasPerdidas.destroy();
+    chartHorasPerdidas = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels,
+            datasets: [{
+                label: 'Horas Perdidas', data: horas,
+                borderColor: '#ef4444', backgroundColor: 'rgba(239,68,68,0.12)',
+                fill: true, tension: 0.3, pointRadius: 4, pointBackgroundColor: '#ef4444',
+            }],
+        },
+        options: {
+            responsive: true, maintainAspectRatio: false,
+            plugins: { legend: { display: false }, tooltip: { callbacks: { label: (ctx) => `${ctx.parsed.y}h` } } },
+            scales: {
+                x: { ticks: { color: '#8a99ad' }, grid: { color: '#2b394e' } },
+                y: { min: 0, ticks: { color: '#8a99ad', callback: (v) => v + 'h' }, grid: { color: '#2b394e' } },
+            },
+        },
+    });
+}
 
 // Nota de aderência mês a mês, não só do período filtrado -- de um número
 // isolado não dá pra saber se a Sodexo está melhorando ou piorando; de uma
@@ -4430,7 +4839,10 @@ function renderAderenciaHistoricoChart() {
             },
             scales: {
                 x: { ticks: { color: '#8a99ad' }, grid: { color: '#2b394e' } },
-                y: { min: 0, max: 100, ticks: { color: '#8a99ad', callback: (v) => v + '%' }, grid: { color: '#2b394e' } },
+                // Sem "max" fixo -- atividades extras (ver EXTRA_AREA_CODE)
+                // podem empurrar a nota acima de 100%, e o eixo precisa
+                // acomodar isso em vez de cortar a linha no topo.
+                y: { min: 0, ticks: { color: '#8a99ad', callback: (v) => v + '%' }, grid: { color: '#2b394e' } },
             },
         },
     });
@@ -4440,6 +4852,9 @@ function renderCharts() {
     renderSodexoScore();
     renderClosedBookings();
     renderAderenciaHistoricoChart();
+    renderLostHoursKpi();
+    renderHorasExtrasChart();
+    renderHorasPerdidasChart();
     renderBookCleanupAlert();
     const activeLog = getFilteredAuditLog().filter(a => TYPE_STATUS[a.acao] !== undefined);
 

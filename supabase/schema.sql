@@ -146,6 +146,20 @@ alter table public.bookings add column if not exists vale_decided_by uuid refere
 -- continuam existindo e sem uso alterado.
 alter table public.bookings add column if not exists closure_photos_extra jsonb not null default '[]'::jsonb;
 
+-- ============================================================
+-- FÁBRICA MATERIAIS / VIGA MATERIAIS — atividades extras + Horas Perdidas
+-- `is_extra`: atividade extra (Área J automaticamente, ou marcada manualmente
+-- em qualquer área) -- não entra no total "programado" da nota de aderência,
+-- só soma como bônus quando concluída (pode passar de 100%).
+-- `lost_hours`/`receiver_name`/`receiver_registration`: só preenchidos em
+-- bookings do tipo "Horas Perdidas" (registro de tempo ocioso aguardando
+-- material no almoxarifado) -- indicador paralelo, fora da nota de limpeza.
+-- ============================================================
+alter table public.bookings add column if not exists is_extra boolean not null default false;
+alter table public.bookings add column if not exists lost_hours numeric;
+alter table public.bookings add column if not exists receiver_name text;
+alter table public.bookings add column if not exists receiver_registration text;
+
 -- Recria o check de closure_status pra incluir os 4 status novos do
 -- workflow S11D, sem perder nenhum dos 5 originais.
 do $$
@@ -501,11 +515,11 @@ create policy "bookings_insert" on public.bookings for insert
     and (
       public.is_admin()
       or (public.current_role_key() = 'PCM' and type in ('Manutenção Preventiva','Manutenção Corretiva'))
-      or (public.current_role_key() = 'PCO' and type in ('Limpeza Sodexo','Limpeza Mecanizada'))
-      or (public.current_role_key() = 'ENCARREGADO' and type in ('Limpeza Sodexo','Limpeza Mecanizada'))
-      or (public.current_role_key() = 'PCM_PCO' and type in ('Manutenção Preventiva','Manutenção Corretiva','Limpeza Sodexo','Limpeza Mecanizada'))
+      or (public.current_role_key() = 'PCO' and type in ('Limpeza Sodexo','Limpeza Mecanizada','Horas Perdidas'))
+      or (public.current_role_key() = 'ENCARREGADO' and type in ('Limpeza Sodexo','Limpeza Mecanizada','Horas Perdidas'))
+      or (public.current_role_key() = 'PCM_PCO' and type in ('Manutenção Preventiva','Manutenção Corretiva','Limpeza Sodexo','Limpeza Mecanizada','Horas Perdidas'))
       -- Técnico de Planejamento e GU (S11D) programa as limpezas do site.
-      or (public.current_role_key() = 'TECNICO_PLANEJAMENTO' and type in ('Limpeza Sodexo','Limpeza Mecanizada'))
+      or (public.current_role_key() = 'TECNICO_PLANEJAMENTO' and type in ('Limpeza Sodexo','Limpeza Mecanizada','Horas Perdidas'))
     )
   );
 drop policy if exists "bookings_delete" on public.bookings;
@@ -515,13 +529,13 @@ create policy "bookings_delete" on public.bookings for delete
     and (
       public.is_admin()
       or (public.current_role_key() = 'PCM' and type in ('Manutenção Preventiva','Manutenção Corretiva'))
-      or (public.current_role_key() = 'PCO' and type in ('Limpeza Sodexo','Limpeza Mecanizada'))
+      or (public.current_role_key() = 'PCO' and type in ('Limpeza Sodexo','Limpeza Mecanizada','Horas Perdidas'))
       -- ENCARREGADO só exclui o PRÓPRIO lançamento (autoatendimento de OM
       -- duplicada no app mobile) -- diferente de PCM/PCO/Admin, que podem
       -- excluir qualquer um do tipo que administram.
-      or (public.current_role_key() = 'ENCARREGADO' and type in ('Limpeza Sodexo','Limpeza Mecanizada') and operator_id = auth.uid())
-      or (public.current_role_key() = 'PCM_PCO' and type in ('Manutenção Preventiva','Manutenção Corretiva','Limpeza Sodexo','Limpeza Mecanizada'))
-      or (public.current_role_key() = 'TECNICO_PLANEJAMENTO' and type in ('Limpeza Sodexo','Limpeza Mecanizada'))
+      or (public.current_role_key() = 'ENCARREGADO' and type in ('Limpeza Sodexo','Limpeza Mecanizada','Horas Perdidas') and operator_id = auth.uid())
+      or (public.current_role_key() = 'PCM_PCO' and type in ('Manutenção Preventiva','Manutenção Corretiva','Limpeza Sodexo','Limpeza Mecanizada','Horas Perdidas'))
+      or (public.current_role_key() = 'TECNICO_PLANEJAMENTO' and type in ('Limpeza Sodexo','Limpeza Mecanizada','Horas Perdidas'))
     )
   );
 drop policy if exists "bookings_update" on public.bookings;
@@ -664,6 +678,28 @@ union all
 select 'MUTUCA', 'ITMS', unnest(array[
   '65EM01','65TC01','65TC02','65TC03','65TC04A','65TC05','65TC06','65TC07'
 ])
+on conflict (site_key, tag) do nothing;
+
+-- ============================================================
+-- DADOS INICIAIS: áreas da Fábrica Materiais (Área J + Almoxarifado
+-- inclusos -- cada área precisa de pelo menos 1 equipamento/tag pra
+-- aparecer clicável na grade semanal, por isso já nascem com uma tag
+-- genérica cada). "Viga Materiais" fica de fora de propósito -- o cadastro
+-- de áreas dela é feito manualmente pelo Admin, pela tela normal.
+-- CONFIRA a key real do site antes de rodar (pode não ser 'F_BRICA'):
+--   select key, label from sites;
+-- ============================================================
+insert into public.areas (site_key, code, label) values
+  ('F_BRICA','ELETRICA','Elétrica'), ('F_BRICA','INSTRUMENTACAO','Instrumentação'),
+  ('F_BRICA','PONTE_ROLANTE','Ponte Rolante'), ('F_BRICA','ENGESCOM','Engescom'),
+  ('F_BRICA','HIDRAULICA_ELETRICA','Hidráulica Elétrica'), ('F_BRICA','USINA','Usina'),
+  ('F_BRICA','EXTERNOS','Externos'), ('F_BRICA','BARRAGEM','Barragem'),
+  ('F_BRICA','HIDRAULICA_MECANICA','Hidráulica Mecânica'), ('F_BRICA','LUBRIFICACAO','Lubrificação'),
+  ('F_BRICA','CEP','CEP'), ('F_BRICA','FM2C','FM2C'),
+  ('F_BRICA','J','Área J'), ('F_BRICA','ALMOXARIFADO','Almoxarifado')
+on conflict (site_key, code) do nothing;
+insert into public.equipment (site_key, area_code, tag) values
+  ('F_BRICA','J','EXTRA-01'), ('F_BRICA','ALMOXARIFADO','RETIRADA-MATERIAL')
 on conflict (site_key, tag) do nothing;
 
 -- ============================================================
