@@ -1111,7 +1111,7 @@ body.book-preview-mode .book-preview-toolbar {
                     <label>Usuário (Admin Master)</label>
                     <select id="report-user"><option value="">Todos os Usuários</option></select>
                 </div>
-                <div class="agenda-field">
+                <div class="agenda-field" id="report-extra-filter-wrap" style="display:none;">
                     <label>&nbsp;</label>
                     <label class="m-checkbox" style="display:flex; align-items:center; gap:6px;"><input type="checkbox" id="report-extra-filter" style="width:auto;"> Só atividades extras</label>
                 </div>
@@ -1167,7 +1167,7 @@ body.book-preview-mode .book-preview-toolbar {
                 <div class="kpi-value" id="kpi-sodexo-pendente">—</div>
                 <div class="kpi-sub" id="kpi-sodexo-pendente-sub">Desconta da nota de Limpeza</div>
             </div>
-            <div class="kpi-card" style="--accent: #f59e0b;">
+            <div class="kpi-card" id="kpi-lost-hours-card" style="--accent: #f59e0b; display:none;">
                 <div class="kpi-label">Horas Perdidas (Período)</div>
                 <div class="kpi-value" id="kpi-lost-hours">—</div>
                 <div class="kpi-sub" id="kpi-lost-hours-sub">Tempo ocioso aguardando material no almoxarifado</div>
@@ -1192,11 +1192,11 @@ body.book-preview-mode .book-preview-toolbar {
                 <h3>Volume de Atividades por Área (Aderência)</h3>
                 <canvas id="chart-area"></canvas>
             </div>
-            <div class="chart-box">
+            <div class="chart-box" id="chart-box-horas-extras" style="display:none;">
                 <h3>Horas Extras — Evolução por Período</h3>
                 <canvas id="chart-horas-extras"></canvas>
             </div>
-            <div class="chart-box">
+            <div class="chart-box" id="chart-box-horas-perdidas" style="display:none;">
                 <h3>Horas Perdidas — Evolução por Período</h3>
                 <canvas id="chart-horas-perdidas"></canvas>
             </div>
@@ -1826,15 +1826,24 @@ function isClientApprovalSite(siteKey) {
     const k = siteKey || state.currentSite;
     return !!(SITE_CONFIG[k] && SITE_CONFIG[k].clientApprovalWorkflow);
 }
+// Contrato de Controle de Materiais (Armazém) -- Fábrica Materiais/Viga
+// Materiais, sistemática própria sem nenhuma relação com o S11D. Controla
+// se "Atividade Extra" (Área J + checkbox) e "Registrar Hora Perdida"
+// aparecem nesse site -- sem isso vazaria pra sites de limpeza comuns
+// (Mutuca, S11D) que não têm nada a ver com esse contrato.
+function isMaterialsContractSite(siteKey) {
+    const k = siteKey || state.currentSite;
+    return !!(SITE_CONFIG[k] && SITE_CONFIG[k].materialsContract);
+}
 
 async function loadSites() {
-    const { data, error } = await sb.from('sites').select('key, label, client_approval_workflow').order('label');
+    const { data, error } = await sb.from('sites').select('key, label, client_approval_workflow, materials_contract').order('label');
     if (error) { toast('Erro ao carregar sites: ' + error.message, 'error'); SITES = {}; SITE_CONFIG = {}; return { error }; }
     SITES = {};
     SITE_CONFIG = {};
     (data || []).forEach(s => {
         SITES[s.key] = s.label;
-        SITE_CONFIG[s.key] = { clientApprovalWorkflow: !!s.client_approval_workflow };
+        SITE_CONFIG[s.key] = { clientApprovalWorkflow: !!s.client_approval_workflow, materialsContract: !!s.materials_contract };
     });
     return { error: null };
 }
@@ -1930,6 +1939,14 @@ function openAddSiteModal() {
                 Ative só se esse site tiver sistemática própria: sem OM, encarregado encerra com fotos mas fica
                 aguardando o cliente aprovar/reprovar/marcar pendência antes de contar na nota.
             </div>
+            <div class="m-field" style="margin-top:10px; display:flex; align-items:center; gap:8px;">
+                <input type="checkbox" id="new-site-materials-contract" style="width:auto;">
+                <label for="new-site-materials-contract" style="margin:0; cursor:pointer;">Contrato de Controle de Materiais (Armazém)</label>
+            </div>
+            <div style="font-size:11.5px; color:var(--text-secondary); margin-top:4px;">
+                Ative só pra sites de sistemática própria de armazém (ex: Fábrica Materiais, Viga Materiais) --
+                libera "Atividade Extra" (Área J) e "Registrar Hora Perdida" só nesse site, sem vazar pros sites de limpeza comuns.
+            </div>
         </div>
         <div class="modal-footer">
             <button class="btn-secondary" onclick="closeModal()">Cancelar</button>
@@ -1938,19 +1955,19 @@ function openAddSiteModal() {
     `);
 }
 function confirmAddSite() {
-    addSite(document.getElementById('new-site-name').value, document.getElementById('new-site-client-approval').checked);
+    addSite(document.getElementById('new-site-name').value, document.getElementById('new-site-client-approval').checked, document.getElementById('new-site-materials-contract').checked);
 }
 
-async function addSite(name, clientApprovalWorkflow) {
+async function addSite(name, clientApprovalWorkflow, materialsContract) {
     if (state.profileKey !== 'ADMIN') { showAccessDenied('Apenas o Admin Master pode criar novos sites.'); return; }
     const trimmed = name.trim();
     const key = trimmed.toUpperCase().replace(/[^A-Z0-9_]/g, '_').replace(/_+/g, '_');
     if (!trimmed || !key) { toast('Informe um nome válido para o site.', 'error'); return; }
     if (SITES[key]) { toast('Já existe um site com esse nome.', 'error'); return; }
-    const { error } = await sb.from('sites').insert({ key, label: trimmed, client_approval_workflow: !!clientApprovalWorkflow });
+    const { error } = await sb.from('sites').insert({ key, label: trimmed, client_approval_workflow: !!clientApprovalWorkflow, materials_contract: !!materialsContract });
     if (error) { toast('Erro ao criar site: ' + error.message, 'error'); return; }
     SITES[key] = trimmed;
-    SITE_CONFIG[key] = { clientApprovalWorkflow: !!clientApprovalWorkflow };
+    SITE_CONFIG[key] = { clientApprovalWorkflow: !!clientApprovalWorkflow, materialsContract: !!materialsContract };
     renderSiteSelect();
     closeModal();
     toast(`Site "${trimmed}" criado. Selecione-o para cadastrar áreas e equipamentos.`);
@@ -1963,6 +1980,7 @@ function openSiteConfigModal(key) {
     const label = SITES[key];
     if (!label) return;
     const current = isClientApprovalSite(key);
+    const currentMaterials = isMaterialsContractSite(key);
     openModal(`
         <div class="modal-header"><h3>Configurar Site — ${escapeHtml(label)}</h3><button class="modal-close" onclick="closeModal()">&times;</button></div>
         <div class="modal-body">
@@ -1975,6 +1993,14 @@ function openSiteConfigModal(key) {
                 Ative só se esse site tiver sistemática própria: sem OM, encarregado encerra com fotos mas fica
                 aguardando o cliente aprovar/reprovar/marcar pendência antes de contar na nota.
             </div>
+            <div class="m-field" style="display:flex; align-items:center; gap:8px; margin-top:10px;">
+                <input type="checkbox" id="site-config-materials-contract" style="width:auto;" ${currentMaterials ? 'checked' : ''}>
+                <label for="site-config-materials-contract" style="margin:0; cursor:pointer;">Contrato de Controle de Materiais (Armazém)</label>
+            </div>
+            <div style="font-size:11.5px; color:var(--text-secondary); margin-top:4px;">
+                Ative só pra sites de sistemática própria de armazém (ex: Fábrica Materiais, Viga Materiais) --
+                libera "Atividade Extra" (Área J) e "Registrar Hora Perdida" só nesse site.
+            </div>
         </div>
         <div class="modal-footer">
             <button class="btn-secondary" onclick="closeModal()">Cancelar</button>
@@ -1986,12 +2012,13 @@ async function saveSiteConfig(key) {
     const newLabel = document.getElementById('site-config-name').value.trim();
     if (!newLabel) { toast('Informe um nome válido para o site.', 'error'); return; }
     const checked = document.getElementById('site-config-client-approval').checked;
+    const materialsChecked = document.getElementById('site-config-materials-contract').checked;
     // Só o rótulo (label) muda -- a key interna do site (usada em áreas,
     // equipamentos, agendamentos, etc.) nunca é tocada aqui.
-    const { error } = await sb.from('sites').update({ label: newLabel, client_approval_workflow: checked }).eq('key', key);
+    const { error } = await sb.from('sites').update({ label: newLabel, client_approval_workflow: checked, materials_contract: materialsChecked }).eq('key', key);
     if (error) { toast('Erro ao salvar configuração do site: ' + error.message, 'error'); return; }
     SITES[key] = newLabel;
-    SITE_CONFIG[key] = { clientApprovalWorkflow: checked };
+    SITE_CONFIG[key] = { clientApprovalWorkflow: checked, materialsContract: materialsChecked };
     closeModal();
     toast(`Configuração de "${newLabel}" salva.`);
     renderSiteSelect();
@@ -2169,9 +2196,9 @@ function openBookingModal(tag, dateStr, startHour) {
             <div class="m-field" id="bk-emergencial-wrap" style="display:none;">
                 <label class="m-checkbox"><input type="checkbox" id="bk-emergencial" style="width:auto;"> Corretiva emergencial (marca como crítico)</label>
             </div>
-            <div class="m-field" id="bk-extra-wrap">
+            ${isMaterialsContractSite() ? `<div class="m-field" id="bk-extra-wrap">
                 <label class="m-checkbox"><input type="checkbox" id="bk-extra" style="width:auto;" ${areaOf(tag) === EXTRA_AREA_CODE ? 'checked disabled' : ''}> Atividade Extra (não desconta da OM, soma a mais na nota quando concluída -- OM opcional)</label>
-            </div>
+            </div>` : ''}
             <div class="m-field"><label>Justificativa Técnica *</label><textarea id="bk-just" rows="3" maxlength="200" placeholder="Ex: Troca de correia, Inspeção preventiva, Lavagem de canais..."></textarea></div>
         </div>
         <div class="modal-footer">
@@ -2190,7 +2217,7 @@ async function submitBooking(tag) {
     const startStr = document.getElementById('bk-start').value;
     const endStr = document.getElementById('bk-end').value;
     const type = document.getElementById('bk-type').value;
-    const isExtra = areaOf(tag) === EXTRA_AREA_CODE || document.getElementById('bk-extra').checked;
+    const isExtra = isMaterialsContractSite() && (areaOf(tag) === EXTRA_AREA_CODE || (document.getElementById('bk-extra') && document.getElementById('bk-extra').checked));
     const omRequired = !isClientApprovalSite() && !isExtra;
     const omRaw = document.getElementById('bk-om').value.trim();
     const om = omRequired ? omRaw : (omRaw || null);
@@ -2234,7 +2261,7 @@ async function submitBooking(tag) {
 // nunca da Sodexo). Indicador paralelo -- nunca entra na nota de limpeza
 // (sodexoCleaningBreakdown só considera SODEXO_CLEANING_TYPE).
 function openLostHoursModal() {
-    if (!canRegisterLostHours()) { showAccessDenied('Perfil sem privilégios para registrar Hora Perdida.'); return; }
+    if (!canRegisterLostHours() || !isMaterialsContractSite()) { showAccessDenied('Registro de Hora Perdida só está disponível em sites com Contrato de Controle de Materiais.'); return; }
     openModal(`
         <div class="modal-header"><h3>Registrar Hora Perdida</h3><button class="modal-close" onclick="closeModal()">&times;</button></div>
         <div class="modal-body">
@@ -3236,7 +3263,7 @@ let mobileSelectedTag = null;
 function renderMobileEncarregado() {
     document.getElementById('mobile-site-label').textContent = SITES[state.currentSite] || state.currentSite;
     document.getElementById('mobile-user-label').textContent = activeProfile().user;
-    document.getElementById('btn-mobile-lost-hours').style.display = canRegisterLostHours() ? '' : 'none';
+    document.getElementById('btn-mobile-lost-hours').style.display = (canRegisterLostHours() && isMaterialsContractSite()) ? '' : 'none';
     renderMobileEquipList();
     // Lista já aparece na hora com o que tem em memória -- o flag de "aguardando
     // envio" e a tentativa de sincronizar rodam depois, em segundo plano, e só
@@ -3432,9 +3459,9 @@ function renderMobileNewForm(tag) {
                 <div class="m-field" style="flex:1;"><label>Hora fim *</label><input type="time" id="mobile-new-end" value="${minutesToTime(Math.min(nowMinutes() + 60, 23 * 60 + 59))}"></div>
             </div>
             <div class="m-field" id="mobile-new-om-wrap" style="${isClientApprovalSite() ? 'display:none;' : ''}"><label>Número da OM *</label><input type="text" id="mobile-new-om" inputmode="numeric" maxlength="12" placeholder="Ex: 123456789012"></div>
-            <div class="m-field">
+            ${isMaterialsContractSite() ? `<div class="m-field">
                 <label class="m-checkbox"><input type="checkbox" id="mobile-new-extra" style="width:auto;" ${area === EXTRA_AREA_CODE ? 'checked disabled' : ''}> Atividade Extra (OM opcional, soma a mais na nota quando concluída)</label>
-            </div>
+            </div>` : ''}
             <div class="m-field"><label>Justificativa Técnica *</label><textarea id="mobile-new-just" rows="3" maxlength="200" placeholder="Ex: Limpeza geral, remoção de material..."></textarea></div>
         </div>
         <button type="button" class="btn-primary mobile-submit" id="mobile-new-submit">Criar e Continuar</button>
@@ -3450,7 +3477,7 @@ function validateNewBookingForm(tag) {
     const dateStr = document.getElementById('mobile-new-date').value;
     const startStr = document.getElementById('mobile-new-start').value;
     const endStr = document.getElementById('mobile-new-end').value;
-    const isExtra = areaOf(tag) === EXTRA_AREA_CODE || document.getElementById('mobile-new-extra').checked;
+    const isExtra = isMaterialsContractSite() && (areaOf(tag) === EXTRA_AREA_CODE || (document.getElementById('mobile-new-extra') && document.getElementById('mobile-new-extra').checked));
     const omRequired = !isClientApprovalSite() && !isExtra;
     const omRaw = document.getElementById('mobile-new-om').value.trim();
     const om = omRequired ? omRaw : (omRaw || null);
@@ -4211,6 +4238,8 @@ function onProfileChanged() {
     document.querySelector('[data-view="aprovacoes"]').style.display = canViewValeApprovals() ? 'flex' : 'none';
     const chartBoxManut = document.getElementById('chart-box-manut');
     if (chartBoxManut) chartBoxManut.style.display = canSeeAvailabilityChart() ? 'flex' : 'none';
+    const extraFilterWrap = document.getElementById('report-extra-filter-wrap');
+    if (extraFilterWrap) extraFilterWrap.style.display = isMaterialsContractSite() ? '' : 'none';
     applyEquipTerminology();
     updateImportUiLabels();
     renderSiteSelect();
@@ -4334,7 +4363,7 @@ function renderWeekGrid() {
     const cancelDayBtn = document.getElementById('btn-cancel-day');
     if (cancelDayBtn) cancelDayBtn.style.display = state.profileKey === 'ADMIN' ? '' : 'none';
     const lostHoursWrap = document.getElementById('btn-lost-hours-wrap');
-    if (lostHoursWrap) lostHoursWrap.style.display = canRegisterLostHours() ? '' : 'none';
+    if (lostHoursWrap) lostHoursWrap.style.display = (canRegisterLostHours() && isMaterialsContractSite()) ? '' : 'none';
     const tag = state.agendaTag;
     const grid = document.getElementById('week-grid');
     if (!tag) {
@@ -4728,6 +4757,9 @@ function currentReportPeriod() {
 }
 
 function renderLostHoursKpi() {
+    const card = document.getElementById('kpi-lost-hours-card');
+    if (card) card.style.display = isMaterialsContractSite() ? '' : 'none';
+    if (!isMaterialsContractSite()) return;
     const el = document.getElementById('kpi-lost-hours');
     if (!el) return;
     const sub = document.getElementById('kpi-lost-hours-sub');
@@ -4743,6 +4775,9 @@ function renderLostHoursKpi() {
 // manualmente) por período de medição -- linha do tempo pra mostrar ao
 // cliente o quanto de atendimento extra foi feito além do programado.
 function renderHorasExtrasChart() {
+    const box = document.getElementById('chart-box-horas-extras');
+    if (box) box.style.display = isMaterialsContractSite() ? '' : 'none';
+    if (!isMaterialsContractSite()) return;
     const ctx = document.getElementById('chart-horas-extras');
     if (!ctx) return;
     const periodos = lastNMeasurementPeriods(6);
@@ -4780,6 +4815,9 @@ function renderHorasExtrasChart() {
 // Soma de horas perdidas (almoxarifado) por período de medição -- indicador
 // paralelo, nunca entra na nota de aderência de limpeza.
 function renderHorasPerdidasChart() {
+    const box = document.getElementById('chart-box-horas-perdidas');
+    if (box) box.style.display = isMaterialsContractSite() ? '' : 'none';
+    if (!isMaterialsContractSite()) return;
     const ctx = document.getElementById('chart-horas-perdidas');
     if (!ctx) return;
     const periodos = lastNMeasurementPeriods(6);

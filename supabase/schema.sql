@@ -132,6 +132,17 @@ alter table public.bookings add column if not exists closed_by uuid references p
 -- ============================================================
 alter table public.sites add column if not exists client_approval_workflow boolean not null default false;
 
+-- ============================================================
+-- FÁBRICA MATERIAIS / VIGA MATERIAIS — contrato de Controle de Materiais
+-- (Armazém), sistemática própria e sem nenhuma relação com o S11D: sem
+-- aprovação externa do cliente, com áreas de atendimento próprias. Esse
+-- flag só liga/desliga a UI de "Atividade Extra" (Área J + checkbox) e o
+-- botão "Registrar Hora Perdida" pra não vazar pra sites de limpeza comuns
+-- (Mutuca, S11D) que não têm nada a ver com esse contrato.
+-- ============================================================
+alter table public.sites add column if not exists materials_contract boolean not null default false;
+update public.sites set materials_contract = true where key = 'F_BRICA';
+
 -- m² e R$/m² -- ficam no ATIVO (sub-área, ex: STAFF01), não na área "mãe"
 -- (ex: TAMANDUÁ), já que cada sub-área tem sua própria metragem. Só pra
 -- exibir o valor calculado (m² × R$/m²) da limpeza daquele ativo; não é um
@@ -429,6 +440,25 @@ create policy "companies_select" on public.companies for select
       and key = (auth.jwt() -> 'user_metadata' ->> 'company_key')
     )
   );
+
+-- Sem isso, criar um site novo pela tela ("+ Criar Novo Site") falha com
+-- "new row violates row-level security policy" -- o INSERT vindo do
+-- navegador nunca manda company_key (não é pra confiar em valor vindo do
+-- cliente), e sem um trigger carimbando isso no servidor a política
+-- sites_admin_write (que exige company_key = my_company()) rejeita a linha
+-- por company_key vir nula. Mesmo padrão já usado em stamp_audit_company().
+create or replace function public.stamp_site_company()
+returns trigger language plpgsql security definer as $$
+begin
+  if new.company_key is null then
+    new.company_key := public.my_company();
+  end if;
+  return new;
+end;
+$$;
+drop trigger if exists trg_stamp_site_company on public.sites;
+create trigger trg_stamp_site_company before insert on public.sites
+for each row execute function public.stamp_site_company();
 
 -- SITES: leitura para quem tem acesso; escrita só Admin DA MESMA EMPRESA
 -- do site (nunca de outra).
