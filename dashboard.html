@@ -1122,6 +1122,10 @@ body.book-preview-mode .book-preview-toolbar {
                     <label>&nbsp;</label>
                     <label class="m-checkbox" style="display:flex; align-items:center; gap:6px;"><input type="checkbox" id="report-extra-filter" style="width:auto;"> Só atividades extras</label>
                 </div>
+                <div class="agenda-field" id="report-lost-hours-filter-wrap" style="display:none;">
+                    <label>&nbsp;</label>
+                    <label class="m-checkbox" style="display:flex; align-items:center; gap:6px;"><input type="checkbox" id="report-lost-hours-filter" style="width:auto;"> Só Horas Perdidas</label>
+                </div>
                 <div class="day-nav">
                     <button class="today-btn" id="btn-apply-filter">Aplicar Filtro</button>
                     <button id="btn-clear-filter">Limpar</button>
@@ -1595,7 +1599,7 @@ function initialsOf(name) {
 const state = {
     profileKey: null, currentUser: null, users: [], currentSite: 'MUTUCA',
     currentArea: 'ALL', agendaTag: null, weekStart: getSunday(todayStr()),
-    bookings: [], auditLog: [], reportFilter: { from: null, to: null, username: null },
+    bookings: [], auditLog: [], reportFilter: { from: null, to: null, username: null, isExtra: false, onlyLostHours: false },
     heatmapFilter: { from: null, to: null, equip: null }
 };
 let pendingBookingDate = null;
@@ -1924,7 +1928,7 @@ async function switchSite(newSiteKey) {
     await loadPersisted();
     state.currentArea = 'ALL';
     state.agendaTag = ALL_EQUIP.length ? ALL_EQUIP_TAG : null;
-    state.reportFilter = { from: null, to: null, username: null, isExtra: false };
+    state.reportFilter = { from: null, to: null, username: null, isExtra: false, onlyLostHours: false };
     state.heatmapFilter = { from: null, to: null, equip: null };
     renderSiteSelect();
     onProfileChanged();
@@ -4264,6 +4268,8 @@ function onProfileChanged() {
     if (chartBoxManut) chartBoxManut.style.display = canSeeAvailabilityChart() ? 'flex' : 'none';
     const extraFilterWrap = document.getElementById('report-extra-filter-wrap');
     if (extraFilterWrap) extraFilterWrap.style.display = isMaterialsContractSite() ? '' : 'none';
+    const lostHoursFilterWrap = document.getElementById('report-lost-hours-filter-wrap');
+    if (lostHoursFilterWrap) lostHoursFilterWrap.style.display = isMaterialsContractSite() ? '' : 'none';
     const printBookBtn = document.getElementById('btn-print-book');
     if (printBookBtn) printBookBtn.textContent = isMaterialsContractSite()
         ? 'Gerar BOOK de Aderência (PDF) — Sodexo com evidência de entrega'
@@ -4553,6 +4559,7 @@ document.getElementById('btn-apply-filter').addEventListener('click', () => {
     state.reportFilter.to = document.getElementById('report-to').value || null;
     state.reportFilter.username = document.getElementById('report-user').value || null;
     state.reportFilter.isExtra = document.getElementById('report-extra-filter').checked;
+    state.reportFilter.onlyLostHours = document.getElementById('report-lost-hours-filter').checked;
     renderCharts();
 });
 document.getElementById('btn-clear-filter').addEventListener('click', () => {
@@ -4560,7 +4567,8 @@ document.getElementById('btn-clear-filter').addEventListener('click', () => {
     document.getElementById('report-to').value = '';
     document.getElementById('report-user').value = '';
     document.getElementById('report-extra-filter').checked = false;
-    state.reportFilter = { from: null, to: null, username: null, isExtra: false };
+    document.getElementById('report-lost-hours-filter').checked = false;
+    state.reportFilter = { from: null, to: null, username: null, isExtra: false, onlyLostHours: false };
     renderCharts();
 });
 
@@ -4744,7 +4752,7 @@ function renderClosedBookings() {
     renderClosedBookingsSummary();
     const tbody = document.getElementById('closed-bookings-tbody');
     if (!tbody) return;
-    const { from, to, isExtra } = state.reportFilter;
+    const { from, to, isExtra, onlyLostHours } = state.reportFilter;
     const isAdmin = state.profileKey === 'ADMIN';
     const statusFilterEl = document.getElementById('closed-status-filter');
     const statusFilter = statusFilterEl ? statusFilterEl.value : 'ALL';
@@ -4752,6 +4760,7 @@ function renderClosedBookings() {
         if (!b.closureStatus) return false;
         if (statusFilter !== 'ALL' && b.closureStatus !== statusFilter) return false;
         if (isExtra && !b.isExtra) return false;
+        if (onlyLostHours && b.type !== LOST_HOURS_TYPE) return false;
         if (from && b.date < from) return false;
         if (to && b.date > to) return false;
         return true;
