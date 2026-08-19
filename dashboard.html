@@ -2614,6 +2614,7 @@ function openCloseBookingModal(id) {
                 <div style="font-size:12px; color:var(--text-secondary); margin-top:6px;">Selecione as fotos recebidas do encarregado (ex: salvas do grupo do WhatsApp) — obrigatório para embasar o BOOK/aprovação da Limpeza (Sodexo).</div>
             </div>
             ${isMaterialsContractSite() ? `
+            <div class="m-field"><label>Colaboradores Atuantes</label><input type="text" id="close-collab-text" placeholder="Nome(s), separados por vírgula (opcional)"></div>
             <div class="m-field"><label>Nome de Quem Recebeu</label><input type="text" id="close-receiver-name" placeholder="Opcional"></div>
             <div class="m-field"><label>Matrícula de Quem Recebeu</label><input type="text" id="close-receiver-reg" placeholder="Opcional"></div>` : ''}
         </div>
@@ -2827,6 +2828,13 @@ function validateClosureForm(booking) {
             const c = COLLABORATORS.find(x => x.id === cb.value);
             return c ? { name: c.name, role: c.role } : null;
         }).filter(Boolean);
+    }
+    // Sites de Contrato de Materiais ainda não têm cadastro de Colaboradores
+    // preenchido -- em vez dos checkboxes acima, é uma caixa de texto livre
+    // (nomes separados por vírgula), sempre opcional.
+    const collabTextEl = document.getElementById('close-collab-text');
+    if (collabTextEl && collabTextEl.value.trim()) {
+        collaborators = collabTextEl.value.split(',').map(n => n.trim()).filter(Boolean).map(name => ({ name, role: '' }));
     }
 
     // Uma OM só pode ser encerrada uma vez -- se esse número já aparece em
@@ -3718,6 +3726,7 @@ function renderMobileCloseForm(booking) {
                 </div>
             </div>
             ${isMaterialsContractSite() ? `
+            <div class="m-field"><label>Colaboradores Atuantes</label><input type="text" id="close-collab-text" placeholder="Nome(s), separados por vírgula (opcional)"></div>
             <div class="m-field"><label>Nome de Quem Recebeu</label><input type="text" id="close-receiver-name" placeholder="Opcional"></div>
             <div class="m-field"><label>Matrícula de Quem Recebeu</label><input type="text" id="close-receiver-reg" placeholder="Opcional"></div>` : ''}
         </div>
@@ -4621,9 +4630,19 @@ function sodexoCleaningBreakdown(periodo) {
         if (to && b.date > to) return false;
         return true;
     }).length;
+    // Horas Perdidas -- tempo ocioso aguardando material NUNCA é culpa da
+    // Sodexo (é do armazém/Vale), então cada registro soma bônus igual a
+    // uma extra concluída, mesmo sempre nascendo Pendente Vale (aqui não
+    // existe "falhou": o registro em si já É o fato concluído).
+    const atendidoHorasPerdidas = state.bookings.filter(b => {
+        if (b.type !== LOST_HOURS_TYPE) return false;
+        if (from && b.date < from) return false;
+        if (to && b.date > to) return false;
+        return true;
+    }).length;
     const pct = n => Math.round((n / total) * 1000) / 10;
     return {
-        total, atendido, pendenteVale, pendenteSodexo, atendidoExtra,
+        total, atendido, pendenteVale, pendenteSodexo, atendidoExtra, atendidoHorasPerdidas,
         pctAtendido: pct(atendido), pctPendenteVale: pct(pendenteVale), pctPendenteSodexo: pct(pendenteSodexo),
     };
 }
@@ -4632,12 +4651,12 @@ function sodexoCleaningBreakdown(periodo) {
 // pendência é responsabilidade da própria Sodexo. Pendente Vale (e
 // Encerrada, claro) continuam contando como cumprido -- diferente de
 // `pctAtendido`, que só considera "cumprido" o que foi Encerrada. Extras
-// concluídas (atendidoExtra) somam por cima, podendo passar de 100% -- sem
-// nenhuma extra no período, atendidoExtra é 0 e a nota fica idêntica à de
-// antes dessa mudança.
+// concluídas (atendidoExtra) e Horas Perdidas (atendidoHorasPerdidas) somam
+// por cima, podendo passar de 100% -- sem nenhuma das duas no período, os
+// dois bônus são 0 e a nota fica idêntica à de antes dessa mudança.
 function sodexoAdherenceScore(b) {
     if (!b || !b.total) return null;
-    return Math.round(((b.total - b.pendenteSodexo + (b.atendidoExtra || 0)) / b.total) * 1000) / 10;
+    return Math.round(((b.total - b.pendenteSodexo + (b.atendidoExtra || 0) + (b.atendidoHorasPerdidas || 0)) / b.total) * 1000) / 10;
 }
 function renderSodexoScore() {
     const notaEl = document.getElementById('kpi-sodexo-nota');
@@ -5724,7 +5743,7 @@ document.getElementById('btn-vale-value-clear').addEventListener('click', () => 
 // ficam sem essa parte. Aceita mais de um -- áreas maiores têm 3+ executantes.
 function valeCollaboratorLine(booking) {
     if (!booking.collaborators || !booking.collaborators.length) return '';
-    const nomes = booking.collaborators.map(c => `${escapeHtml(c.name)} (${escapeHtml(c.role || '—')})`).join(', ');
+    const nomes = booking.collaborators.map(c => c.role ? `${escapeHtml(c.name)} (${escapeHtml(c.role)})` : escapeHtml(c.name)).join(', ');
     return ` · Executado por: ${nomes}`;
 }
 
