@@ -1661,7 +1661,7 @@ function applyEquipTerminology() {
     setText('lbl-del-equip-tag', `${tSub} a Excluir`);
     setText('lbl-agenda-equip', t);
     setText('chart-top5-manut-title', `Top 5 ${tp} - Maior Taxa de Indisponibilidade (Manutenção)`);
-    setText('chart-top5-limpeza-title', `Top 5 ${tp} - Maior Volume de Limpeza`);
+    setText('chart-top5-limpeza-title', isMaterialsContractSite() ? 'Top 5 Áreas - Maior Volume de Atendimento' : `Top 5 ${tp} - Maior Volume de Limpeza`);
     setText('lbl-heatmap-equip', t);
     setText('lbl-heatmap-kpi-manut', `${t} com Mais Manutenções`);
     setText('lbl-heatmap-kpi-limpeza', `${t} com Mais Limpezas`);
@@ -4706,14 +4706,17 @@ function renderClosedBookingsSummary() {
     // seção também sai impressa junto com o BOOK (view-relatorios continua
     // ativa por trás durante a impressão), então o termo tem que bater.
     const s11d = isClientApprovalSite();
+    const materiais = isMaterialsContractSite();
     const titleEl = document.getElementById('closed-bookings-title');
-    if (titleEl) titleEl.textContent = s11d ? 'Atividades Encerradas / Reprogramadas / Pendentes' : 'Bloqueios Encerrados / Reprogramados / Pendentes';
+    if (titleEl) titleEl.textContent = s11d ? 'Atividades Encerradas / Reprogramadas / Pendentes'
+        : materiais ? 'Atendimentos Encerrados / Reprogramados / Pendentes'
+        : 'Bloqueios Encerrados / Reprogramados / Pendentes';
     const unidade = s11d ? 'Atividades' : 'OMs';
     const b = sodexoCleaningBreakdown();
     const n = v => b ? v : 0;
     el.innerHTML = `
         <div class="kpi-card" style="--accent: var(--color-limpeza);">
-            <div class="kpi-label">${unidade} Programadas (Limpeza Sodexo)</div>
+            <div class="kpi-label">${unidade} Programadas (${materiais ? 'Sodexo' : 'Limpeza Sodexo'})</div>
             <div class="kpi-value">${n(b && b.total)}</div>
         </div>
         <div class="kpi-card" style="--accent: #2ed573;">
@@ -4939,10 +4942,17 @@ function renderCharts() {
         });
     }
 
-    // Espelho do gráfico acima, mas para Limpeza (Sodexo + Mecanizada).
+    // Espelho do gráfico acima, mas para Limpeza (Sodexo + Mecanizada) --
+    // em sites de Contrato de Materiais agrupa por ÁREA em vez de tag, já
+    // que lá cada ativo é só um representante da área (ex: "RETIRADA-
+    // MATERIAL" no Almoxarifado) -- por tag ficaria mostrando o nome do
+    // ativo em vez do que realmente importa, que é a área de atendimento.
     const limpezaLog = activeLog.filter(a => TYPE_STATUS[a.acao] === 'limpeza');
     const perTagLimpeza = {};
-    limpezaLog.forEach(a => { perTagLimpeza[a.tag] = (perTagLimpeza[a.tag] || 0) + 1; });
+    limpezaLog.forEach(a => {
+        const key = isMaterialsContractSite() ? (AREA_LABEL[a.area] || a.area) : a.tag;
+        perTagLimpeza[key] = (perTagLimpeza[key] || 0) + 1;
+    });
     const top5Limpeza = Object.entries(perTagLimpeza).sort((a, b) => b[1] - a[1]).slice(0, 5);
 
     const ctx1b = document.getElementById('chart-top5-limpeza');
