@@ -1571,6 +1571,15 @@ function pendingClosureStatusFor(type) { return type === SODEXO_CLEANING_TYPE ? 
 // de serviço. Serve pra destacar quem corre risco de ficar esquecido, tanto
 // no alerta mobile do encarregado quanto no KPI do dashboard desktop.
 const OVERDUE_THRESHOLD_DAYS = 3;
+
+// Jornada: 9h na empresa, 1h de almoço, 8h de trabalho de verdade. Um
+// atraso pequeno (ex: 2h) ainda deixa tempo de sobra pra realizar a
+// atividade no mesmo dia -- só quando o atraso já consome quase o dia
+// inteiro (6,3h+) é que não sobra tempo hábil, aí sim conta como uma OM
+// Pendente Vale de verdade na nota da Sodexo. Abaixo disso, o registro
+// continua existindo normalmente (aparece nos gráficos/KPI de Horas
+// Perdidas), só não gera o bônus na nota.
+const LOST_HOURS_ADHERENCE_THRESHOLD = 6.3;
 function daysSinceServiceDate(booking) {
     const today = new Date(todayStr() + 'T00:00:00');
     const svcDate = new Date(booking.date + 'T00:00:00');
@@ -4631,11 +4640,15 @@ function sodexoCleaningBreakdown(periodo) {
         return true;
     }).length;
     // Horas Perdidas -- tempo ocioso aguardando material NUNCA é culpa da
-    // Sodexo (é do armazém/Vale), então cada registro soma bônus igual a
-    // uma extra concluída, mesmo sempre nascendo Pendente Vale (aqui não
-    // existe "falhou": o registro em si já É o fato concluído).
+    // Sodexo (é do armazém/Vale), mas só vira uma OM Pendente Vale de
+    // verdade (com bônus na nota) quando o atraso já consumiu quase o dia
+    // inteiro de trabalho (ver LOST_HOURS_ADHERENCE_THRESHOLD) -- um atraso
+    // pequeno ainda deixa tempo de realizar a atividade normalmente, então
+    // não conta como OM perdida. Abaixo do limite, o registro continua
+    // existindo (aparece nos gráficos/KPI), só não soma bônus aqui.
     const atendidoHorasPerdidas = state.bookings.filter(b => {
         if (b.type !== LOST_HOURS_TYPE) return false;
+        if ((b.lostHours || 0) < LOST_HOURS_ADHERENCE_THRESHOLD) return false;
         if (from && b.date < from) return false;
         if (to && b.date > to) return false;
         return true;
