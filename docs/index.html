@@ -732,7 +732,7 @@ body.book-preview-mode .book-preview-toolbar {
 <div id="mobile-encarregado-screen" style="display:none;">
     <div class="mobile-header">
         <div>
-            <div style="font-size:15px; font-weight:700; color:#fff;">Limpeza · <span id="mobile-site-label"></span></div>
+            <div style="font-size:15px; font-weight:700; color:#fff;"><span id="mobile-title-prefix">Limpeza · </span><span id="mobile-site-label"></span></div>
             <div style="font-size:12px; color:var(--text-secondary);" id="mobile-user-label"></div>
         </div>
         <button type="button" class="btn-secondary" id="btn-mobile-lost-hours" style="display:none; margin-right:8px;">📦 Hora Perdida</button>
@@ -2277,11 +2277,9 @@ function openLostHoursModal() {
         <div class="modal-header"><h3>Registrar Hora Perdida</h3><button class="modal-close" onclick="closeModal()">&times;</button></div>
         <div class="modal-body">
             <div class="login-hint" style="display:block; margin-top:0;">Tempo ocioso da equipe Sodexo aguardando material no almoxarifado (atraso de retirada/entrega). Sempre entra como Pendente Vale.</div>
+            <div class="m-field"><label>Data *</label><input type="date" id="lh-date" value="${todayStr()}" max="${todayStr()}"></div>
             <div class="m-field"><label>Horas Perdidas *</label><input type="number" id="lh-hours" min="0.1" step="0.1" placeholder="Ex: 2.5"></div>
-            <div class="m-field"><label>Colaborador Responsável</label><input type="text" id="lh-collab" placeholder="Nome (opcional)"></div>
-            <div class="m-field"><label>Foto de Evidência</label><input type="file" id="lh-photo" accept="image/*"></div>
-            <div class="m-field"><label>Nome de Quem Recebeu</label><input type="text" id="lh-receiver-name" placeholder="Opcional"></div>
-            <div class="m-field"><label>Matrícula de Quem Recebeu</label><input type="text" id="lh-receiver-reg" placeholder="Opcional"></div>
+            <div class="m-field"><label>Colaboradores</label><input type="text" id="lh-collab" placeholder="Nome(s) (opcional)"></div>
             <div class="m-field"><label>Justificativa *</label><textarea id="lh-just" rows="3" maxlength="300" placeholder="Ex: Atraso na liberação do material no almoxarifado..."></textarea></div>
         </div>
         <div class="modal-footer">
@@ -2293,14 +2291,13 @@ function openLostHoursModal() {
 document.getElementById('btn-lost-hours').addEventListener('click', openLostHoursModal);
 
 async function submitLostHours() {
+    const dateStr = document.getElementById('lh-date').value;
     const hoursRaw = document.getElementById('lh-hours').value;
     const hours = parseFloat(hoursRaw);
     const collaborator = document.getElementById('lh-collab').value.trim();
-    const receiverName = document.getElementById('lh-receiver-name').value.trim();
-    const receiverReg = document.getElementById('lh-receiver-reg').value.trim();
     const justification = document.getElementById('lh-just').value.trim();
-    const photoFile = document.getElementById('lh-photo').files[0] || null;
 
+    if (!dateStr) { toast('Informe a data.', 'error'); return; }
     if (!hoursRaw || isNaN(hours) || hours <= 0) { toast('Informe a quantidade de horas perdidas (maior que zero).', 'error'); return; }
     if (justification.length < 5) { toast('Informe uma justificativa válida (mínimo 5 caracteres).', 'error'); return; }
 
@@ -2309,25 +2306,16 @@ async function submitLostHours() {
 
     const nowMin = nowMinutes();
     const { data, error } = await sb.from('bookings').insert({
-        site_key: state.currentSite, tag: 'RETIRADA-MATERIAL', area_code: 'ALMOXARIFADO', date: todayStr(),
+        site_key: state.currentSite, tag: 'RETIRADA-MATERIAL', area_code: 'ALMOXARIFADO', date: dateStr,
         start_min: nowMin, end_min: Math.min(nowMin + 1, 23 * 60 + 59), type: LOST_HOURS_TYPE,
         emergencial: false, om: null, justification: collaborator ? `Colaborador: ${collaborator}` : 'Horas Perdidas',
         operator_id: state.currentUser.id, operator_label: `${activeProfile().user} (${state.profileKey})`,
         closure_status: 'PENDENTE_VALE', closure_reason: justification, closed_at: new Date().toISOString(),
-        closed_by: state.currentUser.id, lost_hours: hours,
-        receiver_name: receiverName || null, receiver_registration: receiverReg || null
+        closed_by: state.currentUser.id, lost_hours: hours
     }).select().single();
     if (error) { toast('Erro ao registrar: ' + error.message, 'error'); btn.disabled = false; btn.textContent = 'Registrar'; return; }
 
     const booking = mapBookingFromDb(data);
-    if (photoFile) {
-        const url = await uploadClosurePhoto(booking, photoFile, 'evidencia', false);
-        if (url) {
-            const extra = [{ tipo: 'evidencia', url }];
-            await sb.from('bookings').update({ closure_photos_extra: extra }).eq('id', booking.id);
-            booking.closurePhotosExtra = extra;
-        }
-    }
     state.bookings.push(booking);
     await addAuditEntry({
         tag: booking.tag, acao: LOST_HOURS_TYPE, justificativa: justification, dataHora: booking.createdAt,
@@ -2351,6 +2339,7 @@ function openDetailModal(booking) {
             <div class="m-info-row"><span>Data</span><b>${formatDateBR(booking.date)}</b></div>
             <div class="m-info-row"><span>Horário</span><b>${minutesToTime(booking.startMin)} — ${minutesToTime(booking.endMin)}</b></div>
             <div class="m-info-row"><span>Operador Responsável</span><b>${escapeHtml(booking.operator)}</b></div>
+            ${booking.receiverName || booking.receiverRegistration ? `<div class="m-info-row"><span>Recebido por</span><b>${escapeHtml(booking.receiverName || '—')}${booking.receiverRegistration ? ' (Mat. ' + escapeHtml(booking.receiverRegistration) + ')' : ''}</b></div>` : ''}
             <div class="m-field" style="margin-top:6px;"><label>Justificativa Técnica</label><div style="font-size:13px; color: var(--text-primary); line-height:1.5;">${escapeHtml(booking.justification)}</div></div>
         </div>
         <div class="modal-footer">
@@ -2613,6 +2602,9 @@ function openCloseBookingModal(id) {
                 </div>
                 <div style="font-size:12px; color:var(--text-secondary); margin-top:6px;">Selecione as fotos recebidas do encarregado (ex: salvas do grupo do WhatsApp) — obrigatório para embasar o BOOK/aprovação da Limpeza (Sodexo).</div>
             </div>
+            ${isMaterialsContractSite() ? `
+            <div class="m-field"><label>Nome de Quem Recebeu</label><input type="text" id="close-receiver-name" placeholder="Opcional"></div>
+            <div class="m-field"><label>Matrícula de Quem Recebeu</label><input type="text" id="close-receiver-reg" placeholder="Opcional"></div>` : ''}
         </div>
         <div class="modal-footer">
             <button class="btn-secondary" onclick="closeModal()">Voltar</button>
@@ -2857,7 +2849,15 @@ function validateClosureForm(booking) {
         return { ok: false, message: 'Uma das fotos veio vazia/corrompida -- tire a foto novamente antes de encerrar.' };
     }
 
-    return { ok: true, outcome, reason, dateStr, photos, collaborators };
+    // Nome/matrícula de quem recebeu o material -- só existem no formulário
+    // de sites de Contrato de Materiais (ver openCloseBookingModal/
+    // renderMobileCloseForm), sempre opcionais.
+    const receiverNameEl = document.getElementById('close-receiver-name');
+    const receiverRegEl = document.getElementById('close-receiver-reg');
+    const receiverName = receiverNameEl ? receiverNameEl.value.trim() : null;
+    const receiverReg = receiverRegEl ? receiverRegEl.value.trim() : null;
+
+    return { ok: true, outcome, reason, dateStr, photos, collaborators, receiverName, receiverReg };
 }
 
 async function confirmCloseBooking(id) {
@@ -2870,7 +2870,7 @@ async function confirmCloseBooking(id) {
         toast(v.message, 'error');
         return v.duplicateOm ? 'duplicate_om' : undefined;
     }
-    const { outcome, reason, dateStr, photos, collaborators } = v;
+    const { outcome, reason, dateStr, photos, collaborators, receiverName, receiverReg } = v;
 
     const confirmBtn = document.querySelector('#modal-box .modal-footer .btn-primary') || document.getElementById('mobile-close-submit');
     if (confirmBtn) { confirmBtn.disabled = true; confirmBtn.textContent = 'Enviando...'; }
@@ -2888,6 +2888,7 @@ async function confirmCloseBooking(id) {
         date: dateStr, closure_status: closureStatus, closure_reason: reason, closed_at: closedAt,
         closure_photo_before: photoBeforeUrl, closure_photo_after: photoAfterUrl, closure_photos_extra: photosExtra,
         collaborators: collaborators,
+        receiver_name: receiverName || null, receiver_registration: receiverReg || null,
         closed_by: (state.currentUser && state.profileKey !== 'VISITANTE') ? state.currentUser.id : null
     }).eq('id', id).select();
     if (error) {
@@ -2905,6 +2906,7 @@ async function confirmCloseBooking(id) {
     booking.closureStatus = closureStatus; booking.closureReason = reason; booking.closedAt = closedAt;
     booking.closurePhotoBefore = photoBeforeUrl; booking.closurePhotoAfter = photoAfterUrl; booking.closurePhotosExtra = photosExtra;
     booking.collaborators = collaborators;
+    booking.receiverName = receiverName || null; booking.receiverRegistration = receiverReg || null;
     booking.pendingOfflineSync = false;
 
     const outcomeLabel = closureOutcomesFor(booking).find(o => o.value === outcome).label;
@@ -3066,14 +3068,14 @@ async function reconcileOfflineQueueFlags() {
                 if (!state.bookings.find(b => b.id === rec.bookingId)) {
                     state.bookings.push({
                         id: rec.bookingId, tag: 'RETIRADA-MATERIAL', area: 'ALMOXARIFADO',
-                        date: todayStr(), startMin: nowMinutes(), endMin: Math.min(nowMinutes() + 1, 23 * 60 + 59),
+                        date: rec.dateStr || todayStr(), startMin: nowMinutes(), endMin: Math.min(nowMinutes() + 1, 23 * 60 + 59),
                         type: LOST_HOURS_TYPE, emergencial: false, om: null,
                         justification: rec.collaborator ? `Colaborador: ${rec.collaborator}` : 'Horas Perdidas',
                         operatorId: state.currentUser ? state.currentUser.id : null,
                         operator: `${activeProfile().user} (${state.profileKey})`,
                         createdAt: new Date(rec.createdAt).toISOString(),
                         closureStatus: 'PENDENTE_VALE', closureReason: rec.justification, closedAt: new Date(rec.createdAt).toISOString(),
-                        lostHours: rec.hours, receiverName: rec.receiverName || null, receiverRegistration: rec.receiverReg || null,
+                        lostHours: rec.hours,
                         closurePhotoBefore: null, closurePhotoAfter: null, closurePhotosExtra: [], pendingOfflineSync: true,
                     });
                 }
@@ -3095,10 +3097,10 @@ async function queueClosureOffline(booking) {
         toast(v.message, 'error');
         return;
     }
-    const { outcome, reason, dateStr, photos, collaborators } = v;
+    const { outcome, reason, dateStr, photos, collaborators, receiverName, receiverReg } = v;
     const record = {
         id: 'offline_' + booking.id + '_' + Date.now(), kind: 'close',
-        bookingId: booking.id, outcome, reason, dateStr, photos, collaborators,
+        bookingId: booking.id, outcome, reason, dateStr, photos, collaborators, receiverName, receiverReg,
         createdAt: Date.now(),
     };
     await offlineQueueAdd(record);
@@ -3202,6 +3204,7 @@ async function trySyncOfflineQueue() {
                 date: record.dateStr, closure_status: closureStatus, closure_reason: record.reason, closed_at: closedAt,
                 closure_photo_before: photoBeforeUrl, closure_photo_after: photoAfterUrl, closure_photos_extra: photosExtra,
                 collaborators: record.collaborators || [],
+                receiver_name: record.receiverName || null, receiver_registration: record.receiverReg || null,
                 closed_by: (state.currentUser && state.profileKey !== 'VISITANTE') ? state.currentUser.id : null
             }).eq('id', booking.id).select();
             if (error || !data || data.length === 0) break;
@@ -3210,6 +3213,7 @@ async function trySyncOfflineQueue() {
             booking.closureStatus = closureStatus; booking.closureReason = record.reason; booking.closedAt = closedAt;
             booking.closurePhotoBefore = photoBeforeUrl; booking.closurePhotoAfter = photoAfterUrl; booking.closurePhotosExtra = photosExtra;
             booking.collaborators = record.collaborators || [];
+            booking.receiverName = record.receiverName || null; booking.receiverRegistration = record.receiverReg || null;
             booking.pendingOfflineSync = false;
 
             const outcomeLabel = closureOutcomesFor(booking).find(o => o.value === record.outcome).label;
@@ -3228,25 +3232,16 @@ async function trySyncOfflineQueue() {
             const tempBooking = state.bookings.find(b => b.id === record.bookingId);
             const nowMin = nowMinutes();
             const { data, error } = await sb.from('bookings').insert({
-                site_key: state.currentSite, tag: 'RETIRADA-MATERIAL', area_code: 'ALMOXARIFADO', date: todayStr(),
+                site_key: state.currentSite, tag: 'RETIRADA-MATERIAL', area_code: 'ALMOXARIFADO', date: record.dateStr || todayStr(),
                 start_min: nowMin, end_min: Math.min(nowMin + 1, 23 * 60 + 59), type: LOST_HOURS_TYPE,
                 emergencial: false, om: null, justification: record.collaborator ? `Colaborador: ${record.collaborator}` : 'Horas Perdidas',
                 operator_id: state.currentUser.id, operator_label: `${activeProfile().user} (${state.profileKey})`,
                 closure_status: 'PENDENTE_VALE', closure_reason: record.justification, closed_at: new Date().toISOString(),
-                closed_by: state.currentUser.id, lost_hours: record.hours,
-                receiver_name: record.receiverName || null, receiver_registration: record.receiverReg || null
+                closed_by: state.currentUser.id, lost_hours: record.hours
             }).select().single();
             if (error) break; // ainda sem sinal de verdade -- para tudo, tenta de novo na próxima
 
             const realBooking = mapBookingFromDb(data);
-            if (record.photoFile) {
-                const url = await uploadClosurePhoto(realBooking, record.photoFile, 'evidencia', true);
-                if (url) {
-                    const extra = [{ tipo: 'evidencia', url }];
-                    await sb.from('bookings').update({ closure_photos_extra: extra }).eq('id', realBooking.id);
-                    realBooking.closurePhotosExtra = extra;
-                }
-            }
             if (tempBooking) {
                 const idx = state.bookings.findIndex(b => b.id === tempBooking.id);
                 if (idx !== -1) state.bookings[idx] = realBooking;
@@ -3283,6 +3278,7 @@ let mobileSelectedTag = null;
 
 function renderMobileEncarregado() {
     document.getElementById('mobile-site-label').textContent = SITES[state.currentSite] || state.currentSite;
+    document.getElementById('mobile-title-prefix').style.display = isMaterialsContractSite() ? 'none' : '';
     document.getElementById('mobile-user-label').textContent = activeProfile().user;
     document.getElementById('btn-mobile-lost-hours').style.display = (canRegisterLostHours() && isMaterialsContractSite()) ? '' : 'none';
     renderMobileEquipList();
@@ -3573,11 +3569,9 @@ function renderMobileLostHoursForm() {
         <div class="mobile-card">
             <div class="mobile-card-title">📦 Registrar Hora Perdida</div>
             <div class="mobile-card-sub">Tempo ocioso aguardando material no almoxarifado -- sempre entra como Pendente Vale.</div>
+            <div class="m-field"><label>Data *</label><input type="date" id="mlh-date" value="${todayStr()}" max="${todayStr()}"></div>
             <div class="m-field"><label>Horas Perdidas *</label><input type="number" id="mlh-hours" min="0.1" step="0.1" placeholder="Ex: 2.5"></div>
-            <div class="m-field"><label>Colaborador Responsável</label><input type="text" id="mlh-collab" placeholder="Nome (opcional)"></div>
-            <div class="m-field"><label>Foto de Evidência</label><input type="file" id="mlh-photo" accept="image/*"></div>
-            <div class="m-field"><label>Nome de Quem Recebeu</label><input type="text" id="mlh-receiver-name" placeholder="Opcional"></div>
-            <div class="m-field"><label>Matrícula de Quem Recebeu</label><input type="text" id="mlh-receiver-reg" placeholder="Opcional"></div>
+            <div class="m-field"><label>Colaboradores</label><input type="text" id="mlh-collab" placeholder="Nome(s) (opcional)"></div>
             <div class="m-field"><label>Justificativa *</label><textarea id="mlh-just" rows="3" maxlength="300" placeholder="Ex: Atraso na liberação do material..."></textarea></div>
         </div>
         <button type="button" class="btn-primary mobile-submit" id="mlh-submit-btn">Registrar</button>
@@ -3586,16 +3580,15 @@ function renderMobileLostHoursForm() {
 }
 
 function validateLostHoursForm(prefix) {
+    const dateStr = document.getElementById(`${prefix}-date`).value;
     const hoursRaw = document.getElementById(`${prefix}-hours`).value;
     const hours = parseFloat(hoursRaw);
     const collaborator = document.getElementById(`${prefix}-collab`).value.trim();
-    const receiverName = document.getElementById(`${prefix}-receiver-name`).value.trim();
-    const receiverReg = document.getElementById(`${prefix}-receiver-reg`).value.trim();
     const justification = document.getElementById(`${prefix}-just`).value.trim();
-    const photoFile = document.getElementById(`${prefix}-photo`) ? (document.getElementById(`${prefix}-photo`).files[0] || null) : null;
+    if (!dateStr) return { ok: false, message: 'Informe a data.' };
     if (!hoursRaw || isNaN(hours) || hours <= 0) return { ok: false, message: 'Informe a quantidade de horas perdidas (maior que zero).' };
     if (justification.length < 5) return { ok: false, message: 'Informe uma justificativa válida (mínimo 5 caracteres).' };
-    return { ok: true, hours, collaborator, receiverName, receiverReg, justification, photoFile };
+    return { ok: true, dateStr, hours, collaborator, justification };
 }
 
 async function submitMobileLostHours() {
@@ -3607,13 +3600,12 @@ async function submitMobileLostHours() {
     btn.disabled = true; btn.textContent = 'Registrando...';
     const nowMin = nowMinutes();
     const { data, error } = await sb.from('bookings').insert({
-        site_key: state.currentSite, tag: 'RETIRADA-MATERIAL', area_code: 'ALMOXARIFADO', date: todayStr(),
+        site_key: state.currentSite, tag: 'RETIRADA-MATERIAL', area_code: 'ALMOXARIFADO', date: v.dateStr,
         start_min: nowMin, end_min: Math.min(nowMin + 1, 23 * 60 + 59), type: LOST_HOURS_TYPE,
         emergencial: false, om: null, justification: v.collaborator ? `Colaborador: ${v.collaborator}` : 'Horas Perdidas',
         operator_id: state.currentUser.id, operator_label: `${activeProfile().user} (${state.profileKey})`,
         closure_status: 'PENDENTE_VALE', closure_reason: v.justification, closed_at: new Date().toISOString(),
-        closed_by: state.currentUser.id, lost_hours: v.hours,
-        receiver_name: v.receiverName || null, receiver_registration: v.receiverReg || null
+        closed_by: state.currentUser.id, lost_hours: v.hours
     }).select().single();
     if (error) {
         toast('Erro ao registrar: ' + error.message, 'error');
@@ -3621,14 +3613,6 @@ async function submitMobileLostHours() {
         return;
     }
     const booking = mapBookingFromDb(data);
-    if (v.photoFile) {
-        const url = await uploadClosurePhoto(booking, v.photoFile, 'evidencia', false);
-        if (url) {
-            const extra = [{ tipo: 'evidencia', url }];
-            await sb.from('bookings').update({ closure_photos_extra: extra }).eq('id', booking.id);
-            booking.closurePhotosExtra = extra;
-        }
-    }
     state.bookings.push(booking);
     await addAuditEntry({
         tag: booking.tag, acao: LOST_HOURS_TYPE, justificativa: v.justification, dataHora: booking.createdAt,
@@ -3645,20 +3629,20 @@ async function queueLostHoursOffline(v) {
     const tempId = 'offline_lh_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
     const nowMin = nowMinutes();
     const booking = {
-        id: tempId, tag: 'RETIRADA-MATERIAL', area: 'ALMOXARIFADO', date: todayStr(),
+        id: tempId, tag: 'RETIRADA-MATERIAL', area: 'ALMOXARIFADO', date: v.dateStr,
         startMin: nowMin, endMin: Math.min(nowMin + 1, 23 * 60 + 59), type: LOST_HOURS_TYPE,
         emergencial: false, om: null, justification: v.collaborator ? `Colaborador: ${v.collaborator}` : 'Horas Perdidas',
         operatorId: state.currentUser.id, operator: `${activeProfile().user} (${state.profileKey})`,
         createdAt: new Date().toISOString(), closureStatus: 'PENDENTE_VALE', closureReason: v.justification,
-        closedAt: new Date().toISOString(), lostHours: v.hours, receiverName: v.receiverName || null,
-        receiverRegistration: v.receiverReg || null, closurePhotoBefore: null, closurePhotoAfter: null,
+        closedAt: new Date().toISOString(), lostHours: v.hours,
+        closurePhotoBefore: null, closurePhotoAfter: null,
         closurePhotosExtra: [], pendingOfflineSync: true,
     };
     state.bookings.push(booking);
     await offlineQueueAdd({
         id: tempId + '_lh', kind: 'lost_hours', bookingId: tempId,
-        hours: v.hours, collaborator: v.collaborator, receiverName: v.receiverName, receiverReg: v.receiverReg,
-        justification: v.justification, photoFile: v.photoFile || null, createdAt: Date.now(),
+        hours: v.hours, collaborator: v.collaborator, dateStr: v.dateStr,
+        justification: v.justification, createdAt: Date.now(),
     });
     toast('Sem conexão -- guardado no celular. Será enviado sozinho quando a internet voltar.', 'warn');
     renderMobileEquipList();
@@ -3722,6 +3706,9 @@ function renderMobileCloseForm(booking) {
                     `).join('')}
                 </div>
             </div>
+            ${isMaterialsContractSite() ? `
+            <div class="m-field"><label>Nome de Quem Recebeu</label><input type="text" id="close-receiver-name" placeholder="Opcional"></div>
+            <div class="m-field"><label>Matrícula de Quem Recebeu</label><input type="text" id="close-receiver-reg" placeholder="Opcional"></div>` : ''}
         </div>
         <button type="button" class="btn-primary mobile-submit" id="mobile-close-submit">Confirmar</button>
         ${canDiscardOwnBooking(booking) ? `<button type="button" class="btn-secondary mobile-submit" id="mobile-close-discard-btn" style="margin-top:8px;">Descartar Este Lançamento (data/OM errada)</button>` : ''}
@@ -4270,6 +4257,10 @@ function onProfileChanged() {
     if (chartBoxManut) chartBoxManut.style.display = canSeeAvailabilityChart() ? 'flex' : 'none';
     const extraFilterWrap = document.getElementById('report-extra-filter-wrap');
     if (extraFilterWrap) extraFilterWrap.style.display = isMaterialsContractSite() ? '' : 'none';
+    const printBookBtn = document.getElementById('btn-print-book');
+    if (printBookBtn) printBookBtn.textContent = isMaterialsContractSite()
+        ? 'Gerar BOOK de Aderência (PDF) — Sodexo com evidência de entrega'
+        : 'Gerar BOOK de Aderência (PDF) — Limpeza Sodexo com fotos de Antes/Depois';
     applyEquipTerminology();
     updateImportUiLabels();
     renderSiteSelect();
@@ -5267,7 +5258,7 @@ function buildAderenciaBookHtml() {
 
     const header = `
         <div style="font-size:18px; font-weight:800; border-bottom:2px solid #000; padding-bottom:10px; margin-bottom:18px;">
-            BOOK de Aderência — Limpeza Sodexo — ${escapeHtml(SITES[state.currentSite] || state.currentSite)}
+            BOOK de Aderência — ${isMaterialsContractSite() ? 'Sodexo' : 'Limpeza Sodexo'} — ${escapeHtml(SITES[state.currentSite] || state.currentSite)}
             <small style="display:block; font-size:11px; font-weight:400; color:#444; margin-top:4px;">
                 ${escapeHtml(periodTxt)} — ${escapeHtml(notaTxt)}<br>
                 ${escapeHtml(filtroTxt)} — ${itens.length} ${s11d ? 'atividade(s)' : 'bloqueio(s)'} nesta lista — ${encerradaCount} encerrado(s) com evidência fotográfica, ${pendenteCount} pendente(s) —
@@ -5295,6 +5286,7 @@ function buildAderenciaBookHtml() {
             </div>
             ${b.activityDescription ? `<div style="font-size:12px; margin-bottom:10px;"><b>Atividade:</b> ${escapeHtml(b.activityDescription)}</div>` : ''}
             <div style="font-size:12px; margin-bottom:10px;"><b>Observação do Encarregado:</b> ${escapeHtml(b.closureReason || '—')}</div>
+            ${(b.receiverName || b.receiverRegistration) ? `<div style="font-size:12px; margin-bottom:10px;"><b>Recebido por:</b> ${escapeHtml(b.receiverName || '—')}${b.receiverRegistration ? ' (Mat. ' + escapeHtml(b.receiverRegistration) + ')' : ''}</div>` : ''}
             ${VALE_DECISION_META[b.closureStatus] ? `<div style="font-size:12px; margin-bottom:10px;"><b>Motivo da decisão da Vale (${escapeHtml(VALE_DECISION_META[b.closureStatus].label)}):</b> ${escapeHtml(b.valeDecisionReason || '—')}</div>` : ''}
             <div style="display:flex; gap:12px; flex-wrap:wrap;">
                 <div style="flex:1; min-width:200px;">

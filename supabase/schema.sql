@@ -748,6 +748,20 @@ on conflict (site_key, code) do nothing;
 insert into public.equipment (site_key, area_code, tag) values
   ('F_BRICA','J','EXTRA-01'), ('F_BRICA','ALMOXARIFADO','RETIRADA-MATERIAL')
 on conflict (site_key, tag) do nothing;
+-- As 12 áreas de atuação do time (Elétrica, Instrumentação etc.) também
+-- precisam de pelo menos 1 ativo pra virarem clicáveis -- cada uma ganha um
+-- ativo com o próprio nome da área, já que aqui não existe "equipamento"
+-- individual de verdade: a área INTEIRA é a unidade de trabalho (a
+-- descrição real da atividade vai no campo "Descrição da Atividade" na
+-- hora de agendar, não no nome do ativo).
+insert into public.equipment (site_key, area_code, tag) values
+  ('F_BRICA','ELETRICA','Elétrica'), ('F_BRICA','INSTRUMENTACAO','Instrumentação'),
+  ('F_BRICA','PONTE_ROLANTE','Ponte Rolante'), ('F_BRICA','ENGESCOM','Engescom'),
+  ('F_BRICA','HIDRAULICA_ELETRICA','Hidráulica Elétrica'), ('F_BRICA','USINA','Usina'),
+  ('F_BRICA','EXTERNOS','Externos'), ('F_BRICA','BARRAGEM','Barragem'),
+  ('F_BRICA','HIDRAULICA_MECANICA','Hidráulica Mecânica'), ('F_BRICA','LUBRIFICACAO','Lubrificação'),
+  ('F_BRICA','CEP','CEP'), ('F_BRICA','FM2C','FM2C')
+on conflict (site_key, tag) do nothing;
 
 -- ============================================================
 -- PRIMEIRO ADMIN (rode manualmente, uma vez, fora do bloco acima)
