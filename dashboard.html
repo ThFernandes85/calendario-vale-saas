@@ -1170,7 +1170,7 @@ body.book-preview-mode .book-preview-toolbar {
             <div class="kpi-card" id="kpi-lost-hours-card" style="--accent: #f59e0b; display:none;">
                 <div class="kpi-label">Horas Perdidas (Período)</div>
                 <div class="kpi-value" id="kpi-lost-hours">—</div>
-                <div class="kpi-sub" id="kpi-lost-hours-sub">Tempo ocioso aguardando material no almoxarifado</div>
+                <div class="kpi-sub" id="kpi-lost-hours-sub">Tempo ocioso aguardando material</div>
             </div>
         </div>
 
@@ -4792,7 +4792,7 @@ function renderLostHoursKpi() {
         .filter(b => b.type === LOST_HOURS_TYPE && (!from || b.date >= from) && (!to || b.date <= to))
         .reduce((sum, b) => sum + (b.lostHours || 0), 0);
     el.textContent = `${total.toFixed(1)}h`;
-    sub.textContent = total > 0 ? 'Tempo ocioso aguardando material no almoxarifado' : 'Nenhum registro no período selecionado';
+    sub.textContent = total > 0 ? 'Tempo ocioso aguardando material' : 'Nenhum registro no período selecionado';
 }
 
 // Soma de horas de atividades extras concluídas (Área J ou marcadas
