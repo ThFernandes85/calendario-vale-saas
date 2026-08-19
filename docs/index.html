@@ -496,6 +496,13 @@ body.book-preview-mode .book-preview-toolbar {
     /* Indisponibilidade (Manutenção) é indicador interno do PCM -- não sai
        no PDF/impressão de forma alguma, nem quando quem gera é o próprio PCM. */
     #chart-box-manut { display: none !important; }
+    /* Na tela, o grid se ajusta sozinho (auto-fit) ao espaço disponível --
+       na impressão, com um número ímpar de gráficos visíveis, isso deixava
+       o último sozinho na própria linha e ESTICADO pra ocupar a largura
+       inteira (1fr sem vizinho do lado), ficando com uma proporção bem
+       diferente dos outros. Fixando 2 colunas, o gráfico solitário ocupa só
+       a coluna dele, sem esticar. */
+    .charts-grid { grid-template-columns: repeat(2, 1fr) !important; }
 
     body.print-report-mode .print-report-banner { display: block !important; font-size: 18px; font-weight: 800; border-bottom: 2px solid #000; padding-bottom: 10px; margin-bottom: 18px; }
     body.print-report-mode .print-report-banner small { display: block; font-size: 11px; font-weight: 400; color: #444; margin-top: 4px; }
@@ -4937,7 +4944,7 @@ function renderCharts() {
     if (ctx1 && canSeeAvailabilityChart()) {
         chartTop5 = new Chart(ctx1, {
             type: 'bar',
-            data: { labels: top5Manut.map(t => t[0]), datasets: [{ label: 'Intervenções de Manutenção', data: top5Manut.map(t => t[1]), backgroundColor: '#f59e0b', borderRadius: 5 }] },
+            data: { labels: top5Manut.map(t => t[0]), datasets: [{ label: 'Intervenções de Manutenção', data: top5Manut.map(t => t[1]), backgroundColor: '#f59e0b', borderRadius: 5, maxBarThickness: 60 }] },
             options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { ticks: { color: '#8a99ad' }, grid: { color: '#2b394e' } }, y: { ticks: { color: '#8a99ad', stepSize: 1 }, grid: { color: '#2b394e' }, beginAtZero: true } } }
         });
     }
@@ -4960,7 +4967,7 @@ function renderCharts() {
         if (chartTop5Limpeza) chartTop5Limpeza.destroy();
         chartTop5Limpeza = new Chart(ctx1b, {
             type: 'bar',
-            data: { labels: top5Limpeza.map(t => t[0]), datasets: [{ label: 'Atividades de Limpeza', data: top5Limpeza.map(t => t[1]), backgroundColor: '#2ed573', borderRadius: 5 }] },
+            data: { labels: top5Limpeza.map(t => t[0]), datasets: [{ label: 'Atividades de Limpeza', data: top5Limpeza.map(t => t[1]), backgroundColor: '#2ed573', borderRadius: 5, maxBarThickness: 60 }] },
             options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { ticks: { color: '#8a99ad' }, grid: { color: '#2b394e' } }, y: { ticks: { color: '#8a99ad', stepSize: 1 }, grid: { color: '#2b394e' }, beginAtZero: true } } }
         });
     }
@@ -4972,7 +4979,7 @@ function renderCharts() {
         if (chartArea) chartArea.destroy();
         chartArea = new Chart(ctx2, {
             type: 'bar',
-            data: { labels: Object.keys(perArea), datasets: [{ label: 'Atividades', data: Object.values(perArea), backgroundColor: '#2563eb', borderRadius: 5 }] },
+            data: { labels: Object.keys(perArea), datasets: [{ label: 'Atividades', data: Object.values(perArea), backgroundColor: '#2563eb', borderRadius: 5, maxBarThickness: 60 }] },
             options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { ticks: { color: '#8a99ad' }, grid: { color: '#2b394e' } }, y: { ticks: { color: '#8a99ad', stepSize: 1 }, grid: { color: '#2b394e' }, beginAtZero: true } } }
         });
     }
