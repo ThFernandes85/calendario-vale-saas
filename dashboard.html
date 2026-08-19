@@ -3362,7 +3362,7 @@ function renderMobileEquipList() {
     const alertHtml = pendentes.length ? `
         <div class="mobile-alert">
             <div class="mobile-alert-title">⚠️ ${pendentes.length} OM${pendentes.length > 1 ? 's' : ''} em aberto neste site${atrasadasCount ? ` (${atrasadasCount} atrasada${atrasadasCount > 1 ? 's' : ''})` : ''}</div>
-            <div class="mobile-alert-sub">Qualquer encarregado pode encerrar -- toque na OM e anexe as fotos de antes/depois.</div>
+            <div class="mobile-alert-sub">Qualquer encarregado pode encerrar -- toque na OM${isMaterialsContractSite() ? ' e anexe a evidência de entrega.' : ' e anexe as fotos de antes/depois.'}</div>
             <div class="mobile-alert-list">
                 ${pendentesVisiveis.map(b => {
                     const dias = daysSinceServiceDate(b);
