@@ -174,6 +174,13 @@ alter table public.bookings add column if not exists is_extra boolean not null d
 alter table public.bookings add column if not exists lost_hours numeric;
 alter table public.bookings add column if not exists receiver_name text;
 alter table public.bookings add column if not exists receiver_registration text;
+-- `overtime_hours`/`overtime_pct`: só preenchidos em bookings do tipo "Hora
+-- Extra" (registro único de jornada extra do Encarregado -- 50% em dia de
+-- semana comum, 100% em sábado/domingo/feriado). Puramente informativo,
+-- nunca entra na nota de aderência da Sodexo (diferente de Área J/Horas
+-- Perdidas, que somam bônus -- Hora Extra não tem relação com OM nenhuma).
+alter table public.bookings add column if not exists overtime_hours numeric;
+alter table public.bookings add column if not exists overtime_pct integer;
 -- `activity_description`: sites de Contrato de Controle de Materiais não
 -- fazem "Limpeza Sodexo"/"Limpeza Mecanizada" de verdade -- por baixo dos
 -- panos o `type` continua um desses dois valores fixos (pra não quebrar
@@ -557,13 +564,13 @@ create policy "bookings_insert" on public.bookings for insert
     and (
       public.is_admin()
       or (public.current_role_key() = 'PCM' and type in ('Manutenção Preventiva','Manutenção Corretiva'))
-      or (public.current_role_key() = 'PCO' and type in ('Limpeza Sodexo','Limpeza Mecanizada','Horas Perdidas'))
-      or (public.current_role_key() = 'ENCARREGADO' and type in ('Limpeza Sodexo','Limpeza Mecanizada','Horas Perdidas'))
-      or (public.current_role_key() = 'PCM_PCO' and type in ('Manutenção Preventiva','Manutenção Corretiva','Limpeza Sodexo','Limpeza Mecanizada','Horas Perdidas'))
+      or (public.current_role_key() = 'PCO' and type in ('Limpeza Sodexo','Limpeza Mecanizada','Horas Perdidas','Hora Extra'))
+      or (public.current_role_key() = 'ENCARREGADO' and type in ('Limpeza Sodexo','Limpeza Mecanizada','Horas Perdidas','Hora Extra'))
+      or (public.current_role_key() = 'PCM_PCO' and type in ('Manutenção Preventiva','Manutenção Corretiva','Limpeza Sodexo','Limpeza Mecanizada','Horas Perdidas','Hora Extra'))
       -- Técnico de Planejamento e GU (S11D) programa as limpezas do site.
-      or (public.current_role_key() = 'TECNICO_PLANEJAMENTO' and type in ('Limpeza Sodexo','Limpeza Mecanizada','Horas Perdidas'))
+      or (public.current_role_key() = 'TECNICO_PLANEJAMENTO' and type in ('Limpeza Sodexo','Limpeza Mecanizada','Horas Perdidas','Hora Extra'))
       -- Gerente (gestor operacional de site, ex: Fábrica/Viga Materiais).
-      or (public.current_role_key() = 'GERENTE' and type in ('Manutenção Preventiva','Manutenção Corretiva','Limpeza Sodexo','Limpeza Mecanizada','Horas Perdidas'))
+      or (public.current_role_key() = 'GERENTE' and type in ('Manutenção Preventiva','Manutenção Corretiva','Limpeza Sodexo','Limpeza Mecanizada','Horas Perdidas','Hora Extra'))
     )
   );
 drop policy if exists "bookings_delete" on public.bookings;
@@ -573,14 +580,14 @@ create policy "bookings_delete" on public.bookings for delete
     and (
       public.is_admin()
       or (public.current_role_key() = 'PCM' and type in ('Manutenção Preventiva','Manutenção Corretiva'))
-      or (public.current_role_key() = 'PCO' and type in ('Limpeza Sodexo','Limpeza Mecanizada','Horas Perdidas'))
+      or (public.current_role_key() = 'PCO' and type in ('Limpeza Sodexo','Limpeza Mecanizada','Horas Perdidas','Hora Extra'))
       -- ENCARREGADO só exclui o PRÓPRIO lançamento (autoatendimento de OM
       -- duplicada no app mobile) -- diferente de PCM/PCO/Admin, que podem
       -- excluir qualquer um do tipo que administram.
-      or (public.current_role_key() = 'ENCARREGADO' and type in ('Limpeza Sodexo','Limpeza Mecanizada','Horas Perdidas') and operator_id = auth.uid())
-      or (public.current_role_key() = 'PCM_PCO' and type in ('Manutenção Preventiva','Manutenção Corretiva','Limpeza Sodexo','Limpeza Mecanizada','Horas Perdidas'))
-      or (public.current_role_key() = 'TECNICO_PLANEJAMENTO' and type in ('Limpeza Sodexo','Limpeza Mecanizada','Horas Perdidas'))
-      or (public.current_role_key() = 'GERENTE' and type in ('Manutenção Preventiva','Manutenção Corretiva','Limpeza Sodexo','Limpeza Mecanizada','Horas Perdidas'))
+      or (public.current_role_key() = 'ENCARREGADO' and type in ('Limpeza Sodexo','Limpeza Mecanizada','Horas Perdidas','Hora Extra') and operator_id = auth.uid())
+      or (public.current_role_key() = 'PCM_PCO' and type in ('Manutenção Preventiva','Manutenção Corretiva','Limpeza Sodexo','Limpeza Mecanizada','Horas Perdidas','Hora Extra'))
+      or (public.current_role_key() = 'TECNICO_PLANEJAMENTO' and type in ('Limpeza Sodexo','Limpeza Mecanizada','Horas Perdidas','Hora Extra'))
+      or (public.current_role_key() = 'GERENTE' and type in ('Manutenção Preventiva','Manutenção Corretiva','Limpeza Sodexo','Limpeza Mecanizada','Horas Perdidas','Hora Extra'))
     )
   );
 drop policy if exists "bookings_update" on public.bookings;

@@ -743,6 +743,7 @@ body.book-preview-mode .book-preview-toolbar {
             <div style="font-size:12px; color:var(--text-secondary);" id="mobile-user-label"></div>
         </div>
         <button type="button" class="btn-secondary" id="btn-mobile-lost-hours" style="display:none; margin-right:8px;">📦 Hora Perdida</button>
+        <button type="button" class="btn-secondary" id="btn-mobile-overtime" style="display:none; margin-right:8px;">⏱️ Hora Extra</button>
         <button type="button" class="btn-secondary" id="btn-mobile-logout">Sair</button>
     </div>
     <div id="mobile-encarregado-body"></div>
@@ -1559,6 +1560,11 @@ const SODEXO_CLEANING_TYPE = 'Limpeza Sodexo';
 // Materiais/Viga Materiais) -- indicador paralelo, nunca entra na nota de
 // aderência da limpeza (sodexoCleaningBreakdown filtra só SODEXO_CLEANING_TYPE).
 const LOST_HOURS_TYPE = 'Horas Perdidas';
+// Registro de hora extra do Encarregado (Fábrica Materiais/Viga Materiais) --
+// puramente informativo/controle de jornada, nunca entra na nota de
+// aderência (não é OM de limpeza nem Horas Perdidas). Sábado/domingo ou
+// feriado = 100%, dia de semana comum = 50% (ver overtimeDefaultPct).
+const OVERTIME_TYPE = 'Hora Extra';
 // Área "coringa" de atividades extras (Fábrica Materiais/Viga Materiais) --
 // qualquer bloqueio lançado nela já nasce marcado como extra automaticamente,
 // sem precisar do checkbox manual (ver isExtraChecked em submitBooking/
@@ -1627,6 +1633,16 @@ function canBookType(type) { const p = activeProfile(); return !p.readOnly && p.
 // (bookings_insert) do schema.sql.
 function canRegisterLostHours() {
     return ['ADMIN', 'PCO', 'PCM_PCO', 'TECNICO_PLANEJAMENTO', 'ENCARREGADO', 'GERENTE'].includes(state.profileKey);
+}
+// Hora Extra usa os mesmos papéis operacionais de Horas Perdidas.
+function canRegisterOvertime() { return canRegisterLostHours(); }
+// Sábado (6) e domingo (0) contam 100% -- durante a semana, 50%, a não ser
+// que o encarregado marque manualmente que é feriado (o app não tem
+// calendário de feriados embutido).
+function overtimeDefaultPct(dateStr, isHoliday) {
+    if (isHoliday) return 100;
+    const day = new Date(dateStr + 'T12:00:00').getDay();
+    return (day === 0 || day === 6) ? 100 : 50;
 }
 function canExportReports() { return activeProfile().canExport; }
 // Aprovar/reprovar/marcar pendência é uma permissão própria, independente
@@ -1746,7 +1762,9 @@ function mapBookingFromDb(row) {
         collaborators: row.collaborators || [],
         isExtra: !!row.is_extra, lostHours: row.lost_hours == null ? null : Number(row.lost_hours),
         receiverName: row.receiver_name, receiverRegistration: row.receiver_registration,
-        activityDescription: row.activity_description || null
+        activityDescription: row.activity_description || null,
+        overtimeHours: row.overtime_hours == null ? null : Number(row.overtime_hours),
+        overtimePct: row.overtime_pct == null ? null : Number(row.overtime_pct)
     };
 }
 function mapAuditFromDb(row) {
@@ -2291,16 +2309,26 @@ async function submitBooking(tag) {
 // JÁ fechado como Pendente Vale (é responsabilidade do almoxarifado/Vale,
 // nunca da Sodexo). Indicador paralelo -- nunca entra na nota de limpeza
 // (sodexoCleaningBreakdown só considera SODEXO_CLEANING_TYPE).
+// Opções de <select> com as áreas cadastradas no site atual -- usado no
+// campo "Local" de Horas Perdidas, pra não travar sempre em Almoxarifado
+// (o atraso pode acontecer em qualquer área do site).
+function areaOptionsHtml(selectedCode) {
+    return Object.keys(DATABASE).map(code =>
+        `<option value="${code}" ${code === selectedCode ? 'selected' : ''}>${escapeHtml(AREA_LABEL[code] || code)}</option>`
+    ).join('');
+}
+
 function openLostHoursModal() {
     if (!canRegisterLostHours() || !isMaterialsContractSite()) { showAccessDenied('Registro de Hora Perdida só está disponível em sites com Contrato de Controle de Materiais.'); return; }
     openModal(`
         <div class="modal-header"><h3>Registrar Hora Perdida</h3><button class="modal-close" onclick="closeModal()">&times;</button></div>
         <div class="modal-body">
-            <div class="login-hint" style="display:block; margin-top:0;">Tempo ocioso da equipe Sodexo aguardando material no almoxarifado (atraso de retirada/entrega). Sempre entra como Pendente Vale.</div>
+            <div class="login-hint" style="display:block; margin-top:0;">Tempo ocioso da equipe Sodexo aguardando material/atraso. Sempre entra como Pendente Vale.</div>
+            <div class="m-field"><label>Local *</label><select id="lh-area"><option value="">Selecione...</option>${areaOptionsHtml()}</select></div>
             <div class="m-field"><label>Data *</label><input type="date" id="lh-date" value="${todayStr()}" max="${todayStr()}"></div>
             <div class="m-field"><label>Horas Perdidas *</label><input type="number" id="lh-hours" min="0.1" step="0.1" placeholder="Ex: 2.5"></div>
             <div class="m-field"><label>Colaboradores</label><input type="text" id="lh-collab" placeholder="Nome(s) (opcional)"></div>
-            <div class="m-field"><label>Justificativa *</label><textarea id="lh-just" rows="3" maxlength="300" placeholder="Ex: Atraso na liberação do material no almoxarifado..."></textarea></div>
+            <div class="m-field"><label>Justificativa *</label><textarea id="lh-just" rows="3" maxlength="300" placeholder="Ex: Atraso na liberação do material..."></textarea></div>
         </div>
         <div class="modal-footer">
             <button class="btn-secondary" onclick="closeModal()">Cancelar</button>
@@ -2311,12 +2339,14 @@ function openLostHoursModal() {
 document.getElementById('btn-lost-hours').addEventListener('click', openLostHoursModal);
 
 async function submitLostHours() {
+    const areaCode = document.getElementById('lh-area').value;
     const dateStr = document.getElementById('lh-date').value;
     const hoursRaw = document.getElementById('lh-hours').value;
     const hours = parseFloat(hoursRaw);
     const collaborator = document.getElementById('lh-collab').value.trim();
     const justification = document.getElementById('lh-just').value.trim();
 
+    if (!areaCode) { toast('Informe o local onde a hora foi perdida.', 'error'); return; }
     if (!dateStr) { toast('Informe a data.', 'error'); return; }
     if (!hoursRaw || isNaN(hours) || hours <= 0) { toast('Informe a quantidade de horas perdidas (maior que zero).', 'error'); return; }
     if (justification.length < 5) { toast('Informe uma justificativa válida (mínimo 5 caracteres).', 'error'); return; }
@@ -2326,7 +2356,7 @@ async function submitLostHours() {
 
     const nowMin = nowMinutes();
     const { data, error } = await sb.from('bookings').insert({
-        site_key: state.currentSite, tag: 'RETIRADA-MATERIAL', area_code: 'ALMOXARIFADO', date: dateStr,
+        site_key: state.currentSite, tag: 'HORAS-PERDIDAS', area_code: areaCode, date: dateStr,
         start_min: nowMin, end_min: Math.min(nowMin + 1, 23 * 60 + 59), type: LOST_HOURS_TYPE,
         emergencial: false, om: null, justification: collaborator ? `Colaborador: ${collaborator}` : 'Horas Perdidas',
         operator_id: state.currentUser.id, operator_label: `${activeProfile().user} (${state.profileKey})`,
@@ -2622,8 +2652,8 @@ function openCloseBookingModal(id) {
                 </div>
                 <div style="font-size:12px; color:var(--text-secondary); margin-top:6px;">Selecione as fotos recebidas do encarregado (ex: salvas do grupo do WhatsApp) — obrigatório para embasar o BOOK/aprovação da Limpeza (Sodexo).</div>
             </div>
+            ${!isClientApprovalSite() ? `<div class="m-field"><label>Colaboradores Atuantes</label><input type="text" id="close-collab-text" placeholder="Nome(s), separados por vírgula (opcional)"></div>` : ''}
             ${isMaterialsContractSite() ? `
-            <div class="m-field"><label>Colaboradores Atuantes</label><input type="text" id="close-collab-text" placeholder="Nome(s), separados por vírgula (opcional)"></div>
             <div class="m-field"><label>Nome de Quem Recebeu</label><input type="text" id="close-receiver-name" placeholder="Opcional"></div>
             <div class="m-field"><label>Matrícula de Quem Recebeu</label><input type="text" id="close-receiver-reg" placeholder="Opcional"></div>` : ''}
         </div>
@@ -3095,7 +3125,7 @@ async function reconcileOfflineQueueFlags() {
                 // (o dado em si nunca se perde, só ficaria escondido até lá).
                 if (!state.bookings.find(b => b.id === rec.bookingId)) {
                     state.bookings.push({
-                        id: rec.bookingId, tag: 'RETIRADA-MATERIAL', area: 'ALMOXARIFADO',
+                        id: rec.bookingId, tag: 'HORAS-PERDIDAS', area: rec.areaCode || 'ALMOXARIFADO',
                         date: rec.dateStr || todayStr(), startMin: nowMinutes(), endMin: Math.min(nowMinutes() + 1, 23 * 60 + 59),
                         type: LOST_HOURS_TYPE, emergencial: false, om: null,
                         justification: rec.collaborator ? `Colaborador: ${rec.collaborator}` : 'Horas Perdidas',
@@ -3104,6 +3134,23 @@ async function reconcileOfflineQueueFlags() {
                         createdAt: new Date(rec.createdAt).toISOString(),
                         closureStatus: 'PENDENTE_VALE', closureReason: rec.justification, closedAt: new Date(rec.createdAt).toISOString(),
                         lostHours: rec.hours,
+                        closurePhotoBefore: null, closurePhotoAfter: null, closurePhotosExtra: [], pendingOfflineSync: true,
+                    });
+                }
+            } else if (rec.kind === 'overtime') {
+                // Mesma lógica de reconstrução do lost_hours acima, pro
+                // registro de Hora Extra não sumir da tela até sincronizar.
+                if (!state.bookings.find(b => b.id === rec.bookingId)) {
+                    state.bookings.push({
+                        id: rec.bookingId, tag: 'HORA-EXTRA', area: 'GERAL',
+                        date: rec.dateStr || todayStr(), startMin: nowMinutes(), endMin: Math.min(nowMinutes() + 1, 23 * 60 + 59),
+                        type: OVERTIME_TYPE, emergencial: false, om: null,
+                        justification: rec.collaborator ? `Colaborador: ${rec.collaborator}` : 'Hora Extra',
+                        operatorId: state.currentUser ? state.currentUser.id : null,
+                        operator: `${activeProfile().user} (${state.profileKey})`,
+                        createdAt: new Date(rec.createdAt).toISOString(),
+                        closureStatus: 'ENCERRADA', closureReason: rec.justification || null, closedAt: new Date(rec.createdAt).toISOString(),
+                        overtimeHours: rec.hours, overtimePct: rec.pct,
                         closurePhotoBefore: null, closurePhotoAfter: null, closurePhotosExtra: [], pendingOfflineSync: true,
                     });
                 }
@@ -3260,7 +3307,7 @@ async function trySyncOfflineQueue() {
             const tempBooking = state.bookings.find(b => b.id === record.bookingId);
             const nowMin = nowMinutes();
             const { data, error } = await sb.from('bookings').insert({
-                site_key: state.currentSite, tag: 'RETIRADA-MATERIAL', area_code: 'ALMOXARIFADO', date: record.dateStr || todayStr(),
+                site_key: state.currentSite, tag: 'HORAS-PERDIDAS', area_code: record.areaCode || 'ALMOXARIFADO', date: record.dateStr || todayStr(),
                 start_min: nowMin, end_min: Math.min(nowMin + 1, 23 * 60 + 59), type: LOST_HOURS_TYPE,
                 emergencial: false, om: null, justification: record.collaborator ? `Colaborador: ${record.collaborator}` : 'Horas Perdidas',
                 operator_id: state.currentUser.id, operator_label: `${activeProfile().user} (${state.profileKey})`,
@@ -3278,6 +3325,36 @@ async function trySyncOfflineQueue() {
             }
             await addAuditEntry({
                 tag: realBooking.tag, acao: LOST_HOURS_TYPE, justificativa: record.justification, dataHora: realBooking.createdAt,
+                agendamentoData: realBooking.date, agendamentoHorario: `${minutesToTime(realBooking.startMin)}–${minutesToTime(realBooking.endMin)}`
+            });
+            await offlineQueueRemove(record.id);
+            syncedCount++;
+        }
+
+        // Hora Extra -- mesmo padrão de registro único do lost_hours acima.
+        const overtimeRecords = (await offlineQueueGetAll()).filter(r => r.kind === 'overtime');
+        for (const record of overtimeRecords) {
+            const tempBooking = state.bookings.find(b => b.id === record.bookingId);
+            const nowMin2 = nowMinutes();
+            const { data, error } = await sb.from('bookings').insert({
+                site_key: state.currentSite, tag: 'HORA-EXTRA', area_code: 'GERAL', date: record.dateStr || todayStr(),
+                start_min: nowMin2, end_min: Math.min(nowMin2 + 1, 23 * 60 + 59), type: OVERTIME_TYPE,
+                emergencial: false, om: null, justification: record.collaborator ? `Colaborador: ${record.collaborator}` : 'Hora Extra',
+                operator_id: state.currentUser.id, operator_label: `${activeProfile().user} (${state.profileKey})`,
+                closure_status: 'ENCERRADA', closure_reason: record.justification || null, closed_at: new Date().toISOString(),
+                closed_by: state.currentUser.id, overtime_hours: record.hours, overtime_pct: record.pct
+            }).select().single();
+            if (error) break;
+
+            const realBooking = mapBookingFromDb(data);
+            if (tempBooking) {
+                const idx = state.bookings.findIndex(b => b.id === tempBooking.id);
+                if (idx !== -1) state.bookings[idx] = realBooking;
+            } else {
+                state.bookings.push(realBooking);
+            }
+            await addAuditEntry({
+                tag: realBooking.tag, acao: OVERTIME_TYPE, justificativa: record.justification || `${record.pct}% - ${record.hours}h`, dataHora: realBooking.createdAt,
                 agendamentoData: realBooking.date, agendamentoHorario: `${minutesToTime(realBooking.startMin)}–${minutesToTime(realBooking.endMin)}`
             });
             await offlineQueueRemove(record.id);
@@ -3309,6 +3386,7 @@ function renderMobileEncarregado() {
     document.getElementById('mobile-title-prefix').style.display = isMaterialsContractSite() ? 'none' : '';
     document.getElementById('mobile-user-label').textContent = activeProfile().user;
     document.getElementById('btn-mobile-lost-hours').style.display = (canRegisterLostHours() && isMaterialsContractSite()) ? '' : 'none';
+    document.getElementById('btn-mobile-overtime').style.display = (canRegisterOvertime() && isMaterialsContractSite()) ? '' : 'none';
     renderMobileEquipList();
     // Lista já aparece na hora com o que tem em memória -- o flag de "aguardando
     // envio" e a tentativa de sincronizar rodam depois, em segundo plano, e só
@@ -3596,7 +3674,8 @@ function renderMobileLostHoursForm() {
         <button type="button" class="mobile-back" onclick="renderMobileEquipList()">&larr; Voltar</button>
         <div class="mobile-card">
             <div class="mobile-card-title">📦 Registrar Hora Perdida</div>
-            <div class="mobile-card-sub">Tempo ocioso aguardando material no almoxarifado -- sempre entra como Pendente Vale.</div>
+            <div class="mobile-card-sub">Tempo ocioso aguardando material/atraso -- sempre entra como Pendente Vale.</div>
+            <div class="m-field"><label>Local *</label><select id="mlh-area"><option value="">Selecione...</option>${areaOptionsHtml()}</select></div>
             <div class="m-field"><label>Data *</label><input type="date" id="mlh-date" value="${todayStr()}" max="${todayStr()}"></div>
             <div class="m-field"><label>Horas Perdidas *</label><input type="number" id="mlh-hours" min="0.1" step="0.1" placeholder="Ex: 2.5"></div>
             <div class="m-field"><label>Colaboradores</label><input type="text" id="mlh-collab" placeholder="Nome(s) (opcional)"></div>
@@ -3608,15 +3687,17 @@ function renderMobileLostHoursForm() {
 }
 
 function validateLostHoursForm(prefix) {
+    const areaCode = document.getElementById(`${prefix}-area`).value;
     const dateStr = document.getElementById(`${prefix}-date`).value;
     const hoursRaw = document.getElementById(`${prefix}-hours`).value;
     const hours = parseFloat(hoursRaw);
     const collaborator = document.getElementById(`${prefix}-collab`).value.trim();
     const justification = document.getElementById(`${prefix}-just`).value.trim();
+    if (!areaCode) return { ok: false, message: 'Informe o local onde a hora foi perdida.' };
     if (!dateStr) return { ok: false, message: 'Informe a data.' };
     if (!hoursRaw || isNaN(hours) || hours <= 0) return { ok: false, message: 'Informe a quantidade de horas perdidas (maior que zero).' };
     if (justification.length < 5) return { ok: false, message: 'Informe uma justificativa válida (mínimo 5 caracteres).' };
-    return { ok: true, dateStr, hours, collaborator, justification };
+    return { ok: true, areaCode, dateStr, hours, collaborator, justification };
 }
 
 async function submitMobileLostHours() {
@@ -3628,7 +3709,7 @@ async function submitMobileLostHours() {
     btn.disabled = true; btn.textContent = 'Registrando...';
     const nowMin = nowMinutes();
     const { data, error } = await sb.from('bookings').insert({
-        site_key: state.currentSite, tag: 'RETIRADA-MATERIAL', area_code: 'ALMOXARIFADO', date: v.dateStr,
+        site_key: state.currentSite, tag: 'HORAS-PERDIDAS', area_code: v.areaCode, date: v.dateStr,
         start_min: nowMin, end_min: Math.min(nowMin + 1, 23 * 60 + 59), type: LOST_HOURS_TYPE,
         emergencial: false, om: null, justification: v.collaborator ? `Colaborador: ${v.collaborator}` : 'Horas Perdidas',
         operator_id: state.currentUser.id, operator_label: `${activeProfile().user} (${state.profileKey})`,
@@ -3657,7 +3738,7 @@ async function queueLostHoursOffline(v) {
     const tempId = 'offline_lh_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
     const nowMin = nowMinutes();
     const booking = {
-        id: tempId, tag: 'RETIRADA-MATERIAL', area: 'ALMOXARIFADO', date: v.dateStr,
+        id: tempId, tag: 'HORAS-PERDIDAS', area: v.areaCode, date: v.dateStr,
         startMin: nowMin, endMin: Math.min(nowMin + 1, 23 * 60 + 59), type: LOST_HOURS_TYPE,
         emergencial: false, om: null, justification: v.collaborator ? `Colaborador: ${v.collaborator}` : 'Horas Perdidas',
         operatorId: state.currentUser.id, operator: `${activeProfile().user} (${state.profileKey})`,
@@ -3669,7 +3750,107 @@ async function queueLostHoursOffline(v) {
     state.bookings.push(booking);
     await offlineQueueAdd({
         id: tempId + '_lh', kind: 'lost_hours', bookingId: tempId,
-        hours: v.hours, collaborator: v.collaborator, dateStr: v.dateStr,
+        areaCode: v.areaCode, hours: v.hours, collaborator: v.collaborator, dateStr: v.dateStr,
+        justification: v.justification, createdAt: Date.now(),
+    });
+    toast('Sem conexão -- guardado no celular. Será enviado sozinho quando a internet voltar.', 'warn');
+    renderMobileEquipList();
+}
+
+// Hora Extra pelo celular -- também registro único (já nasce "Encerrada",
+// não é uma OM nem entra na nota de aderência da Sodexo, é só controle de
+// jornada). Sábado/domingo sugerem 100% automaticamente; durante a semana
+// sugere 50%, mas o encarregado pode corrigir manualmente (ex: feriado).
+function renderMobileOvertimeForm() {
+    const body = document.getElementById('mobile-encarregado-body');
+    const today = todayStr();
+    body.innerHTML = `
+        <button type="button" class="mobile-back" onclick="renderMobileEquipList()">&larr; Voltar</button>
+        <div class="mobile-card">
+            <div class="mobile-card-title">⏱️ Registrar Hora Extra</div>
+            <div class="mobile-card-sub">Sábado, domingo ou feriado contam 100%. Dia de semana comum conta 50%.</div>
+            <div class="m-field"><label>Data *</label><input type="date" id="mot-date" value="${today}" max="${today}"></div>
+            <div class="m-field"><label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-weight:400;"><input type="checkbox" id="mot-holiday" style="width:auto;"> É feriado</label></div>
+            <div class="m-field"><label>Percentual *</label>
+                <select id="mot-pct"><option value="50">50%</option><option value="100">100%</option></select>
+            </div>
+            <div class="m-field"><label>Horas Extras *</label><input type="number" id="mot-hours" min="0.1" step="0.1" placeholder="Ex: 2"></div>
+            <div class="m-field"><label>Colaboradores</label><input type="text" id="mot-collab" placeholder="Nome(s) (opcional)"></div>
+            <div class="m-field"><label>Motivo</label><textarea id="mot-just" rows="3" maxlength="300" placeholder="Opcional"></textarea></div>
+        </div>
+        <button type="button" class="btn-primary mobile-submit" id="mot-submit-btn">Registrar</button>
+    `;
+    const dateEl = document.getElementById('mot-date');
+    const holidayEl = document.getElementById('mot-holiday');
+    const pctEl = document.getElementById('mot-pct');
+    const applyDefaultPct = () => { pctEl.value = String(overtimeDefaultPct(dateEl.value, holidayEl.checked)); };
+    dateEl.addEventListener('change', applyDefaultPct);
+    holidayEl.addEventListener('change', applyDefaultPct);
+    applyDefaultPct();
+    document.getElementById('mot-submit-btn').addEventListener('click', submitMobileOvertime);
+}
+
+function validateOvertimeForm() {
+    const dateStr = document.getElementById('mot-date').value;
+    const pct = parseInt(document.getElementById('mot-pct').value, 10);
+    const hoursRaw = document.getElementById('mot-hours').value;
+    const hours = parseFloat(hoursRaw);
+    const collaborator = document.getElementById('mot-collab').value.trim();
+    const justification = document.getElementById('mot-just').value.trim();
+    if (!dateStr) return { ok: false, message: 'Informe a data.' };
+    if (![50, 100].includes(pct)) return { ok: false, message: 'Informe o percentual da hora extra.' };
+    if (!hoursRaw || isNaN(hours) || hours <= 0) return { ok: false, message: 'Informe a quantidade de horas extras (maior que zero).' };
+    return { ok: true, dateStr, pct, hours, collaborator, justification };
+}
+
+async function submitMobileOvertime() {
+    const v = validateOvertimeForm();
+    if (!v.ok) { toast(v.message, 'error'); return; }
+    if (!navigator.onLine) { await queueOvertimeOffline(v); return; }
+
+    const btn = document.getElementById('mot-submit-btn');
+    btn.disabled = true; btn.textContent = 'Registrando...';
+    const nowMin = nowMinutes();
+    const { data, error } = await sb.from('bookings').insert({
+        site_key: state.currentSite, tag: 'HORA-EXTRA', area_code: 'GERAL', date: v.dateStr,
+        start_min: nowMin, end_min: Math.min(nowMin + 1, 23 * 60 + 59), type: OVERTIME_TYPE,
+        emergencial: false, om: null, justification: v.collaborator ? `Colaborador: ${v.collaborator}` : 'Hora Extra',
+        operator_id: state.currentUser.id, operator_label: `${activeProfile().user} (${state.profileKey})`,
+        closure_status: 'ENCERRADA', closure_reason: v.justification || null, closed_at: new Date().toISOString(),
+        closed_by: state.currentUser.id, overtime_hours: v.hours, overtime_pct: v.pct
+    }).select().single();
+    if (error) {
+        toast('Erro ao registrar: ' + error.message, 'error');
+        btn.disabled = false; btn.textContent = 'Registrar';
+        return;
+    }
+    const booking = mapBookingFromDb(data);
+    state.bookings.push(booking);
+    await addAuditEntry({
+        tag: booking.tag, acao: OVERTIME_TYPE, justificativa: v.justification || `${v.pct}% - ${v.hours}h`, dataHora: booking.createdAt,
+        agendamentoData: booking.date, agendamentoHorario: `${minutesToTime(booking.startMin)}–${minutesToTime(booking.endMin)}`
+    });
+    toast('Hora extra registrada com sucesso.');
+    renderMobileEquipList();
+}
+
+async function queueOvertimeOffline(v) {
+    const tempId = 'offline_ot_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
+    const nowMin = nowMinutes();
+    const booking = {
+        id: tempId, tag: 'HORA-EXTRA', area: 'GERAL', date: v.dateStr,
+        startMin: nowMin, endMin: Math.min(nowMin + 1, 23 * 60 + 59), type: OVERTIME_TYPE,
+        emergencial: false, om: null, justification: v.collaborator ? `Colaborador: ${v.collaborator}` : 'Hora Extra',
+        operatorId: state.currentUser.id, operator: `${activeProfile().user} (${state.profileKey})`,
+        createdAt: new Date().toISOString(), closureStatus: 'ENCERRADA', closureReason: v.justification || null,
+        closedAt: new Date().toISOString(), overtimeHours: v.hours, overtimePct: v.pct,
+        closurePhotoBefore: null, closurePhotoAfter: null,
+        closurePhotosExtra: [], pendingOfflineSync: true,
+    };
+    state.bookings.push(booking);
+    await offlineQueueAdd({
+        id: tempId + '_ot', kind: 'overtime', bookingId: tempId,
+        pct: v.pct, hours: v.hours, collaborator: v.collaborator, dateStr: v.dateStr,
         justification: v.justification, createdAt: Date.now(),
     });
     toast('Sem conexão -- guardado no celular. Será enviado sozinho quando a internet voltar.', 'warn');
@@ -4080,6 +4261,7 @@ async function logout() {
 }
 document.getElementById('btn-mobile-logout').addEventListener('click', logout);
 document.getElementById('btn-mobile-lost-hours').addEventListener('click', renderMobileLostHoursForm);
+document.getElementById('btn-mobile-overtime').addEventListener('click', renderMobileOvertimeForm);
 document.getElementById('btn-logout').addEventListener('click', logout);
 
 const LS_REMEMBER_EMAIL = 'terravia_remember_email';
