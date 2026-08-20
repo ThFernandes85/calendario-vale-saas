@@ -5147,13 +5147,25 @@ function renderCharts() {
     renderHorasExtrasChart();
     renderHorasPerdidasChart();
     renderBookCleanupAlert();
-    const activeLog = getFilteredAuditLog().filter(a => TYPE_STATUS[a.acao] !== undefined);
+    // Os 3 gráficos abaixo vêm de state.bookings, não do audit_log -- o
+    // audit_log é uma TRILHA de auditoria imutável (mantém o registro do que
+    // aconteceu mesmo depois que o lançamento é excluído), então um gráfico
+    // baseado nele nunca zera quando o Admin apaga um lançamento incorreto.
+    // state.bookings reflete o estado atual de verdade: some da conta assim
+    // que é excluído (individualmente ou em massa).
+    const { from: chartsFrom, to: chartsTo } = state.reportFilter;
+    const typedBookings = state.bookings.filter(b => {
+        if (TYPE_STATUS[b.type] === undefined) return false;
+        if (chartsFrom && b.date < chartsFrom) return false;
+        if (chartsTo && b.date > chartsTo) return false;
+        return true;
+    });
 
     // Indisponibilidade por manutenção é o indicador do PCM -- equipamento
     // parado de verdade para reparo, não conta atividade de limpeza aqui.
-    const manutLog = activeLog.filter(a => TYPE_STATUS[a.acao] === 'manutencao');
+    const manutBookings = typedBookings.filter(b => TYPE_STATUS[b.type] === 'manutencao');
     const perTagManut = {};
-    manutLog.forEach(a => { perTagManut[a.tag] = (perTagManut[a.tag] || 0) + 1; });
+    manutBookings.forEach(b => { perTagManut[b.tag] = (perTagManut[b.tag] || 0) + 1; });
     const top5Manut = Object.entries(perTagManut).sort((a, b) => b[1] - a[1]).slice(0, 5);
 
     const ctx1 = document.getElementById('chart-top5');
@@ -5171,10 +5183,10 @@ function renderCharts() {
     // que lá cada ativo é só um representante da área (ex: "RETIRADA-
     // MATERIAL" no Almoxarifado) -- por tag ficaria mostrando o nome do
     // ativo em vez do que realmente importa, que é a área de atendimento.
-    const limpezaLog = activeLog.filter(a => TYPE_STATUS[a.acao] === 'limpeza');
+    const limpezaBookings = typedBookings.filter(b => TYPE_STATUS[b.type] === 'limpeza');
     const perTagLimpeza = {};
-    limpezaLog.forEach(a => {
-        const key = isMaterialsContractSite() ? (AREA_LABEL[a.area] || a.area) : a.tag;
+    limpezaBookings.forEach(b => {
+        const key = isMaterialsContractSite() ? (AREA_LABEL[b.area] || b.area) : b.tag;
         perTagLimpeza[key] = (perTagLimpeza[key] || 0) + 1;
     });
     const top5Limpeza = Object.entries(perTagLimpeza).sort((a, b) => b[1] - a[1]).slice(0, 5);
@@ -5190,7 +5202,7 @@ function renderCharts() {
     }
 
     const perArea = {};
-    activeLog.forEach(a => { const lbl = AREA_LABEL[a.area] || a.area; perArea[lbl] = (perArea[lbl] || 0) + 1; });
+    typedBookings.forEach(b => { const lbl = AREA_LABEL[b.area] || b.area; perArea[lbl] = (perArea[lbl] || 0) + 1; });
     const ctx2 = document.getElementById('chart-area');
     if (ctx2) {
         if (chartArea) chartArea.destroy();
