@@ -165,6 +165,8 @@ header {
 #ativos-grid-section.ativos-grid-collapsed #container-equipamentos { display: none; }
 #users-section.users-collapsed .profile-toggle-btn svg { transform: rotate(-90deg); }
 #users-section.users-collapsed #users-content { display: none; }
+#book-section.book-collapsed .profile-toggle-btn svg { transform: rotate(-90deg); }
+#book-section.book-collapsed #book-content { display: none; }
 
 .btn-area-filter {
     background-color: #1c2533; border: 1px solid var(--border-color); color: var(--text-primary);
@@ -475,7 +477,7 @@ body.book-preview-mode .book-preview-toolbar {
 #view-book.book-cards-collapsed #book-cards-wrap { display: none; }
 
 @media print {
-    aside, header, .filter-section, .agenda-toolbar, .audit-toolbar button, #btn-heatmap-print, #btn-print-full-report, #btn-print-book, #book-period-wrap, #toast-container, .book-preview-toolbar { display: none !important; }
+    aside, header, .filter-section, .agenda-toolbar, .audit-toolbar button, #btn-heatmap-print, #btn-print-full-report, #btn-print-book, #btn-toggle-book, #book-period-wrap, #toast-container, .book-preview-toolbar { display: none !important; }
     /* Log de Auditoria nunca sai impresso/em PDF, venha o print de onde vier
        (botão dedicado, Relatório Completo, ou Ctrl+P direto na tela) -- ele
        já tem seu próprio "Exportar Excel" para consulta fora do app. */
@@ -1147,27 +1149,37 @@ body.book-preview-mode .book-preview-toolbar {
             <div style="margin-top:14px; padding-top:14px; border-top:1px dashed var(--border-color);">
                 <button class="btn-primary" id="btn-print-full-report" style="width:100%;">Imprimir Relatório Completo (PDF) — Dashboard + Gráficos + Mapa de Calor</button>
             </div>
-            <div id="book-period-wrap" style="margin-top:14px; padding-top:14px; border-top:1px dashed var(--border-color); display:flex; gap:14px; align-items:flex-end; flex-wrap:wrap;">
-                <div class="agenda-field"><label>BOOK — Período de medição, De</label><input type="date" id="book-from"></div>
-                <div class="agenda-field"><label>BOOK — Até</label><input type="date" id="book-to"></div>
-                <div class="agenda-field">
-                    <label>BOOK — Filtrar por desfecho</label>
-                    <select id="book-status-filter">
-                        <option value="ALL">Tudo (Encerrado + Pendente Vale + Pendente Sodexo)</option>
-                        <option value="ENCERRADA">Somente Encerrado</option>
-                        <option value="PENDENTE_VALE">Somente Pendente Vale</option>
-                        <option value="PENDENTE_SODEXO">Somente Pendente Sodexo</option>
-                        <option value="APROVADO_VALE">Somente Aprovado Vale</option>
-                        <option value="REPROVADO_VALE">Somente Reprovado Vale</option>
-                        <option value="PENDENCIA_VALE">Somente Pendência Vale</option>
-                    </select>
+            <div id="book-section" style="margin-top:14px; padding-top:14px; border-top:1px dashed var(--border-color);">
+                <div class="filter-title-row">
+                    <div class="filter-title" style="margin-bottom:0;">Gerar BOOK de Aderência</div>
+                    <button type="button" id="btn-toggle-book" class="profile-toggle-btn" title="Minimizar/Expandir">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
+                    </button>
                 </div>
-                <div style="font-size:11.5px; color:var(--text-secondary); max-width:260px;">Padrão: ciclo de medição da Vale (dia 21 a dia 20 do mês seguinte). Ajuste se precisar de outro período.</div>
+                <div id="book-content">
+                    <div id="book-period-wrap" style="margin-top:14px; display:flex; gap:14px; align-items:flex-end; flex-wrap:wrap;">
+                        <div class="agenda-field"><label>BOOK — Período de medição, De</label><input type="date" id="book-from"></div>
+                        <div class="agenda-field"><label>BOOK — Até</label><input type="date" id="book-to"></div>
+                        <div class="agenda-field">
+                            <label>BOOK — Filtrar por desfecho</label>
+                            <select id="book-status-filter">
+                                <option value="ALL">Tudo (Encerrado + Pendente Vale + Pendente Sodexo)</option>
+                                <option value="ENCERRADA">Somente Encerrado</option>
+                                <option value="PENDENTE_VALE">Somente Pendente Vale</option>
+                                <option value="PENDENTE_SODEXO">Somente Pendente Sodexo</option>
+                                <option value="APROVADO_VALE">Somente Aprovado Vale</option>
+                                <option value="REPROVADO_VALE">Somente Reprovado Vale</option>
+                                <option value="PENDENCIA_VALE">Somente Pendência Vale</option>
+                            </select>
+                        </div>
+                        <div style="font-size:11.5px; color:var(--text-secondary); max-width:260px;">Padrão: ciclo de medição da Vale (dia 21 a dia 20 do mês seguinte). Ajuste se precisar de outro período.</div>
+                    </div>
+                    <div style="margin-top:10px;">
+                        <button class="btn-secondary" id="btn-print-book" style="width:100%;">Gerar BOOK de Aderência (PDF) — Limpeza Sodexo com fotos de Antes/Depois</button>
+                    </div>
+                    <div id="book-cleanup-alert"></div>
+                </div>
             </div>
-            <div style="margin-top:10px;">
-                <button class="btn-secondary" id="btn-print-book" style="width:100%;">Gerar BOOK de Aderência (PDF) — Limpeza Sodexo com fotos de Antes/Depois</button>
-            </div>
-            <div id="book-cleanup-alert"></div>
         </div>
 
         <div class="kpi-grid" style="margin-bottom:18px;">
@@ -4457,6 +4469,15 @@ document.getElementById('btn-toggle-closed-bookings').addEventListener('click', 
     applyClosedBookingsCollapse(!document.getElementById('closed-bookings-section').classList.contains('closed-bookings-collapsed'));
 });
 
+const LS_BOOK_COLLAPSED = 'vale_saas_book_collapsed_v1';
+function applyBookCollapse(collapsed) {
+    document.getElementById('book-section').classList.toggle('book-collapsed', collapsed);
+    localStorage.setItem(LS_BOOK_COLLAPSED, collapsed ? '1' : '0');
+}
+document.getElementById('btn-toggle-book').addEventListener('click', () => {
+    applyBookCollapse(!document.getElementById('book-section').classList.contains('book-collapsed'));
+});
+
 /* =========================================================
    RENDER: USUÁRIO LOGADO
    ========================================================= */
@@ -7335,6 +7356,7 @@ if ('serviceWorker' in navigator) {
     applyAssetMgmtCollapse(localStorage.getItem(LS_ASSETMGMT_COLLAPSED) === '1');
     applyAuditCollapse(localStorage.getItem(LS_AUDIT_COLLAPSED) === '1');
     applyClosedBookingsCollapse(localStorage.getItem(LS_CLOSEDBOOKINGS_COLLAPSED) === '1');
+    applyBookCollapse(localStorage.getItem(LS_BOOK_COLLAPSED) === '1');
 
     const { data: { session } } = await sb.auth.getSession();
     if (session && session.user) {
