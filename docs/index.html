@@ -6219,11 +6219,28 @@ function parseImportTime(value) {
     return null;
 }
 
+// Compara a TAG da planilha sem diferenciar maiúsculas/minúsculas -- em
+// Fábrica Materiais/Viga Materiais as tags de equipamento são os próprios
+// nomes de área "bonitos" (ex: "Barragem", "Elétrica"), não códigos padrão
+// em caixa alta como "99TC01" nos outros sites, então forçar upper-case na
+// comparação travava a importação (planilha "BARRAGEM" x equipamento
+// cadastrado "Barragem"). Devolve a grafia REAL do equipamento cadastrado,
+// não a que veio digitada na planilha, pra manter tudo consistente com o
+// resto do app (DATABASE/AREA_LABEL usam a grafia cadastrada).
+function resolveImportTag(rawTag) {
+    const trimmed = String(rawTag || '').trim();
+    if (!trimmed) return null;
+    const match = ALL_EQUIP.find(e => e.tag.toLowerCase() === trimmed.toLowerCase());
+    return match ? match.tag : null;
+}
+
 // Decide o que fazer com a linha: cria (OM nova), encerra (OM já aberta) ou
 // só corrige as fotos (OM já encerrada) -- não mexe em REPROGRAMADA/PENDENTE,
 // já que aí um desfecho diferente foi uma decisão manual de alguém.
 function validateImportRow(row, idx) {
-    const tag = String(row.TAG || '').trim().toUpperCase();
+    const rawTag = String(row.TAG || '').trim();
+    const resolvedTag = resolveImportTag(rawTag);
+    const tag = resolvedTag || rawTag.toUpperCase();
     const om = String(row.OM || '').trim();
     const tipo = String(row.TIPO || SODEXO_CLEANING_TYPE).trim();
     const responsavel = String(row.RESPONSAVEL || '').trim();
@@ -6232,8 +6249,8 @@ function validateImportRow(row, idx) {
     const fotoDepoisName = String(row.FOTO_DEPOIS || '').trim();
     const result = { idx, tag, om, tipo, responsavel, observacao, fotoAntesName, fotoDepoisName, error: null, action: null, targetBookingId: null, date: null, startMin: null, endMin: null };
 
-    if (!tag) { result.error = 'TAG não informada.'; return result; }
-    if (!ALL_EQUIP.some(e => e.tag === tag)) { result.error = `Equipamento "${tag}" não encontrado neste site.`; return result; }
+    if (!rawTag) { result.error = 'TAG não informada.'; return result; }
+    if (!resolvedTag) { result.error = `Equipamento "${rawTag}" não encontrado neste site.`; return result; }
     if (!/^\d{1,12}$/.test(om)) { result.error = 'OM inválida (só dígitos, até 12 caracteres).'; return result; }
     if (!IMPORT_TYPES.includes(tipo)) { result.error = `Tipo "${tipo}" desconhecido.`; return result; }
 
@@ -6276,7 +6293,9 @@ function validateImportRow(row, idx) {
 // só a duração (homem-hora) -- o horário de início/fim é calculado depois,
 // em assignDefaultStartTimes, não aqui linha a linha.
 function validateScheduleOnlyRow(row, idx) {
-    const tag = String(row.TAG || '').trim().toUpperCase();
+    const rawTag = String(row.TAG || '').trim();
+    const resolvedTag = resolveImportTag(rawTag);
+    const tag = resolvedTag || rawTag.toUpperCase();
     const om = String(row.OM || '').trim();
     const observacao = String(row.DESCRICAO || '').trim() || defaultCloseObservationFor('ENCERRADA');
     const result = {
@@ -6285,8 +6304,8 @@ function validateScheduleOnlyRow(row, idx) {
         date: null, startMin: null, endMin: null, horas: null
     };
 
-    if (!tag) { result.error = 'TAG não informada.'; return result; }
-    if (!ALL_EQUIP.some(e => e.tag === tag)) { result.error = `Equipamento "${tag}" não encontrado neste site.`; return result; }
+    if (!rawTag) { result.error = 'TAG não informada.'; return result; }
+    if (!resolvedTag) { result.error = `Equipamento "${rawTag}" não encontrado neste site.`; return result; }
     if (!/^\d{1,12}$/.test(om)) { result.error = 'OM inválida (só dígitos, até 12 caracteres).'; return result; }
 
     const dateStr = parseImportDate(row.DATA);
@@ -6312,7 +6331,9 @@ function validateScheduleOnlyRow(row, idx) {
 // paralelo), aqui HORA_INICIO/HORA_FIM vêm direto da planilha -- múltiplas
 // linhas na mesma área/dia são um caso legítimo (ver activeOmConflict).
 function validateS11dDemandRow(row, idx) {
-    const tag = String(row.TAG || '').trim().toUpperCase();
+    const rawTag = String(row.TAG || '').trim();
+    const resolvedTag = resolveImportTag(rawTag);
+    const tag = resolvedTag || rawTag.toUpperCase();
     const observacao = String(row.OBSERVACAO || '').trim() || defaultCloseObservationFor('ENCERRADA');
     const result = {
         idx, tag, om: null, tipo: SODEXO_CLEANING_TYPE, responsavel: '', observacao,
@@ -6320,8 +6341,8 @@ function validateS11dDemandRow(row, idx) {
         date: null, startMin: null, endMin: null
     };
 
-    if (!tag) { result.error = 'TAG (Área) não informada.'; return result; }
-    if (!ALL_EQUIP.some(e => e.tag === tag)) { result.error = `Área "${tag}" não encontrada neste site.`; return result; }
+    if (!rawTag) { result.error = 'TAG (Área) não informada.'; return result; }
+    if (!resolvedTag) { result.error = `Área "${rawTag}" não encontrada neste site.`; return result; }
 
     const dateStr = parseImportDate(row.DATA);
     if (!dateStr) { result.error = 'Data inválida (use dd/mm/aaaa).'; return result; }
