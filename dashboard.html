@@ -4799,13 +4799,16 @@ function sodexoCleaningBreakdown(periodo) {
     // PENDENTE_VALE, respectivamente. AGUARDANDO_APROVACAO_VALE fica de
     // fora de propósito: não conta nem a favor nem contra até o Cliente
     // Vale decidir.
-    // Atividades extras (Área J ou marcadas manualmente) nunca entram no
-    // total "programado" -- só contam como bônus à parte (atendidoExtra,
-    // abaixo) quando concluídas com sucesso. É isso que permite a nota
-    // passar de 100% sem inflar o denominador.
+    // Atividades extras (Área J ou marcadas manualmente) normalmente não
+    // entram no total "programado" -- só contam como bônus à parte
+    // (atendidoExtra, abaixo) quando concluídas com sucesso. É isso que
+    // permite a nota passar de 100% sem inflar o denominador. EXCEÇÃO: uma
+    // extra que fica Pendente Vale entra no total normalmente, pra contar
+    // no KPI de Pendente Vale -- ainda não desconta nada da nota (só
+    // Pendente Sodexo desconta), só passa a aparecer no indicador.
     const fechados = state.bookings.filter(b => {
         if (b.type !== SODEXO_CLEANING_TYPE) return false;
-        if (b.isExtra) return false;
+        if (b.isExtra && !['PENDENTE_VALE', 'PENDENCIA_VALE'].includes(b.closureStatus)) return false;
         if (!['ENCERRADA', 'PENDENTE_VALE', 'PENDENTE_SODEXO', 'APROVADO_VALE', 'REPROVADO_VALE', 'PENDENCIA_VALE'].includes(b.closureStatus)) return false;
         if (from && b.date < from) return false;
         if (to && b.date > to) return false;
