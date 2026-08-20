@@ -1807,13 +1807,18 @@ function mapAuditFromDb(row) {
 // importação em massa) sumirem do Calendário mesmo tendo sido gravados com
 // sucesso. Busca em blocos até a página vir mais curta que o tamanho pedido,
 // garantindo que TODAS as linhas do site cheguem, não importa quantas sejam.
-async function fetchAllRows(table, orderCol, ascending) {
+// `applyFilter`, quando informado, recebe o query builder já com
+// `.select().eq(site_key).order(...)` aplicado e devolve ele com filtros
+// extras (ex: janela de data) -- usado pra não baixar o histórico inteiro
+// toda vez (ver historyWindowStart/ensureHistoryLoadedFrom).
+async function fetchAllRows(table, orderCol, ascending, applyFilter) {
     const PAGE_SIZE = 1000;
     let all = [];
     let from = 0;
     while (true) {
-        const { data, error } = await sb.from(table).select('*').eq('site_key', state.currentSite)
-            .order(orderCol, { ascending }).range(from, from + PAGE_SIZE - 1);
+        let query = sb.from(table).select('*').eq('site_key', state.currentSite).order(orderCol, { ascending });
+        if (applyFilter) query = applyFilter(query);
+        const { data, error } = await query.range(from, from + PAGE_SIZE - 1);
         if (error) return { data: null, error };
         all = all.concat(data || []);
         if (!data || data.length < PAGE_SIZE) break;
@@ -1822,16 +1827,74 @@ async function fetchAllRows(table, orderCol, ascending) {
     return { data: all, error: null };
 }
 
+// Janela padrão pré-carregada no login/troca de site: os mesmos 6 períodos
+// de medição que os gráficos de evolução usam (lastNMeasurementPeriods),
+// então nunca deixa esses gráficos incompletos. Baixar o histórico INTEIRO
+// sempre (como era antes) ficava cada vez mais lento e pesado em memória
+// conforme o site acumulava meses de uso -- período mais antigo que isso
+// só é buscado sob demanda (ver ensureHistoryLoadedFrom), quando alguém
+// realmente pede uma data de fora da janela (filtro de Relatórios, BOOK,
+// Mapa de Calor, navegar o Calendário pra trás).
+const HISTORY_WINDOW_PERIODS = 6;
+function historyWindowStart() {
+    return measurementPeriodOffset(HISTORY_WINDOW_PERIODS - 1).from;
+}
+// Bloqueio ainda EM ABERTO nunca fica de fora, não importa a data -- um
+// esquecimento antigo continua aparecendo como pendente em vez de sumir
+// silenciosamente só por estar fora da janela padrão.
+function bookingsWindowFilter(query, windowStart) {
+    return query.or(`closure_status.is.null,date.gte.${windowStart}`);
+}
+// Data (string "aaaa-mm-dd") a partir de onde o histórico já está
+// carregado em memória -- setada no fim de loadPersisted/backgroundRefreshTick
+// e só pode ficar mais antiga (nunca mais recente) via ensureHistoryLoadedFrom.
+let loadedHistoryFrom = null;
+
 async function loadPersisted() {
+    const windowStart = historyWindowStart();
     const [{ data: bookings, error: bErr }, { data: audit, error: aErr }] = await Promise.all([
-        fetchAllRows('bookings', 'date', true),
-        fetchAllRows('audit_log', 'data_hora', false)
+        fetchAllRows('bookings', 'date', true, q => bookingsWindowFilter(q, windowStart)),
+        fetchAllRows('audit_log', 'data_hora', false, q => q.gte('data_hora', windowStart))
     ]);
     if (bErr) { toast('Erro ao carregar agendamentos: ' + bErr.message, 'error'); state.bookings = []; }
     else state.bookings = (bookings || []).map(mapBookingFromDb);
     if (aErr) { toast('Erro ao carregar histórico: ' + aErr.message, 'error'); state.auditLog = []; }
     else state.auditLog = (audit || []).map(mapAuditFromDb);
+    if (!bErr && !aErr) loadedHistoryFrom = windowStart;
     return { error: bErr || aErr || null };
+}
+
+// Sob demanda: quando um filtro de período (Relatórios, BOOK, Mapa de
+// Calor, navegação do Calendário) pede uma data mais antiga do que
+// loadedHistoryFrom, busca só o intervalo que falta e mescla no estado --
+// sem isso, um filtro pra um período antigo voltaria vazio mesmo tendo
+// dado no banco. Idempotente: se a data já está coberta, não faz nada.
+let historyTopUpInProgress = null;
+async function ensureHistoryLoadedFrom(dateStr) {
+    if (!dateStr || !loadedHistoryFrom || dateStr >= loadedHistoryFrom) return;
+    if (historyTopUpInProgress) {
+        await historyTopUpInProgress;
+        if (!loadedHistoryFrom || dateStr >= loadedHistoryFrom) return;
+    }
+    const fromStr = dateStr;
+    const toDate = new Date(loadedHistoryFrom + 'T00:00:00');
+    toDate.setDate(toDate.getDate() - 1);
+    const toStr = `${toDate.getFullYear()}-${pad(toDate.getMonth() + 1)}-${pad(toDate.getDate())}`;
+    toast('Carregando período mais antigo...', 'warn');
+    historyTopUpInProgress = (async () => {
+        const [{ data: bookings, error: bErr }, { data: audit, error: aErr }] = await Promise.all([
+            fetchAllRows('bookings', 'date', true, q => q.gte('date', fromStr).lte('date', toStr)),
+            fetchAllRows('audit_log', 'data_hora', false, q => q.gte('data_hora', fromStr).lt('data_hora', toStr + 'T23:59:59.999'))
+        ]);
+        if (bErr || aErr) { toast('Erro ao carregar período mais antigo: ' + (bErr || aErr).message, 'error'); return; }
+        const existingBookingIds = new Set(state.bookings.map(b => b.id));
+        (bookings || []).forEach(row => { const b = mapBookingFromDb(row); if (!existingBookingIds.has(b.id)) state.bookings.push(b); });
+        const existingAuditIds = new Set(state.auditLog.map(a => a.id));
+        (audit || []).forEach(row => { const a = mapAuditFromDb(row); if (!existingAuditIds.has(a.id)) state.auditLog.push(a); });
+        loadedHistoryFrom = fromStr;
+    })();
+    await historyTopUpInProgress;
+    historyTopUpInProgress = null;
 }
 
 // Atualização em segundo plano (polling) -- sem isso, quando o Encarregado
@@ -1850,9 +1913,14 @@ async function backgroundRefreshTick() {
     if (document.visibilityState !== 'visible') return;
     bgRefreshInProgress = true;
     try {
+        // Usa loadedHistoryFrom (não um valor fixo) -- se um filtro antigo já
+        // ampliou a janela via ensureHistoryLoadedFrom, o polling em segundo
+        // plano não pode voltar a encolher pra janela padrão e apagar esse
+        // período mais antigo que já estava sendo exibido na tela.
+        const windowStart = loadedHistoryFrom || historyWindowStart();
         const [{ data: bookings, error: bErr }, { data: audit, error: aErr }] = await Promise.all([
-            fetchAllRows('bookings', 'date', true),
-            fetchAllRows('audit_log', 'data_hora', false)
+            fetchAllRows('bookings', 'date', true, q => bookingsWindowFilter(q, windowStart)),
+            fetchAllRows('audit_log', 'data_hora', false, q => q.gte('data_hora', windowStart))
         ]);
         // Falha passageira de rede -- tenta de novo no próximo ciclo, sem
         // apagar o que já está na tela (diferente de loadPersisted, que
@@ -1861,6 +1929,7 @@ async function backgroundRefreshTick() {
         if (bErr || aErr) return;
         state.bookings = (bookings || []).map(mapBookingFromDb);
         state.auditLog = (audit || []).map(mapAuditFromDb);
+        loadedHistoryFrom = windowStart;
 
         renderWeekGrid(); renderAtivos(); renderDashboard(); updateUpcomingBadge();
         const activeView = document.querySelector('.content-container.view-active');
@@ -4714,8 +4783,8 @@ function renderWeekGrid() {
         }
     });
 }
-document.getElementById('week-jump-date').addEventListener('change', e => { if (e.target.value) { state.weekStart = getSunday(e.target.value); renderWeekGrid(); } });
-document.getElementById('btn-prev-week').addEventListener('click', () => { state.weekStart = addDays(state.weekStart, -7); renderWeekGrid(); });
+document.getElementById('week-jump-date').addEventListener('change', async e => { if (e.target.value) { await ensureHistoryLoadedFrom(getSunday(e.target.value)); state.weekStart = getSunday(e.target.value); renderWeekGrid(); } });
+document.getElementById('btn-prev-week').addEventListener('click', async () => { const next = addDays(state.weekStart, -7); await ensureHistoryLoadedFrom(next); state.weekStart = next; renderWeekGrid(); });
 document.getElementById('btn-next-week').addEventListener('click', () => { state.weekStart = addDays(state.weekStart, 7); renderWeekGrid(); });
 document.getElementById('btn-this-week').addEventListener('click', () => { state.weekStart = getSunday(todayStr()); renderWeekGrid(); });
 
@@ -4788,12 +4857,13 @@ function renderReportUserFilter() {
         state.users.map(u => `<option value="${escapeHtml(u.username)}">${escapeHtml(u.name)} (${ROLE_META[u.role].label})</option>`).join('');
     sel.value = current;
 }
-document.getElementById('btn-apply-filter').addEventListener('click', () => {
+document.getElementById('btn-apply-filter').addEventListener('click', async () => {
     state.reportFilter.from = document.getElementById('report-from').value || null;
     state.reportFilter.to = document.getElementById('report-to').value || null;
     state.reportFilter.username = document.getElementById('report-user').value || null;
     state.reportFilter.isExtra = document.getElementById('report-extra-filter').checked;
     state.reportFilter.onlyLostHours = document.getElementById('report-lost-hours-filter').checked;
+    await ensureHistoryLoadedFrom(state.reportFilter.from);
     renderCharts();
 });
 document.getElementById('btn-clear-filter').addEventListener('click', () => {
@@ -5763,8 +5833,10 @@ document.getElementById('btn-book-toggle-photos').addEventListener('click', () =
     setBookCardsCollapsed(!document.getElementById('view-book').classList.contains('book-cards-collapsed'));
 });
 
-function previewAderenciaBook() {
+async function previewAderenciaBook() {
     if (!canExportReports()) { showAccessDenied('Perfil sem privilégios para extrair o BOOK de aderência.'); return; }
+    const { from: bookFromCheck } = bookPeriodoSelecionado();
+    await ensureHistoryLoadedFrom(bookFromCheck);
     bookPreviousView = document.querySelector('.content-container.view-active').id.replace('view-', '');
     const container = document.getElementById('view-book');
     container.innerHTML = buildAderenciaBookHtml();
@@ -6645,10 +6717,11 @@ function renderHeatmapEquipSelect() {
     sel.value = current;
 }
 
-document.getElementById('btn-heatmap-apply').addEventListener('click', () => {
+document.getElementById('btn-heatmap-apply').addEventListener('click', async () => {
     state.heatmapFilter.from = document.getElementById('heatmap-from').value || null;
     state.heatmapFilter.to = document.getElementById('heatmap-to').value || null;
     state.heatmapFilter.equip = document.getElementById('heatmap-equip').value || null;
+    await ensureHistoryLoadedFrom(state.heatmapFilter.from);
     renderHeatmap();
 });
 document.getElementById('btn-heatmap-clear').addEventListener('click', () => {
