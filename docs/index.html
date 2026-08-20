@@ -933,6 +933,18 @@ body.book-preview-mode .book-preview-toolbar {
                 <div style="height:14px;"></div>
                 <div class="agenda-toolbar">
                     <div class="agenda-field">
+                        <label>Área a Renomear</label>
+                        <select id="rename-area-code" style="min-width:200px;"></select>
+                    </div>
+                    <div class="agenda-field">
+                        <label>Novo Nome de Exibição</label>
+                        <input type="text" id="rename-area-new-label" placeholder="ex: SEP" style="min-width:160px;">
+                    </div>
+                    <button class="btn-primary" id="btn-rename-area" style="align-self:flex-end;">Renomear Área</button>
+                </div>
+                <div style="height:14px;"></div>
+                <div class="agenda-toolbar">
+                    <div class="agenda-field">
                         <label>Área de Destino</label>
                         <select id="new-equip-area"></select>
                     </div>
@@ -1578,14 +1590,6 @@ function pendingClosureStatusFor(type) { return type === SODEXO_CLEANING_TYPE ? 
 // no alerta mobile do encarregado quanto no KPI do dashboard desktop.
 const OVERDUE_THRESHOLD_DAYS = 3;
 
-// Jornada: 9h na empresa, 1h de almoço, 8h de trabalho de verdade. Um
-// atraso pequeno (ex: 2h) ainda deixa tempo de sobra pra realizar a
-// atividade no mesmo dia -- só quando o atraso já consome quase o dia
-// inteiro (6,3h+) é que não sobra tempo hábil, aí sim conta como uma OM
-// Pendente Vale de verdade na nota da Sodexo. Abaixo disso, o registro
-// continua existindo normalmente (aparece nos gráficos/KPI de Horas
-// Perdidas), só não gera o bônus na nota.
-const LOST_HOURS_ADHERENCE_THRESHOLD = 6.3;
 function daysSinceServiceDate(booking) {
     const today = new Date(todayStr() + 'T00:00:00');
     const svcDate = new Date(booking.date + 'T00:00:00');
@@ -4822,22 +4826,12 @@ function sodexoCleaningBreakdown(periodo) {
         return true;
     }).length;
     // Horas Perdidas -- tempo ocioso aguardando material NUNCA é culpa da
-    // Sodexo (é do armazém/Vale), mas só vira uma OM Pendente Vale de
-    // verdade (com bônus na nota) quando o atraso já consumiu quase o dia
-    // inteiro de trabalho (ver LOST_HOURS_ADHERENCE_THRESHOLD) -- um atraso
-    // pequeno ainda deixa tempo de realizar a atividade normalmente, então
-    // não conta como OM perdida. Abaixo do limite, o registro continua
-    // existindo (aparece nos gráficos/KPI), só não soma bônus aqui.
-    const atendidoHorasPerdidas = state.bookings.filter(b => {
-        if (b.type !== LOST_HOURS_TYPE) return false;
-        if ((b.lostHours || 0) < LOST_HOURS_ADHERENCE_THRESHOLD) return false;
-        if (from && b.date < from) return false;
-        if (to && b.date > to) return false;
-        return true;
-    }).length;
+    // Sodexo (é do armazém/Vale), mas é puramente indicador/KPI (ver
+    // renderLostHoursKpi) -- não entra na nota de aderência de jeito nenhum,
+    // nem soma nem desconta.
     const pct = n => Math.round((n / total) * 1000) / 10;
     return {
-        total, atendido, pendenteVale, pendenteSodexo, atendidoExtra, atendidoHorasPerdidas,
+        total, atendido, pendenteVale, pendenteSodexo, atendidoExtra,
         pctAtendido: pct(atendido), pctPendenteVale: pct(pendenteVale), pctPendenteSodexo: pct(pendenteSodexo),
     };
 }
@@ -4846,12 +4840,12 @@ function sodexoCleaningBreakdown(periodo) {
 // pendência é responsabilidade da própria Sodexo. Pendente Vale (e
 // Encerrada, claro) continuam contando como cumprido -- diferente de
 // `pctAtendido`, que só considera "cumprido" o que foi Encerrada. Extras
-// concluídas (atendidoExtra) e Horas Perdidas (atendidoHorasPerdidas) somam
-// por cima, podendo passar de 100% -- sem nenhuma das duas no período, os
-// dois bônus são 0 e a nota fica idêntica à de antes dessa mudança.
+// concluídas (atendidoExtra) somam por cima, podendo passar de 100% -- sem
+// nenhuma extra no período, o bônus é 0 e a nota fica idêntica à de antes
+// dessa mudança.
 function sodexoAdherenceScore(b) {
     if (!b || !b.total) return null;
-    return Math.round(((b.total - b.pendenteSodexo + (b.atendidoExtra || 0) + (b.atendidoHorasPerdidas || 0)) / b.total) * 1000) / 10;
+    return Math.round(((b.total - b.pendenteSodexo + (b.atendidoExtra || 0)) / b.total) * 1000) / 10;
 }
 function renderSodexoScore() {
     const notaEl = document.getElementById('kpi-sodexo-nota');
@@ -6888,6 +6882,8 @@ function renderAssetMgmtPanel() {
     }
     const delAreaSel = document.getElementById('del-area-code');
     if (delAreaSel) delAreaSel.innerHTML = Object.keys(DATABASE).map(k => `<option value="${k}">${escapeHtml(AREA_LABEL[k] || k)} (${DATABASE[k].length} ativo(s))</option>`).join('');
+    const renameAreaSel = document.getElementById('rename-area-code');
+    if (renameAreaSel) renameAreaSel.innerHTML = Object.keys(DATABASE).map(k => `<option value="${k}">${escapeHtml(AREA_LABEL[k] || k)}</option>`).join('');
     document.getElementById('equip-value-section').style.display = canManageAssets() ? 'flex' : 'none';
     renderEquipValueTable();
     // Cadastro de colaboradores só faz sentido no workflow S11D -- os
@@ -7078,6 +7074,28 @@ document.getElementById('btn-rename-equip').addEventListener('click', async () =
     document.getElementById('rename-equip-new-tag').value = '';
 });
 
+// Renomeia só o nome de exibição (AREA_LABEL) -- o código da área
+// (`areas.code`, usado em bookings/audit_log como area_code) nunca muda,
+// igual ao padrão já usado pra renomear site (`sites.label` sem mexer em
+// `sites.key`) -- histórico continua íntegro, só a tela mostra o nome novo.
+async function renameArea(areaCode, newLabel) {
+    const { error } = await sb.from('areas').update({ label: newLabel }).eq('site_key', state.currentSite).eq('code', areaCode);
+    if (error) { toast('Erro ao renomear área: ' + error.message, 'error'); return false; }
+    AREA_LABEL[areaCode] = newLabel;
+    toast(`Área renomeada para "${newLabel}" com sucesso.`);
+    renderAssetMgmtPanel();
+    renderAtivos(); renderAgendaEquipSelect(); renderDashboard(); renderWeekGrid(); renderAudit();
+    return true;
+}
+document.getElementById('btn-rename-area').addEventListener('click', async () => {
+    if (!canManageAssets()) { showAccessDenied('Apenas o Admin Master e o Técnico de Planejamento e GU podem gerenciar áreas e equipamentos.'); return; }
+    const areaCode = document.getElementById('rename-area-code').value;
+    const newLabel = document.getElementById('rename-area-new-label').value.trim();
+    if (!areaCode) { toast('Selecione a área a renomear.', 'error'); return; }
+    if (!newLabel) { toast('Informe o novo nome de exibição.', 'error'); return; }
+    const ok = await renameArea(areaCode, newLabel);
+    if (ok) document.getElementById('rename-area-new-label').value = '';
+});
 document.getElementById('btn-add-area').addEventListener('click', async () => {
     if (!canManageAssets()) { showAccessDenied('Apenas o Admin Master e o Técnico de Planejamento e GU podem gerenciar áreas e equipamentos.'); return; }
     const codeRaw = document.getElementById('new-area-code').value.trim().toUpperCase().replace(/[^A-Z0-9_-]/g, '');
