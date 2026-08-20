@@ -1196,6 +1196,11 @@ body.book-preview-mode .book-preview-toolbar {
                 <div class="kpi-value" id="kpi-lost-hours">—</div>
                 <div class="kpi-sub" id="kpi-lost-hours-sub">Tempo ocioso aguardando material</div>
             </div>
+            <div class="kpi-card" id="kpi-overtime-card" style="--accent: #8b5cf6; display:none;">
+                <div class="kpi-label">Hora Extra (Período)</div>
+                <div class="kpi-value" id="kpi-overtime">—</div>
+                <div class="kpi-sub" id="kpi-overtime-sub">Jornada extra do Encarregado</div>
+            </div>
         </div>
 
         <div class="chart-box" style="margin-bottom:18px;">
@@ -1216,13 +1221,17 @@ body.book-preview-mode .book-preview-toolbar {
                 <h3>Volume de Atividades por Área (Aderência)</h3>
                 <canvas id="chart-area"></canvas>
             </div>
-            <div class="chart-box" id="chart-box-horas-extras" style="display:none;">
-                <h3>Horas Extras — Evolução por Período</h3>
-                <canvas id="chart-horas-extras"></canvas>
+            <div class="chart-box" id="chart-box-atividade-extra" style="display:none;">
+                <h3>Atividade Extra Concluída — Evolução por Período</h3>
+                <canvas id="chart-atividade-extra"></canvas>
             </div>
             <div class="chart-box" id="chart-box-horas-perdidas" style="display:none;">
                 <h3>Horas Perdidas — Evolução por Período</h3>
                 <canvas id="chart-horas-perdidas"></canvas>
+            </div>
+            <div class="chart-box" id="chart-box-overtime" style="display:none;">
+                <h3>Hora Extra — Evolução por Período</h3>
+                <canvas id="chart-overtime"></canvas>
             </div>
         </div>
 
@@ -4895,7 +4904,7 @@ function renderSodexoScore() {
 }
 
 let chartTop5 = null, chartTop5Limpeza = null, chartArea = null, chartAderenciaHistorico = null;
-let chartHorasExtras = null, chartHorasPerdidas = null;
+let chartAtividadeExtra = null, chartHorasPerdidas = null, chartOvertime = null;
 
 // O layout de impressão é bem diferente do da tela (a sidebar some, a
 // largura disponível muda) -- os gráficos são criados/dimensionados
@@ -4903,7 +4912,7 @@ let chartHorasExtras = null, chartHorasPerdidas = null;
 // entra no modo impressão de verdade (evento beforeprint), eles saem com
 // o tamanho calculado pra tela normal: distorcidos, vazando da caixa no PDF.
 window.addEventListener('beforeprint', () => {
-    [chartStatus, chartTop5, chartTop5Limpeza, chartArea, chartAderenciaHistorico, chartHorasExtras, chartHorasPerdidas].forEach(c => { if (c) c.resize(); });
+    [chartStatus, chartTop5, chartTop5Limpeza, chartArea, chartAderenciaHistorico, chartAtividadeExtra, chartHorasPerdidas, chartOvertime].forEach(c => { if (c) c.resize(); });
 });
 
 const CLOSURE_STATUS_LABELS = {
@@ -5022,14 +5031,35 @@ function renderLostHoursKpi() {
     sub.textContent = total > 0 ? 'Tempo ocioso aguardando material' : 'Nenhum registro no período selecionado';
 }
 
+// KPI de Hora Extra (jornada do Encarregado) -- diferente de Atividade
+// Extra (Área J/OM extra) abaixo, que é sobre OM concluída a mais, não
+// sobre jornada. Puramente informativo, nunca entra na nota de aderência.
+function renderOvertimeKpi() {
+    const card = document.getElementById('kpi-overtime-card');
+    if (card) card.style.display = isMaterialsContractSite() ? '' : 'none';
+    if (!isMaterialsContractSite()) return;
+    const el = document.getElementById('kpi-overtime');
+    if (!el) return;
+    const sub = document.getElementById('kpi-overtime-sub');
+    const { from, to } = currentReportPeriod();
+    const entries = state.bookings.filter(b => b.type === OVERTIME_TYPE && (!from || b.date >= from) && (!to || b.date <= to));
+    const total = entries.reduce((sum, b) => sum + (b.overtimeHours || 0), 0);
+    const total50 = entries.filter(b => b.overtimePct === 50).reduce((sum, b) => sum + (b.overtimeHours || 0), 0);
+    const total100 = entries.filter(b => b.overtimePct === 100).reduce((sum, b) => sum + (b.overtimeHours || 0), 0);
+    el.textContent = `${total.toFixed(1)}h`;
+    sub.textContent = total > 0 ? `${total50.toFixed(1)}h a 50% · ${total100.toFixed(1)}h a 100%` : 'Nenhum registro no período selecionado';
+}
+
 // Soma de horas de atividades extras concluídas (Área J ou marcadas
 // manualmente) por período de medição -- linha do tempo pra mostrar ao
 // cliente o quanto de atendimento extra foi feito além do programado.
-function renderHorasExtrasChart() {
-    const box = document.getElementById('chart-box-horas-extras');
+// Não confundir com Hora Extra (jornada do Encarregado, renderOvertimeChart
+// abaixo) -- são dois indicadores diferentes.
+function renderAtividadeExtraChart() {
+    const box = document.getElementById('chart-box-atividade-extra');
     if (box) box.style.display = isMaterialsContractSite() ? '' : 'none';
     if (!isMaterialsContractSite()) return;
-    const ctx = document.getElementById('chart-horas-extras');
+    const ctx = document.getElementById('chart-atividade-extra');
     if (!ctx) return;
     const periodos = lastNMeasurementPeriods(6);
     const labels = periodos.map(p => p.label);
@@ -5041,13 +5071,13 @@ function renderHorasExtrasChart() {
             .reduce((sum, b) => sum + (b.endMin - b.startMin) / 60, 0);
         return Math.round(total * 10) / 10;
     });
-    if (chartHorasExtras) chartHorasExtras.destroy();
-    chartHorasExtras = new Chart(ctx, {
+    if (chartAtividadeExtra) chartAtividadeExtra.destroy();
+    chartAtividadeExtra = new Chart(ctx, {
         type: 'line',
         data: {
             labels,
             datasets: [{
-                label: 'Horas Extras', data: horas,
+                label: 'Atividade Extra', data: horas,
                 borderColor: '#f59e0b', backgroundColor: 'rgba(245,158,11,0.12)',
                 fill: true, tension: 0.3, pointRadius: 4, pointBackgroundColor: '#f59e0b',
             }],
@@ -5088,6 +5118,44 @@ function renderHorasPerdidasChart() {
                 label: 'Horas Perdidas', data: horas,
                 borderColor: '#ef4444', backgroundColor: 'rgba(239,68,68,0.12)',
                 fill: true, tension: 0.3, pointRadius: 4, pointBackgroundColor: '#ef4444',
+            }],
+        },
+        options: {
+            responsive: true, maintainAspectRatio: false,
+            plugins: { legend: { display: false }, tooltip: { callbacks: { label: (ctx) => `${ctx.parsed.y}h` } } },
+            scales: {
+                x: { ticks: { color: '#8a99ad' }, grid: { color: '#2b394e' } },
+                y: { min: 0, ticks: { color: '#8a99ad', callback: (v) => v + 'h' }, grid: { color: '#2b394e' } },
+            },
+        },
+    });
+}
+
+// Soma de Hora Extra (jornada do Encarregado) por período de medição --
+// puramente informativo, igual Horas Perdidas acima, nunca entra na nota.
+function renderOvertimeChart() {
+    const box = document.getElementById('chart-box-overtime');
+    if (box) box.style.display = isMaterialsContractSite() ? '' : 'none';
+    if (!isMaterialsContractSite()) return;
+    const ctx = document.getElementById('chart-overtime');
+    if (!ctx) return;
+    const periodos = lastNMeasurementPeriods(6);
+    const labels = periodos.map(p => p.label);
+    const horas = periodos.map(p => {
+        const total = state.bookings
+            .filter(b => b.type === OVERTIME_TYPE && b.date >= p.from && b.date <= p.to)
+            .reduce((sum, b) => sum + (b.overtimeHours || 0), 0);
+        return Math.round(total * 10) / 10;
+    });
+    if (chartOvertime) chartOvertime.destroy();
+    chartOvertime = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels,
+            datasets: [{
+                label: 'Hora Extra', data: horas,
+                borderColor: '#8b5cf6', backgroundColor: 'rgba(139,92,246,0.12)',
+                fill: true, tension: 0.3, pointRadius: 4, pointBackgroundColor: '#8b5cf6',
             }],
         },
         options: {
@@ -5147,8 +5215,10 @@ function renderCharts() {
     renderClosedBookings();
     renderAderenciaHistoricoChart();
     renderLostHoursKpi();
-    renderHorasExtrasChart();
+    renderOvertimeKpi();
+    renderAtividadeExtraChart();
     renderHorasPerdidasChart();
+    renderOvertimeChart();
     renderBookCleanupAlert();
     // Os 3 gráficos abaixo vêm de state.bookings, não do audit_log -- o
     // audit_log é uma TRILHA de auditoria imutável (mantém o registro do que
