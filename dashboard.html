@@ -6312,9 +6312,16 @@ function validateScheduleOnlyRow(row, idx) {
     if (!dateStr) { result.error = 'Data inválida (use dd/mm/aaaa).'; return result; }
     result.date = dateStr;
 
+    // HORAS é opcional -- algumas atividades (ex: inventário, vistoria) não
+    // têm HH de verdade pra registrar. Em branco, o lançamento nasce com uma
+    // janela só simbólica (08:00, 1 minuto) -- só Atividade Extra usa a
+    // duração pra somar horas em algum indicador, e isso nunca é isExtra.
     const horasRaw = String(row.HORAS == null ? '' : row.HORAS).trim().replace(',', '.');
-    const horas = parseFloat(horasRaw);
-    if (!horasRaw || isNaN(horas) || horas <= 0 || horas > 24) { result.error = 'HORAS inválida (número maior que 0, ex: 3 ou 2,5).'; return result; }
+    let horas = null;
+    if (horasRaw) {
+        horas = parseFloat(horasRaw);
+        if (isNaN(horas) || horas <= 0 || horas > 24) { result.error = 'HORAS inválida (número maior que 0, ex: 3 ou 2,5 -- ou deixe em branco).'; return result; }
+    }
     result.horas = horas;
 
     if (state.bookings.some(b => b.om === om)) { result.error = `OM ${om} já existe no sistema -- não é possível programar de novo.`; return result; }
@@ -6369,7 +6376,7 @@ function assignDefaultStartTimes(rows) {
     const DEFAULT_START = 8 * 60;
     rows.forEach(r => {
         if (r.error || r.action !== 'create-only') return;
-        const durMin = Math.round(r.horas * 60);
+        const durMin = r.horas == null ? 1 : Math.round(r.horas * 60);
         const end = DEFAULT_START + durMin;
         if (end > 24 * 60) { r.error = 'HH dessa OM, somada ao início padrão (08:00), ultrapassa 24h -- revise a planilha.'; return; }
         r.startMin = DEFAULT_START; r.endMin = end;
