@@ -6324,7 +6324,11 @@ function validateScheduleOnlyRow(row, idx) {
     }
     result.horas = horas;
 
-    if (state.bookings.some(b => b.om === om)) { result.error = `OM ${om} já existe no sistema -- não é possível programar de novo.`; return result; }
+    // Igual à criação manual de OM (activeOmConflict): só bloqueia se já
+    // existir uma OM em ABERTO com essa mesma tag -- uma OM já encerrada
+    // pode ser reaproveitada em outra data (comum em Fábrica/Viga Materiais,
+    // onde a mesma OM às vezes se repete em atendimentos de dias diferentes).
+    if (activeOmConflict(tag, om)) { result.error = `OM ${om} já está em aberto para "${tag}" -- encerre antes de programar de novo (ou use outra OM).`; return result; }
 
     result.action = 'create-only';
     return result;
@@ -6436,11 +6440,19 @@ async function analyzeImportSpreadsheet() {
         // O S11D não tem OM (toda linha vem com om null) -- o check de
         // duplicidade de OM dentro da planilha não faz sentido aqui, e
         // várias limpezas na mesma área/dia são um caso legítimo.
+        // No modo "Só programar", a mesma OM pode se repetir em datas (ou
+        // tags) diferentes dentro da própria planilha -- só bloqueia OM+TAG+
+        // DATA idênticos (aí sim é duplicidade de verdade). No modo cheio
+        // (com fotos), continua só por OM, porque ali cada OM só pode
+        // aparecer uma vez na planilha (cria OU encerra OU corrige fotos).
         if (!result.error && !s11dMode) {
-            if (seenOms[result.om] !== undefined) {
-                result.error = `OM duplicada dentro da própria planilha (já aparece na linha ${seenOms[result.om] + 2}).`;
+            const dedupKey = scheduleOnly ? `${result.om}|${result.tag}|${result.date}` : result.om;
+            if (seenOms[dedupKey] !== undefined) {
+                result.error = scheduleOnly
+                    ? `Linha duplicada dentro da própria planilha (mesma OM, TAG e DATA já aparecem na linha ${seenOms[dedupKey] + 2}).`
+                    : `OM duplicada dentro da própria planilha (já aparece na linha ${seenOms[dedupKey] + 2}).`;
             } else {
-                seenOms[result.om] = idx;
+                seenOms[dedupKey] = idx;
             }
         }
         return result;
