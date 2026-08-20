@@ -4496,7 +4496,7 @@ function onProfileChanged() {
         <div style="margin-top:6px;"><span class="perm-tag ${p.canExport ? 'perm-yes' : 'perm-no'}">${p.canExport ? 'Exporta Relatórios' : 'Sem Exportação'}</span></div>
     `;
     document.querySelector('[data-view="usuarios"]').style.display = state.profileKey === 'ADMIN' ? 'flex' : 'none';
-    document.querySelector('[data-view="importacao"]').style.display = state.profileKey === 'ADMIN' ? 'flex' : 'none';
+    document.querySelector('[data-view="importacao"]').style.display = (state.profileKey === 'ADMIN' || state.profileKey === 'GERENTE') ? 'flex' : 'none';
     document.querySelector('[data-view="aprovacoes"]').style.display = canViewValeApprovals() ? 'flex' : 'none';
     const chartBoxManut = document.getElementById('chart-box-manut');
     if (chartBoxManut) chartBoxManut.style.display = canSeeAvailabilityChart() ? 'flex' : 'none';
@@ -4527,11 +4527,11 @@ const VIEW_META = {
     mapacalor: { title: 'Mapa de Calor', sub: 'Indicadores de manutenção e limpeza por equipamento' },
     aprovacoes: { title: 'Aprovações Vale', sub: 'Avaliação das limpezas do workflow S11D' },
     usuarios: { title: 'Usuários & Acessos', sub: 'Gestão de contas e permissões (Admin Master)' },
-    importacao: { title: 'Importação em Massa', sub: 'Lançamento em lote via planilha + fotos (Admin Master)' }
+    importacao: { title: 'Importação em Massa', sub: 'Lançamento em lote via planilha + fotos (Admin Master e Gerente)' }
 };
 function switchView(view) {
     if (view === 'usuarios' && state.profileKey !== 'ADMIN') { showAccessDenied('Apenas o Admin Master pode gerenciar usuários.'); return; }
-    if (view === 'importacao' && state.profileKey !== 'ADMIN') { showAccessDenied('Apenas o Admin Master pode fazer importação em massa.'); return; }
+    if (view === 'importacao' && state.profileKey !== 'ADMIN' && state.profileKey !== 'GERENTE') { showAccessDenied('Apenas o Admin Master e o Gerente podem fazer importação em massa.'); return; }
     if (view === 'aprovacoes' && !canViewValeApprovals()) { showAccessDenied('Perfil sem privilégios para acessar as Aprovações Vale.'); return; }
     document.querySelectorAll('.nav-item').forEach(b => b.classList.toggle('active', b.dataset.view === view));
     document.querySelectorAll('.content-container').forEach(c => c.classList.toggle('view-active', c.id === 'view-' + view));
@@ -6457,6 +6457,7 @@ async function processImportRow(r) {
             site_key: state.currentSite, tag: r.tag, area_code: areaOf(r.tag), date: r.date,
             start_min: r.startMin, end_min: r.endMin, type: r.tipo, emergencial: false, om: r.om,
             justification: r.observacao || 'Programado em massa -- Sodexo',
+            activity_description: isMaterialsContractSite() ? (r.observacao || null) : null,
             operator_id: state.currentUser.id, operator_label: `${activeProfile().user} (${state.profileKey})`
         }).select().single();
         if (error) throw new Error('Erro ao criar: ' + error.message);
@@ -6474,6 +6475,7 @@ async function processImportRow(r) {
             site_key: state.currentSite, tag: r.tag, area_code: areaOf(r.tag), date: r.date,
             start_min: r.startMin, end_min: r.endMin, type: r.tipo, emergencial: false, om: r.om,
             justification: r.observacao || 'Importado em massa',
+            activity_description: isMaterialsContractSite() ? (r.observacao || null) : null,
             operator_id: state.currentUser.id, operator_label: r.responsavel ? `${r.responsavel} (Importado)` : `${activeProfile().user} (${state.profileKey})`
         }).select().single();
         if (error) throw new Error('Erro ao criar: ' + error.message);
