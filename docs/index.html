@@ -1741,10 +1741,11 @@ function applyEquipTerminology() {
     setText('btn-delete-equip', `Excluir ${tSub}`);
     setText('lbl-kpi-livres', `${tp} Livres`);
 }
-// Gráfico de Indisponibilidade (Manutenção) é indicador de PCM -- fica fora
-// até para o Admin Master, a pedido explícito, pra não poluir o dashboard
-// de quem não lida com Manutenção no dia a dia.
-function canSeeAvailabilityChart() { return state.profileKey === 'PCM' || state.profileKey === 'PCM_PCO'; }
+// Gráfico de Indisponibilidade (Manutenção) é indicador de PCM -- também
+// liberado para quem administra o site inteiro (Admin Master, Gerente),
+// mas continua fora do dashboard de quem não lida com Manutenção no dia a
+// dia (PCO, Encarregado etc.), pra não poluir a tela de quem não precisa.
+function canSeeAvailabilityChart() { return ['PCM', 'PCM_PCO', 'ADMIN', 'GERENTE'].includes(state.profileKey); }
 
 /* =========================================================
    HELPERS DE DATA/HORA
