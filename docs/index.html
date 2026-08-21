@@ -493,8 +493,14 @@ body.book-preview-mode .book-preview-toolbar {
     /* tabelas com rolagem não podem ser cortadas na impressão */
     .audit-table-wrap, .heatmap-table-wrap, .week-grid-wrap { max-height: none !important; overflow: visible !important; }
     /* Sem isso, um gráfico que cai bem na quebra de página é serrado ao meio
-       -- força ele inteiro pra próxima página em vez de cortar. */
-    .chart-box { break-inside: avoid; page-break-inside: avoid; }
+       -- força ele inteiro pra próxima página em vez de cortar. Combinado com
+       o grid (abaixo), o Chrome às vezes ESTICA o item forçado pra próxima
+       página até preencher a página inteira, ignorando a altura de 320px
+       definida em .chart-box -- por isso o height é repetido aqui com
+       !important, pra valer mesmo sobre esse esticamento do motor de
+       impressão em vez de confiar só na regra de tela. */
+    .chart-box { break-inside: avoid; page-break-inside: avoid; height: 320px !important; max-height: 320px !important; }
+    .chart-box canvas { max-height: 260px !important; width: 100% !important; }
     /* Indisponibilidade (Manutenção) é indicador interno do PCM -- não sai
        no PDF/impressão de forma alguma, nem quando quem gera é o próprio PCM. */
     #chart-box-manut { display: none !important; }
@@ -503,8 +509,10 @@ body.book-preview-mode .book-preview-toolbar {
        o último sozinho na própria linha e ESTICADO pra ocupar a largura
        inteira (1fr sem vizinho do lado), ficando com uma proporção bem
        diferente dos outros. Fixando 2 colunas, o gráfico solitário ocupa só
-       a coluna dele, sem esticar. */
-    .charts-grid { grid-template-columns: repeat(2, 1fr) !important; }
+       a coluna dele, sem esticar na horizontal -- align-items:start evita o
+       esticamento vertical equivalente (o grid, por padrão, estica os itens
+       pra preencher a altura da própria linha). */
+    .charts-grid { grid-template-columns: repeat(2, 1fr) !important; align-items: start !important; }
 
     body.print-report-mode .print-report-banner { display: block !important; font-size: 18px; font-weight: 800; border-bottom: 2px solid #000; padding-bottom: 10px; margin-bottom: 18px; }
     body.print-report-mode .print-report-banner small { display: block; font-size: 11px; font-weight: 400; color: #444; margin-top: 4px; }
@@ -5002,8 +5010,16 @@ let chartAtividadeExtra = null, chartHorasPerdidas = null, chartOvertime = null;
 // ANTES disso acontecer, então sem re-medir exatamente quando o navegador
 // entra no modo impressão de verdade (evento beforeprint), eles saem com
 // o tamanho calculado pra tela normal: distorcidos, vazando da caixa no PDF.
+// requestAnimationFrame (x2) em vez de resize() na hora: o evento beforeprint
+// dispara ANTES do navegador terminar de aplicar o CSS de impressão (sidebar
+// sumindo, grid virando 2 colunas) -- se o resize roda no mesmo tick, ele
+// mede o container com a largura/altura ainda da tela normal, e o gráfico
+// sai cortado/errado mesmo assim. Esperar dois frames dá tempo do reflow de
+// impressão acontecer antes de medir de novo.
 window.addEventListener('beforeprint', () => {
-    [chartStatus, chartTop5, chartTop5Limpeza, chartArea, chartAderenciaHistorico, chartAtividadeExtra, chartHorasPerdidas, chartOvertime].forEach(c => { if (c) c.resize(); });
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+        [chartStatus, chartTop5, chartTop5Limpeza, chartArea, chartAderenciaHistorico, chartAtividadeExtra, chartHorasPerdidas, chartOvertime].forEach(c => { if (c) c.resize(); });
+    }));
 });
 
 const CLOSURE_STATUS_LABELS = {
