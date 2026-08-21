@@ -4211,7 +4211,7 @@ function renderMobileInspecaoForm() {
         <button type="button" class="mobile-back" onclick="renderMobileInspecaoEquipList()">&larr; Voltar</button>
         <div class="mobile-card">
             <div class="mobile-card-title">🔍 ${escapeHtml(tag)} — ${escapeHtml(AREA_LABEL[area] || area || '')}</div>
-            <div class="mobile-card-sub">Registre a condição deste ativo -- vira alerta pra PCM/PCO/Gerente resolverem.</div>
+            <div class="mobile-card-sub">Registre a condição do ativo.</div>
             <div class="m-field"><label>Condição *</label>
                 <div id="insp-condition-group" style="display:flex; gap:8px;">
                     ${INSPECTION_CONDITIONS.map(c => `
