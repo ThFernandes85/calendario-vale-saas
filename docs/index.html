@@ -536,12 +536,16 @@ body.book-preview-mode .book-preview-toolbar {
 #mobile-encarregado-screen {
     display: none; flex-direction: column; height: 100vh; background: var(--bg-main);
 }
+/* ---- TELA MOBILE: TÉCNICO DE CAMPO VALE (inspeção) ---- */
+#mobile-inspecao-screen {
+    display: none; flex-direction: column; height: 100vh; background: var(--bg-main);
+}
 .mobile-header {
     display: flex; align-items: center; justify-content: space-between;
     padding: 14px 16px; border-bottom: 1px solid var(--border-color); background: var(--bg-sidebar);
     flex: none;
 }
-#mobile-encarregado-body { flex: 1; overflow-y: auto; padding: 16px; }
+#mobile-encarregado-body, #mobile-inspecao-body { flex: 1; overflow-y: auto; padding: 16px; }
 .mobile-search {
     width: 100%; padding: 12px 14px; margin-bottom: 12px; font-size: 15px;
     background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 10px; color: var(--text-primary);
@@ -3646,7 +3650,7 @@ async function trySyncOfflineQueue() {
             // se ele estiver no meio do preenchimento de OUTRO equipamento,
             // sincronizar em segundo plano não pode arrancar ele da tela.
             if (state.profileKey === 'ENCARREGADO' && mobileSelectedTag === null) renderMobileEquipList();
-            if (state.profileKey === 'TECNICO_CAMPO_VALE') renderMobileInspecaoForm();
+            if (state.profileKey === 'TECNICO_CAMPO_VALE' && mobileInspecaoSelectedTag === null) renderMobileInspecaoEquipList();
             renderDashboard(); renderCharts(); renderWeekGrid();
             const activeView = document.querySelector('.content-container.view-active');
             if (activeView && activeView.id === 'view-saude-ativos') renderAssetHealth();
@@ -4161,25 +4165,53 @@ let mobileInspecaoCondition = null;
 function renderMobileInspecao() {
     document.getElementById('mobile-inspecao-site-label').textContent = SITES[state.currentSite] || state.currentSite;
     document.getElementById('mobile-inspecao-user-label').textContent = activeProfile().user;
-    renderMobileInspecaoForm();
+    renderMobileInspecaoEquipList();
     reconcileOfflineQueueFlags().then(() => trySyncOfflineQueue());
 }
 
+// Lista de ativos pra escolher -- busca + cartões tocáveis, mesmo padrão
+// do Encarregado (renderMobileEquipList) -- bem melhor em campo do que um
+// <select> nativo, que no celular abre o seletor do sistema sem nenhuma
+// distinção visual entre as áreas.
+function renderMobileInspecaoEquipList() {
+    mobileInspecaoSelectedTag = null;
+    const body = document.getElementById('mobile-inspecao-body');
+    if (!ALL_EQUIP.length) {
+        body.innerHTML = `<div class="mobile-empty">Nenhum equipamento cadastrado neste site.</div>`;
+        return;
+    }
+    const cards = ALL_EQUIP.map(eq => `
+        <button type="button" class="mobile-equip-card" onclick="openMobileInspecaoForEquip('${eq.tag}')">
+            <span class="mobile-equip-tag">${escapeHtml(eq.tag)}</span>
+            <span class="mobile-equip-area">${escapeHtml(AREA_LABEL[eq.area] || eq.area || '')}</span>
+        </button>`).join('');
+    body.innerHTML = `
+        <input type="text" id="mobile-inspecao-search" class="mobile-search" placeholder="Buscar ativo ou área...">
+        <div id="mobile-inspecao-equip-list" class="mobile-equip-list">${cards}</div>`;
+    document.getElementById('mobile-inspecao-search').addEventListener('input', (e) => {
+        const q = e.target.value.trim().toUpperCase();
+        document.querySelectorAll('#mobile-inspecao-equip-list .mobile-equip-card').forEach(card => {
+            card.style.display = card.textContent.toUpperCase().includes(q) ? 'flex' : 'none';
+        });
+    });
+}
+
+function openMobileInspecaoForEquip(tag) {
+    mobileInspecaoSelectedTag = tag;
+    renderMobileInspecaoForm();
+}
+
+let mobileInspecaoSelectedTag = null;
 function renderMobileInspecaoForm() {
     mobileInspecaoCondition = null;
+    const tag = mobileInspecaoSelectedTag;
+    const area = areaOf(tag);
     const body = document.getElementById('mobile-inspecao-body');
     body.innerHTML = `
+        <button type="button" class="mobile-back" onclick="renderMobileInspecaoEquipList()">&larr; Voltar</button>
         <div class="mobile-card">
-            <div class="mobile-card-title">🔍 Nova Inspeção</div>
-            <div class="mobile-card-sub">Registre a condição de um ativo -- vira alerta pra PCM/PCO/Gerente resolverem.</div>
-            <div class="m-field"><label>Local / Ativo *</label>
-                <select id="insp-tag">
-                    <option value="">Selecione...</option>
-                    ${Object.keys(DATABASE).map(area =>
-                        `<optgroup label="${escapeHtml(AREA_LABEL[area] || area)}">${DATABASE[area].map(tag => `<option value="${escapeHtml(tag)}" data-area="${area}">${escapeHtml(tag)}</option>`).join('')}</optgroup>`
-                    ).join('')}
-                </select>
-            </div>
+            <div class="mobile-card-title">🔍 ${escapeHtml(tag)} — ${escapeHtml(AREA_LABEL[area] || area || '')}</div>
+            <div class="mobile-card-sub">Registre a condição deste ativo -- vira alerta pra PCM/PCO/Gerente resolverem.</div>
             <div class="m-field"><label>Condição *</label>
                 <div id="insp-condition-group" style="display:flex; gap:8px;">
                     ${INSPECTION_CONDITIONS.map(c => `
@@ -4227,9 +4259,8 @@ function renderMobileInspecaoForm() {
 }
 
 function validateInspectionForm() {
-    const tagSelect = document.getElementById('insp-tag');
-    const tag = tagSelect.value;
-    const area = tag ? tagSelect.selectedOptions[0].dataset.area : null;
+    const tag = mobileInspecaoSelectedTag;
+    const area = tag ? areaOf(tag) : null;
     const problemType = document.getElementById('insp-problem-type').value;
     const observacao = document.getElementById('insp-obs').value.trim();
     const photo = pickedFile('insp-photo-camera', 'insp-photo-galeria');
@@ -4276,7 +4307,7 @@ async function submitMobileInspecao() {
     }
     state.inspections.unshift(mapInspectionFromDb(data));
     toast('Inspeção enviada com sucesso.', 'success');
-    renderMobileInspecaoForm();
+    renderMobileInspecaoEquipList();
 }
 
 // Sem sinal: guarda tudo (incluindo a foto, como File cru -- sobrevive ao
@@ -4296,7 +4327,7 @@ async function queueInspectionOffline(v) {
         photoFile: v.photo || null, createdAt: Date.now(),
     });
     toast('Sem conexão -- guardado no celular. Será enviado sozinho quando a internet voltar.', 'warn');
-    renderMobileInspecaoForm();
+    renderMobileInspecaoEquipList();
 }
 
 function renderMobileCloseForm(booking) {
