@@ -73,6 +73,9 @@ create table if not exists public.profiles (
 -- agendar/encerrar que PCM_PCO, mais gerenciar áreas/equipamentos e
 -- exportar relatórios; nunca gerencia outros usuários nem decide aprovação
 -- da Vale no S11D (isso continua exclusivo de Admin/Cliente Vale/Técnico).
+-- TECNICO_CAMPO_VALE é o técnico de campo da própria VALE (não da Sodexo)
+-- -- perfil mobile-only, só registra inspeção de condição de ativo (ver
+-- tabela `inspections` mais abaixo), nunca agenda/encerra OM.
 do $$
 begin
   if exists (
@@ -83,7 +86,7 @@ begin
     alter table public.profiles drop constraint profiles_role_check;
   end if;
   alter table public.profiles add constraint profiles_role_check
-    check (role in ('ADMIN','PCM','PCO','PCM_PCO','ENG_CONF','ENG_EST','ENCARREGADO','CLIENTE_VALE','TECNICO_PLANEJAMENTO','GERENTE'));
+    check (role in ('ADMIN','PCM','PCO','PCM_PCO','ENG_CONF','ENG_EST','ENCARREGADO','CLIENTE_VALE','TECNICO_PLANEJAMENTO','GERENTE','TECNICO_CAMPO_VALE'));
 end $$;
 
 -- WhatsApp do Encarregado (opcional -- nem todo mundo vai ter cadastrado de
@@ -669,6 +672,61 @@ create policy "closure_photos_admin_delete" on storage.objects for delete
       where s.key = (storage.foldername(name))[1] and s.company_key = public.my_company()
     )
   );
+
+-- ============================================================
+-- INSPEÇÕES DE CAMPO (Técnico de Campo Vale) -- "Saúde dos Ativos"
+-- Diferente de `bookings` (agendamento/OM da Sodexo), isso é a própria
+-- Vale reportando a condição física de um ativo -- sem OM, sem vínculo
+-- com agendamento nenhum. has_site_access(site_key) já resolve sozinho o
+-- recorte de empresa, igual bookings -- não precisa de coluna
+-- company_key nem trigger de carimbo nesta tabela.
+-- ============================================================
+create table if not exists public.inspections (
+  id uuid primary key default gen_random_uuid(),
+  site_key text not null references public.sites(key) on delete cascade,
+  tag text not null,
+  area_code text not null,
+  condition text not null check (condition in ('BOA','REGULAR','RUIM','CRITICA')),
+  -- Categoria do achado -- ROTINA quando é só uma checagem sem problema
+  -- (tipicamente junto de condition='BOA'); as demais descrevem o tipo de
+  -- problema encontrado, pra dar pra Vale um recorte por categoria (ex:
+  -- quanto é sujidade x estrutural) além da observação em texto livre.
+  problem_type text not null check (problem_type in ('ROTINA','SUJIDADE','ESTRUTURAL','ELETRICO','VAZAMENTO','CORROSAO','RUIDO_VIBRACAO','OUTRO')),
+  observacao text not null,
+  photo_url text,
+  status text not null default 'ABERTA' check (status in ('ABERTA','RESOLVIDA')),
+  resolved_reason text,
+  resolved_at timestamptz,
+  resolved_by uuid references public.profiles(id) on delete set null,
+  resolved_by_label text,
+  inspector_id uuid references public.profiles(id) on delete set null,
+  inspector_label text not null,
+  created_at timestamptz default now()
+);
+alter table public.inspections enable row level security;
+
+-- Leitura: qualquer perfil com acesso ao site (inclusive Cliente Vale --
+-- esse indicador é justamente pensado pra Vale enxergar direto).
+drop policy if exists "inspections_select" on public.inspections;
+create policy "inspections_select" on public.inspections for select
+  using (public.has_site_access(site_key));
+
+-- Criação: só o próprio Técnico de Campo Vale (e Admin Master, pra
+-- corrigir/testar) -- ninguém da Sodexo lança inspeção em nome da Vale.
+drop policy if exists "inspections_insert" on public.inspections;
+create policy "inspections_insert" on public.inspections for insert
+  with check (public.has_site_access(site_key) and (public.is_admin() or public.current_role_key() = 'TECNICO_CAMPO_VALE'));
+
+-- Atualização: só pra marcar como Resolvida (PCM/PCO/Gerente/Admin) --
+-- o próprio Técnico de Campo nunca edita depois de enviado.
+drop policy if exists "inspections_update" on public.inspections;
+create policy "inspections_update" on public.inspections for update
+  using (public.has_site_access(site_key) and (public.is_admin() or public.current_role_key() in ('PCM','PCO','PCM_PCO','GERENTE')))
+  with check (public.has_site_access(site_key) and (public.is_admin() or public.current_role_key() in ('PCM','PCO','PCM_PCO','GERENTE')));
+
+drop policy if exists "inspections_admin_delete" on public.inspections;
+create policy "inspections_admin_delete" on public.inspections for delete
+  using (public.is_admin());
 
 -- ============================================================
 -- MIGRAÇÃO: renomeia o tipo 'Limpeza' para 'Limpeza Sodexo'

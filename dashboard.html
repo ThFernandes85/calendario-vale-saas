@@ -167,6 +167,10 @@ header {
 #users-section.users-collapsed #users-content { display: none; }
 #book-section.book-collapsed .profile-toggle-btn svg { transform: rotate(-90deg); }
 #book-section.book-collapsed #book-content { display: none; }
+#asset-health-open-section.asset-health-open-collapsed .profile-toggle-btn svg { transform: rotate(-90deg); }
+#asset-health-open-section.asset-health-open-collapsed #asset-health-open-content { display: none; }
+#asset-health-history-section.asset-health-history-collapsed .profile-toggle-btn svg { transform: rotate(-90deg); }
+#asset-health-history-section.asset-health-history-collapsed #asset-health-history-content { display: none; }
 
 .btn-area-filter {
     background-color: #1c2533; border: 1px solid var(--border-color); color: var(--text-primary);
@@ -759,6 +763,18 @@ body.book-preview-mode .book-preview-toolbar {
     <div id="mobile-encarregado-body"></div>
 </div>
 
+<!-- TELA MOBILE: TÉCNICO DE CAMPO VALE (só registra inspeção de ativo) -->
+<div id="mobile-inspecao-screen" style="display:none;">
+    <div class="mobile-header">
+        <div>
+            <div style="font-size:15px; font-weight:700; color:#fff;">Inspeção · <span id="mobile-inspecao-site-label"></span></div>
+            <div style="font-size:12px; color:var(--text-secondary);" id="mobile-inspecao-user-label"></div>
+        </div>
+        <button type="button" class="btn-secondary" id="btn-mobile-inspecao-logout">Sair</button>
+    </div>
+    <div id="mobile-inspecao-body"></div>
+</div>
+
 <!-- SIDEBAR ESQUERDA -->
 <aside style="display:none;">
     <div>
@@ -822,6 +838,11 @@ body.book-preview-mode .book-preview-toolbar {
             <button class="nav-item" data-view="mapacalor" title="Mapa de Calor">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="5" height="5" rx="1"/><rect x="9.5" y="3" width="5" height="5" rx="1"/><rect x="16" y="3" width="5" height="5" rx="1"/><rect x="3" y="9.5" width="5" height="5" rx="1"/><rect x="9.5" y="9.5" width="5" height="5" rx="1"/><rect x="16" y="9.5" width="5" height="5" rx="1"/><rect x="3" y="16" width="5" height="5" rx="1"/><rect x="9.5" y="16" width="5" height="5" rx="1"/><rect x="16" y="16" width="5" height="5" rx="1"/></svg>
                 <span class="nav-label">Mapa de Calor</span>
+            </button>
+            <button class="nav-item" data-view="saude-ativos" title="Saúde dos Ativos">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+                <span class="nav-label">Saúde dos Ativos</span>
+                <span class="nav-badge" id="nav-badge-saude-ativos"></span>
             </button>
             <button class="nav-item" data-view="aprovacoes" title="Aprovações Vale" style="display:none;">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
@@ -1360,6 +1381,92 @@ body.book-preview-mode .book-preview-toolbar {
         </div>
     </div>
 
+    <!-- VIEW: SAÚDE DOS ATIVOS (inspeção de campo da Vale) -->
+    <div class="content-container" id="view-saude-ativos">
+        <div>
+            <h2 style="font-size: 22px; margin-bottom: 6px; font-weight: 600;">Saúde dos Ativos</h2>
+            <p style="color: var(--text-secondary); font-size: 14px;">Inspeções de campo registradas pelo Técnico de Campo da própria Vale -- condição do ativo, com foto e observação, viram alerta pra PCM/PCO/Gerente resolverem.</p>
+        </div>
+
+        <div class="card-section">
+            <div class="agenda-toolbar">
+                <div class="agenda-field"><label>Período — De</label><input type="date" id="asset-health-from"></div>
+                <div class="agenda-field"><label>Período — Até</label><input type="date" id="asset-health-to"></div>
+                <div class="day-nav">
+                    <button class="today-btn" id="btn-asset-health-apply">Aplicar Filtro</button>
+                    <button id="btn-asset-health-clear">Limpar</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="kpi-grid">
+            <div class="kpi-card" style="--accent: #3CB5E5;">
+                <div class="kpi-label">Índice de Saúde</div>
+                <div class="kpi-value" id="asset-health-index">—</div>
+                <div class="kpi-sub" id="asset-health-index-sub">Começa em 100% -- desconta por inspeção Ruim/Crítica em aberto</div>
+            </div>
+            <div class="kpi-card" style="--accent: #f59e0b;">
+                <div class="kpi-label">Inspeções Abertas</div>
+                <div class="kpi-value" id="asset-health-open-count">—</div>
+                <div class="kpi-sub" id="asset-health-open-sub">Aguardando resolução</div>
+            </div>
+            <div class="kpi-card" style="--accent: #ef4444;">
+                <div class="kpi-label">Críticas em Aberto</div>
+                <div class="kpi-value" id="asset-health-critical-count">—</div>
+                <div class="kpi-sub" id="asset-health-critical-sub">Prioridade máxima</div>
+            </div>
+        </div>
+
+        <div class="charts-grid">
+            <div class="chart-box">
+                <h3>Top Ativos com Mais Ocorrências</h3>
+                <canvas id="chart-asset-health-top"></canvas>
+            </div>
+            <div class="chart-box">
+                <h3>Distribuição por Condição</h3>
+                <canvas id="chart-asset-health-condition"></canvas>
+            </div>
+            <div class="chart-box">
+                <h3>Distribuição por Tipo de Problema</h3>
+                <canvas id="chart-asset-health-type"></canvas>
+            </div>
+        </div>
+
+        <div class="card-section" id="asset-health-open-section">
+            <div class="filter-title-row">
+                <div class="filter-title" style="margin-bottom:0;">Inspeções Abertas</div>
+                <button type="button" id="btn-toggle-asset-health-open" class="profile-toggle-btn" title="Minimizar/Expandir">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
+                </button>
+            </div>
+            <div id="asset-health-open-content">
+                <div class="audit-table-wrap" style="margin-top:14px;">
+                    <table class="audit-table">
+                        <thead><tr><th>Data</th><th>Ativo</th><th>Área</th><th>Condição</th><th>Tipo</th><th>Técnico</th><th>Observação</th><th>Foto</th><th>Ações</th></tr></thead>
+                        <tbody id="asset-health-open-tbody"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <div class="card-section" id="asset-health-history-section">
+            <div class="filter-title-row">
+                <div class="filter-title" style="margin-bottom:0;">Histórico (Resolvidas)</div>
+                <button type="button" id="btn-toggle-asset-health-history" class="profile-toggle-btn" title="Minimizar/Expandir">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
+                </button>
+            </div>
+            <div id="asset-health-history-content">
+                <div class="audit-table-wrap" style="margin-top:14px;">
+                    <table class="audit-table">
+                        <thead><tr><th>Data</th><th>Ativo</th><th>Área</th><th>Condição</th><th>Tipo</th><th>Técnico</th><th>Resolvida por</th><th>Motivo da Resolução</th></tr></thead>
+                        <tbody id="asset-health-history-tbody"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- VIEW OCULTA: BOOK DE ADERÊNCIA (só aparece na prévia/impressão, sem item de navegação) -->
     <div class="book-preview-toolbar">
         <button class="btn-secondary" id="btn-book-back">&#8592; Voltar</button>
@@ -1583,7 +1690,13 @@ const ROLE_META = {
     // Perfil de campo, mobile-only: tela simplificada própria (fora do
     // shell desktop), só pra encerrar/lançar Limpeza com foto -- ver
     // `renderMobileEncarregado()` e o branch em `loginAs()`.
-    ENCARREGADO: { label: 'Encarregado (Limpeza · Mobile)', canBook: ['Limpeza Sodexo', 'Limpeza Mecanizada'], readOnly: false }
+    ENCARREGADO: { label: 'Encarregado (Limpeza · Mobile)', canBook: ['Limpeza Sodexo', 'Limpeza Mecanizada'], readOnly: false },
+    // Perfil de campo da própria VALE (não da Sodexo), mobile-only: tela
+    // simplificada própria, só pra registrar inspeção de condição de
+    // ativo (ver `renderMobileInspecao()` e o branch em `loginAs()`).
+    // Nunca agenda/encerra OM -- por isso canBook vazio e readOnly no
+    // sentido de bloqueio normal (a inspeção em si não passa por canBook).
+    TECNICO_CAMPO_VALE: { label: 'Técnico de Campo (Vale · Mobile)', canBook: [], readOnly: true }
 };
 const TYPE_STATUS = { 'Manutenção Preventiva': 'manutencao', 'Manutenção Corretiva': 'manutencao', 'Limpeza Sodexo': 'limpeza', 'Limpeza Mecanizada': 'limpeza' };
 
@@ -1647,8 +1760,8 @@ function initialsOf(name) {
 const state = {
     profileKey: null, currentUser: null, users: [], currentSite: 'MUTUCA',
     currentArea: 'ALL', agendaTag: null, weekStart: getSunday(todayStr()),
-    bookings: [], auditLog: [], reportFilter: { from: null, to: null, username: null, isExtra: false, onlyLostHours: false },
-    heatmapFilter: { from: null, to: null, equip: null }
+    bookings: [], auditLog: [], inspections: [], reportFilter: { from: null, to: null, username: null, isExtra: false, onlyLostHours: false },
+    heatmapFilter: { from: null, to: null, equip: null }, assetHealthFilter: { from: null, to: null }
 };
 let pendingBookingDate = null;
 
@@ -1746,6 +1859,12 @@ function applyEquipTerminology() {
 // mas continua fora do dashboard de quem não lida com Manutenção no dia a
 // dia (PCO, Encarregado etc.), pra não poluir a tela de quem não precisa.
 function canSeeAvailabilityChart() { return ['PCM', 'PCM_PCO', 'ADMIN', 'GERENTE'].includes(state.profileKey); }
+// Só o próprio Técnico de Campo Vale registra inspeção (Admin Master pode
+// também, pra corrigir/testar) -- ninguém do lado Sodexo lança em nome da Vale.
+function canSubmitInspection() { return state.profileKey === 'TECNICO_CAMPO_VALE' || state.profileKey === 'ADMIN'; }
+// Quem consegue marcar uma inspeção como Resolvida -- mesmo grupo que já
+// lida com Manutenção/operação do site no dia a dia.
+function canResolveInspection() { return ['PCM', 'PCO', 'PCM_PCO', 'GERENTE', 'ADMIN'].includes(state.profileKey); }
 
 /* =========================================================
    HELPERS DE DATA/HORA
@@ -1808,6 +1927,15 @@ function mapAuditFromDb(row) {
         username: row.username, om: row.om, agendamentoData: row.agendamento_data, agendamentoHorario: row.agendamento_horario
     };
 }
+function mapInspectionFromDb(row) {
+    return {
+        id: row.id, tag: row.tag, area: row.area_code, condition: row.condition, problemType: row.problem_type,
+        observacao: row.observacao, photoUrl: row.photo_url, status: row.status,
+        resolvedReason: row.resolved_reason, resolvedAt: row.resolved_at, resolvedBy: row.resolved_by,
+        resolvedByLabel: row.resolved_by_label,
+        inspectorId: row.inspector_id, inspector: row.inspector_label, createdAt: row.created_at
+    };
+}
 
 // O Supabase (PostgREST) limita quantas linhas uma única consulta devolve
 // (o padrão do projeto costuma ser 1000) -- com meses de bookings/auditoria
@@ -1861,14 +1989,17 @@ let loadedHistoryFrom = null;
 
 async function loadPersisted() {
     const windowStart = historyWindowStart();
-    const [{ data: bookings, error: bErr }, { data: audit, error: aErr }] = await Promise.all([
+    const [{ data: bookings, error: bErr }, { data: audit, error: aErr }, { data: inspections, error: iErr }] = await Promise.all([
         fetchAllRows('bookings', 'date', true, q => bookingsWindowFilter(q, windowStart)),
-        fetchAllRows('audit_log', 'data_hora', false, q => q.gte('data_hora', windowStart))
+        fetchAllRows('audit_log', 'data_hora', false, q => q.gte('data_hora', windowStart)),
+        fetchAllRows('inspections', 'created_at', false)
     ]);
     if (bErr) { toast('Erro ao carregar agendamentos: ' + bErr.message, 'error'); state.bookings = []; }
     else state.bookings = (bookings || []).map(mapBookingFromDb);
     if (aErr) { toast('Erro ao carregar histórico: ' + aErr.message, 'error'); state.auditLog = []; }
     else state.auditLog = (audit || []).map(mapAuditFromDb);
+    if (iErr) { toast('Erro ao carregar inspeções: ' + iErr.message, 'error'); state.inspections = []; }
+    else state.inspections = (inspections || []).map(mapInspectionFromDb);
     if (!bErr && !aErr) loadedHistoryFrom = windowStart;
     return { error: bErr || aErr || null };
 }
@@ -1918,7 +2049,7 @@ let bgRefreshInProgress = false;
 async function backgroundRefreshTick() {
     if (bgRefreshInProgress) return;
     if (!state.currentUser || !state.currentSite) return;
-    if (state.profileKey === 'ENCARREGADO') return;
+    if (state.profileKey === 'ENCARREGADO' || state.profileKey === 'TECNICO_CAMPO_VALE') return;
     if (document.visibilityState !== 'visible') return;
     bgRefreshInProgress = true;
     try {
@@ -1927,17 +2058,19 @@ async function backgroundRefreshTick() {
         // plano não pode voltar a encolher pra janela padrão e apagar esse
         // período mais antigo que já estava sendo exibido na tela.
         const windowStart = loadedHistoryFrom || historyWindowStart();
-        const [{ data: bookings, error: bErr }, { data: audit, error: aErr }] = await Promise.all([
+        const [{ data: bookings, error: bErr }, { data: audit, error: aErr }, { data: inspections, error: iErr }] = await Promise.all([
             fetchAllRows('bookings', 'date', true, q => bookingsWindowFilter(q, windowStart)),
-            fetchAllRows('audit_log', 'data_hora', false, q => q.gte('data_hora', windowStart))
+            fetchAllRows('audit_log', 'data_hora', false, q => q.gte('data_hora', windowStart)),
+            fetchAllRows('inspections', 'created_at', false)
         ]);
         // Falha passageira de rede -- tenta de novo no próximo ciclo, sem
         // apagar o que já está na tela (diferente de loadPersisted, que
         // zera state.bookings no erro -- aceitável num carregamento inicial,
         // mas não aqui, onde a tela já tem dados válidos sendo exibidos).
-        if (bErr || aErr) return;
+        if (bErr || aErr || iErr) return;
         state.bookings = (bookings || []).map(mapBookingFromDb);
         state.auditLog = (audit || []).map(mapAuditFromDb);
+        state.inspections = (inspections || []).map(mapInspectionFromDb);
         loadedHistoryFrom = windowStart;
 
         renderWeekGrid(); renderAtivos(); renderDashboard(); updateUpcomingBadge();
@@ -1946,6 +2079,7 @@ async function backgroundRefreshTick() {
             if (activeView.id === 'view-relatorios') renderCharts();
             if (activeView.id === 'view-mapacalor') renderHeatmap();
             if (activeView.id === 'view-aprovacoes') renderValeApprovals();
+            if (activeView.id === 'view-saude-ativos') renderAssetHealth();
         }
     } finally {
         bgRefreshInProgress = false;
@@ -3257,6 +3391,20 @@ async function reconcileOfflineQueueFlags() {
                         closurePhotoBefore: null, closurePhotoAfter: null, closurePhotosExtra: [], pendingOfflineSync: true,
                     });
                 }
+            } else if (rec.kind === 'inspection') {
+                // Registro único, tabela própria (não é bookings) -- mesma
+                // lógica de reconstrução, senão a inspeção fica invisível
+                // até sincronizar.
+                if (!state.inspections.find(i => i.id === rec.bookingId)) {
+                    state.inspections.unshift({
+                        id: rec.bookingId, tag: rec.tag, area: rec.area, condition: rec.condition, problemType: rec.problemType,
+                        observacao: rec.observacao, photoUrl: null, status: 'ABERTA',
+                        resolvedReason: null, resolvedAt: null, resolvedBy: null,
+                        inspectorId: state.currentUser ? state.currentUser.id : null,
+                        inspector: `${activeProfile().user} (${state.profileKey})`,
+                        createdAt: new Date(rec.createdAt).toISOString(), pendingOfflineSync: true,
+                    });
+                }
             } else {
                 const booking = state.bookings.find(b => b.id === rec.bookingId);
                 if (booking && !booking.closureStatus) booking.pendingOfflineSync = true;
@@ -3464,13 +3612,44 @@ async function trySyncOfflineQueue() {
             syncedCount++;
         }
 
+        // Inspeção de campo -- mesmo padrão de registro único acima, só que
+        // numa tabela própria (inspections, não bookings) e com foto opcional
+        // (sobe agora, se tinha ficado guardada como File cru na fila).
+        const inspectionRecords = (await offlineQueueGetAll()).filter(r => r.kind === 'inspection');
+        for (const record of inspectionRecords) {
+            const tempInspection = state.inspections.find(i => i.id === record.bookingId);
+            let photoUrl = null;
+            if (record.photoFile) {
+                photoUrl = await uploadInspectionPhoto(record.bookingId, record.photoFile, true);
+            }
+            const { data, error } = await sb.from('inspections').insert({
+                site_key: state.currentSite, tag: record.tag, area_code: record.area, condition: record.condition, problem_type: record.problemType,
+                observacao: record.observacao, photo_url: photoUrl, status: 'ABERTA',
+                inspector_id: state.currentUser.id, inspector_label: `${activeProfile().user} (${state.profileKey})`
+            }).select().single();
+            if (error) break;
+
+            const realInspection = mapInspectionFromDb(data);
+            if (tempInspection) {
+                const idx = state.inspections.findIndex(i => i.id === tempInspection.id);
+                if (idx !== -1) state.inspections[idx] = realInspection;
+            } else {
+                state.inspections.unshift(realInspection);
+            }
+            await offlineQueueRemove(record.id);
+            syncedCount++;
+        }
+
         if (syncedCount > 0) {
             toast(`${syncedCount} lançamento(s) sincronizado(s) automaticamente.`, 'success');
             // Só re-renderiza a lista se o encarregado estiver mesmo nela --
             // se ele estiver no meio do preenchimento de OUTRO equipamento,
             // sincronizar em segundo plano não pode arrancar ele da tela.
             if (state.profileKey === 'ENCARREGADO' && mobileSelectedTag === null) renderMobileEquipList();
+            if (state.profileKey === 'TECNICO_CAMPO_VALE') renderMobileInspecaoForm();
             renderDashboard(); renderCharts(); renderWeekGrid();
+            const activeView = document.querySelector('.content-container.view-active');
+            if (activeView && activeView.id === 'view-saude-ativos') renderAssetHealth();
         }
     } finally {
         offlineSyncInProgress = false;
@@ -3960,6 +4139,166 @@ async function queueOvertimeOffline(v) {
     renderMobileEquipList();
 }
 
+/* =========================================================
+   MOBILE: TÉCNICO DE CAMPO VALE (inspeção de condição de ativo --
+   registro único, sem OM/agendamento, tabela própria `inspections`)
+   ========================================================= */
+const INSPECTION_CONDITIONS = [
+    { value: 'BOA', label: 'Boa', color: '#2ed573' },
+    { value: 'REGULAR', label: 'Regular', color: '#f5c518' },
+    { value: 'RUIM', label: 'Ruim', color: '#f59e0b' },
+    { value: 'CRITICA', label: 'Crítica', color: '#ef4444' },
+];
+// Categoria do achado -- pra dar um recorte por tipo de problema além da
+// observação em texto livre (ex: quanto é sujidade x estrutural).
+const PROBLEM_TYPE_LABELS = {
+    ROTINA: 'Inspeção de rotina (sem problema)', SUJIDADE: 'Sujidade', ESTRUTURAL: 'Integridade estrutural',
+    ELETRICO: 'Elétrico', VAZAMENTO: 'Vazamento', CORROSAO: 'Corrosão',
+    RUIDO_VIBRACAO: 'Ruído / Vibração anormal', OUTRO: 'Outro',
+};
+let mobileInspecaoCondition = null;
+
+function renderMobileInspecao() {
+    document.getElementById('mobile-inspecao-site-label').textContent = SITES[state.currentSite] || state.currentSite;
+    document.getElementById('mobile-inspecao-user-label').textContent = activeProfile().user;
+    renderMobileInspecaoForm();
+    reconcileOfflineQueueFlags().then(() => trySyncOfflineQueue());
+}
+
+function renderMobileInspecaoForm() {
+    mobileInspecaoCondition = null;
+    const body = document.getElementById('mobile-inspecao-body');
+    body.innerHTML = `
+        <div class="mobile-card">
+            <div class="mobile-card-title">🔍 Nova Inspeção</div>
+            <div class="mobile-card-sub">Registre a condição de um ativo -- vira alerta pra PCM/PCO/Gerente resolverem.</div>
+            <div class="m-field"><label>Local / Ativo *</label>
+                <select id="insp-tag">
+                    <option value="">Selecione...</option>
+                    ${Object.keys(DATABASE).map(area =>
+                        `<optgroup label="${escapeHtml(AREA_LABEL[area] || area)}">${DATABASE[area].map(tag => `<option value="${escapeHtml(tag)}" data-area="${area}">${escapeHtml(tag)}</option>`).join('')}</optgroup>`
+                    ).join('')}
+                </select>
+            </div>
+            <div class="m-field"><label>Condição *</label>
+                <div id="insp-condition-group" style="display:flex; gap:8px;">
+                    ${INSPECTION_CONDITIONS.map(c => `
+                        <button type="button" class="insp-condition-btn" data-value="${c.value}" style="flex:1; padding:10px 4px; font-size:12px; font-weight:600; border-radius:8px; border:2px solid ${c.color}; background:transparent; color:${c.color}; cursor:pointer;">${c.label}</button>
+                    `).join('')}
+                </div>
+            </div>
+            <div class="m-field"><label>Tipo de Problema *</label>
+                <select id="insp-problem-type">
+                    <option value="">Selecione...</option>
+                    ${Object.entries(PROBLEM_TYPE_LABELS).map(([value, label]) => `<option value="${value}">${escapeHtml(label)}</option>`).join('')}
+                </select>
+            </div>
+            <div class="m-field">
+                <label>Foto (opcional)</label>
+                <div style="display:flex; gap:6px;">
+                    <button type="button" class="btn-secondary" style="flex:1; padding:10px 4px; font-size:12px;" onclick="document.getElementById('insp-photo-camera').click()">📷 Câmera</button>
+                    <button type="button" class="btn-secondary" style="flex:1; padding:10px 4px; font-size:12px;" onclick="document.getElementById('insp-photo-galeria').click()">🖼️ Galeria</button>
+                </div>
+                <input type="file" id="insp-photo-camera" accept="image/*" capture="environment" style="display:none;">
+                <input type="file" id="insp-photo-galeria" accept="image/*" style="display:none;">
+                <div id="insp-photo-status" style="font-size:11px; color:var(--text-secondary); margin-top:6px;">Nenhuma foto selecionada</div>
+            </div>
+            <div class="m-field"><label>Observação *</label><textarea id="insp-obs" rows="3" maxlength="300" placeholder="O que você viu no ativo..."></textarea></div>
+        </div>
+        <button type="button" class="btn-primary mobile-submit" id="insp-submit-btn">Enviar Inspeção</button>
+    `;
+    document.querySelectorAll('.insp-condition-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            mobileInspecaoCondition = btn.dataset.value;
+            document.querySelectorAll('.insp-condition-btn').forEach(b => {
+                const c = INSPECTION_CONDITIONS.find(x => x.value === b.dataset.value);
+                const selected = b.dataset.value === mobileInspecaoCondition;
+                b.style.background = selected ? c.color : 'transparent';
+                b.style.color = selected ? '#fff' : c.color;
+            });
+        });
+    });
+    ['camera', 'galeria'].forEach(mode => {
+        document.getElementById(`insp-photo-${mode}`).addEventListener('change', (e) => {
+            if (e.target.files[0]) document.getElementById('insp-photo-status').textContent = `Selecionado: ${e.target.files[0].name}`;
+        });
+    });
+    document.getElementById('insp-submit-btn').addEventListener('click', submitMobileInspecao);
+}
+
+function validateInspectionForm() {
+    const tagSelect = document.getElementById('insp-tag');
+    const tag = tagSelect.value;
+    const area = tag ? tagSelect.selectedOptions[0].dataset.area : null;
+    const problemType = document.getElementById('insp-problem-type').value;
+    const observacao = document.getElementById('insp-obs').value.trim();
+    const photo = pickedFile('insp-photo-camera', 'insp-photo-galeria');
+    if (!tag) return { ok: false, message: 'Selecione o local/ativo inspecionado.' };
+    if (!mobileInspecaoCondition) return { ok: false, message: 'Selecione a condição do ativo.' };
+    if (!problemType) return { ok: false, message: 'Selecione o tipo de problema (ou "Inspeção de rotina" se estiver tudo bem).' };
+    if (observacao.length < 5) return { ok: false, message: 'Descreva o que você viu (mínimo 5 caracteres).' };
+    return { ok: true, tag, area, condition: mobileInspecaoCondition, problemType, observacao, photo };
+}
+
+// Reaproveita compressImageFile (mesma compressão das fotos de encerramento)
+// e o bucket closure-photos já existente -- só muda o prefixo do caminho.
+async function uploadInspectionPhoto(pathId, file, silent) {
+    const compressed = await compressImageFile(file, 1600, 0.75);
+    const ext = (compressed.name.split('.').pop() || 'jpg').toLowerCase();
+    const path = `${state.currentSite}/inspecoes/${pathId}/foto-${Date.now()}.${ext}`;
+    const { error } = await sb.storage.from('closure-photos').upload(path, compressed, { upsert: true });
+    if (error) { if (!silent) toast('Erro ao enviar foto: ' + error.message, 'error'); return null; }
+    const { data } = sb.storage.from('closure-photos').getPublicUrl(path);
+    return data.publicUrl;
+}
+
+async function submitMobileInspecao() {
+    const v = validateInspectionForm();
+    if (!v.ok) { toast(v.message, 'error'); return; }
+    if (!navigator.onLine) { await queueInspectionOffline(v); return; }
+
+    const btn = document.getElementById('insp-submit-btn');
+    btn.disabled = true; btn.textContent = 'Enviando...';
+    let photoUrl = null;
+    if (v.photo) {
+        photoUrl = await uploadInspectionPhoto(crypto.randomUUID(), v.photo);
+        if (!photoUrl) { btn.disabled = false; btn.textContent = 'Enviar Inspeção'; return; }
+    }
+    const { data, error } = await sb.from('inspections').insert({
+        site_key: state.currentSite, tag: v.tag, area_code: v.area, condition: v.condition, problem_type: v.problemType,
+        observacao: v.observacao, photo_url: photoUrl, status: 'ABERTA',
+        inspector_id: state.currentUser.id, inspector_label: `${activeProfile().user} (${state.profileKey})`
+    }).select().single();
+    if (error) {
+        toast('Erro ao enviar inspeção: ' + error.message, 'error');
+        btn.disabled = false; btn.textContent = 'Enviar Inspeção';
+        return;
+    }
+    state.inspections.unshift(mapInspectionFromDb(data));
+    toast('Inspeção enviada com sucesso.', 'success');
+    renderMobileInspecaoForm();
+}
+
+// Sem sinal: guarda tudo (incluindo a foto, como File cru -- sobrevive ao
+// clone estruturado do IndexedDB, igual já acontece na fila de fechamento)
+// numa entrada própria da fila offline, sincronizada em trySyncOfflineQueue.
+async function queueInspectionOffline(v) {
+    const tempId = 'offline_insp_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
+    state.inspections.unshift({
+        id: tempId, tag: v.tag, area: v.area, condition: v.condition, problemType: v.problemType, observacao: v.observacao,
+        photoUrl: null, status: 'ABERTA', resolvedReason: null, resolvedAt: null, resolvedBy: null,
+        inspectorId: state.currentUser.id, inspector: `${activeProfile().user} (${state.profileKey})`,
+        createdAt: new Date().toISOString(), pendingOfflineSync: true,
+    });
+    await offlineQueueAdd({
+        id: tempId, kind: 'inspection', bookingId: tempId,
+        tag: v.tag, area: v.area, condition: v.condition, problemType: v.problemType, observacao: v.observacao,
+        photoFile: v.photo || null, createdAt: Date.now(),
+    });
+    toast('Sem conexão -- guardado no celular. Será enviado sozinho quando a internet voltar.', 'warn');
+    renderMobileInspecaoForm();
+}
+
 function renderMobileCloseForm(booking) {
     const outcomes = closureOutcomesFor(booking);
     const body = document.getElementById('mobile-encarregado-body');
@@ -4329,6 +4668,15 @@ async function loginAs(user, options) {
         return;
     }
 
+    // TECNICO_CAMPO_VALE também nunca vê o shell desktop -- só a tela
+    // mobile simplificada de registrar inspeção de ativo.
+    if (user.role === 'TECNICO_CAMPO_VALE') {
+        document.getElementById('mobile-inspecao-screen').style.display = 'flex';
+        renderMobileInspecao();
+        if (refreshInterval) clearInterval(refreshInterval);
+        return;
+    }
+
     document.querySelector('aside').style.display = 'flex';
     document.querySelector('main').style.display = 'flex';
     renderSiteSelect();
@@ -4361,10 +4709,12 @@ async function logout() {
     document.querySelector('aside').style.display = 'none';
     document.querySelector('main').style.display = 'none';
     document.getElementById('mobile-encarregado-screen').style.display = 'none';
+    document.getElementById('mobile-inspecao-screen').style.display = 'none';
 }
 document.getElementById('btn-mobile-logout').addEventListener('click', logout);
 document.getElementById('btn-mobile-lost-hours').addEventListener('click', renderMobileLostHoursForm);
 document.getElementById('btn-mobile-overtime').addEventListener('click', renderMobileOvertimeForm);
+document.getElementById('btn-mobile-inspecao-logout').addEventListener('click', logout);
 document.getElementById('btn-logout').addEventListener('click', logout);
 
 const LS_REMEMBER_EMAIL = 'terravia_remember_email';
@@ -4507,6 +4857,17 @@ function updateUpcomingBadge() {
     const count = state.bookings.filter(b => isActiveBooking(b) && b.date === today && b.startMin > nowMin && b.startMin <= nowMin + 60).length;
     if (count > 0) { badge.textContent = count; badge.style.display = 'flex'; }
     else { badge.style.display = 'none'; }
+    updateAssetHealthBadge();
+}
+// Total de inspeções ABERTAS (sem filtro de período -- é um alerta "tem
+// algo pendente", não um recorte de tela) -- mesmo padrão do badge do
+// Calendário, só que pra Saúde dos Ativos.
+function updateAssetHealthBadge() {
+    const badge = document.getElementById('nav-badge-saude-ativos');
+    if (!badge) return;
+    const count = state.inspections.filter(i => i.status === 'ABERTA').length;
+    if (count > 0) { badge.textContent = count; badge.style.display = 'flex'; }
+    else { badge.style.display = 'none'; }
 }
 
 /* =========================================================
@@ -4603,6 +4964,7 @@ const VIEW_META = {
     calendario: { title: 'Calendário de Processos', sub: 'Agenda interativa de ocupação dos equipamentos' },
     relatorios: { title: 'Relatórios & Auditoria', sub: 'Indicadores operacionais e trilha de auditoria' },
     mapacalor: { title: 'Mapa de Calor', sub: 'Indicadores de manutenção e limpeza por equipamento' },
+    'saude-ativos': { title: 'Saúde dos Ativos', sub: 'Inspeções de campo da Vale e índice de saúde por site' },
     aprovacoes: { title: 'Aprovações Vale', sub: 'Avaliação das limpezas do workflow S11D' },
     usuarios: { title: 'Usuários & Acessos', sub: 'Gestão de contas e permissões (Admin Master)' },
     importacao: { title: 'Importação em Massa', sub: 'Lançamento em lote via planilha + fotos (Admin Master e Gerente)' }
@@ -4621,6 +4983,7 @@ function switchView(view) {
     if (view === 'usuarios') loadProfiles().then(renderUsersView);
     if (view === 'calendario') renderWeekGrid();
     if (view === 'mapacalor') renderHeatmap();
+    if (view === 'saude-ativos') renderAssetHealth();
     if (view === 'aprovacoes') renderValeApprovals();
     if (view === 'importacao') resetImportUi();
 }
@@ -6760,6 +7123,185 @@ function heatCellStyle(count, maxCount, kind) {
     return `background-color: rgba(${rgb}, ${alpha.toFixed(2)}); color: #fff;`;
 }
 
+/* =========================================================
+   SAÚDE DOS ATIVOS (inspeções de campo da Vale)
+   ========================================================= */
+const ASSET_HEALTH_PENALTY = { BOA: 0, REGULAR: 2, RUIM: 7, CRITICA: 15 };
+const CONDITION_LABELS = { BOA: 'Boa', REGULAR: 'Regular', RUIM: 'Ruim', CRITICA: 'Crítica' };
+const CONDITION_COLORS = { BOA: '#2ed573', REGULAR: '#f5c518', RUIM: '#f59e0b', CRITICA: '#ef4444' };
+
+function currentAssetHealthPeriod() {
+    if (state.assetHealthFilter.from || state.assetHealthFilter.to) return { from: state.assetHealthFilter.from, to: state.assetHealthFilter.to };
+    return periodoMedicaoAtual();
+}
+
+// Mesmo espírito de sodexoAdherenceScore -- começa em 100% e só desconta
+// por inspeção Ruim/Crítica que ainda está ABERTA (resolvida não pesa mais,
+// senão nunca teria motivo pra alguém resolver um problema já corrigido).
+function computeAssetHealth(periodo) {
+    const { from, to } = periodo;
+    const dateOf = i => (i.createdAt || '').slice(0, 10);
+    const inPeriod = state.inspections.filter(i => (!from || dateOf(i) >= from) && (!to || dateOf(i) <= to));
+    const open = inPeriod.filter(i => i.status === 'ABERTA');
+    const penalty = open.reduce((sum, i) => sum + (ASSET_HEALTH_PENALTY[i.condition] || 0), 0);
+    const index = Math.max(0, Math.round((100 - penalty) * 10) / 10);
+    const criticalOpen = open.filter(i => i.condition === 'CRITICA').length;
+    return { inPeriod, open, index, openCount: open.length, criticalOpen };
+}
+
+let chartAssetHealthTop = null, chartAssetHealthCondition = null, chartAssetHealthType = null;
+function renderAssetHealth() {
+    document.getElementById('asset-health-from').value = state.assetHealthFilter.from || '';
+    document.getElementById('asset-health-to').value = state.assetHealthFilter.to || '';
+    updateAssetHealthBadge();
+    const health = computeAssetHealth(currentAssetHealthPeriod());
+
+    document.getElementById('asset-health-index').textContent = `${health.index}%`;
+    document.getElementById('asset-health-open-count').textContent = health.openCount;
+    document.getElementById('asset-health-critical-count').textContent = health.criticalOpen;
+
+    const perTag = {};
+    health.inPeriod.forEach(i => { perTag[i.tag] = (perTag[i.tag] || 0) + 1; });
+    const top5 = Object.entries(perTag).sort((a, b) => b[1] - a[1]).slice(0, 5);
+    const ctxTop = document.getElementById('chart-asset-health-top');
+    if (chartAssetHealthTop) { chartAssetHealthTop.destroy(); chartAssetHealthTop = null; }
+    if (ctxTop) {
+        chartAssetHealthTop = new Chart(ctxTop, {
+            type: 'bar',
+            data: { labels: top5.map(t => t[0]), datasets: [{ label: 'Ocorrências', data: top5.map(t => t[1]), backgroundColor: '#3CB5E5', borderRadius: 5, maxBarThickness: 60 }] },
+            options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { ticks: { color: '#8a99ad' }, grid: { color: '#2b394e' } }, y: { ticks: { color: '#8a99ad', stepSize: 1 }, grid: { color: '#2b394e' }, beginAtZero: true } } }
+        });
+    }
+
+    const perCondition = { BOA: 0, REGULAR: 0, RUIM: 0, CRITICA: 0 };
+    health.inPeriod.forEach(i => { perCondition[i.condition] = (perCondition[i.condition] || 0) + 1; });
+    const ctxCond = document.getElementById('chart-asset-health-condition');
+    if (chartAssetHealthCondition) { chartAssetHealthCondition.destroy(); chartAssetHealthCondition = null; }
+    if (ctxCond) {
+        chartAssetHealthCondition = new Chart(ctxCond, {
+            type: 'doughnut',
+            data: { labels: Object.keys(perCondition).map(k => CONDITION_LABELS[k]), datasets: [{ data: Object.values(perCondition), backgroundColor: Object.keys(perCondition).map(k => CONDITION_COLORS[k]), borderWidth: 0 }] },
+            options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom', labels: { color: '#8a99ad', boxWidth: 12, font: { size: 11 } } } } }
+        });
+    }
+
+    // Tipo de problema exclui ROTINA de propósito -- é o recorte de "o que
+    // deu errado", uma inspeção de rotina sem achado não é um "tipo de
+    // problema" pra contar aqui (ela já aparece nos outros dois gráficos).
+    const perType = {};
+    health.inPeriod.forEach(i => { if (i.problemType && i.problemType !== 'ROTINA') perType[i.problemType] = (perType[i.problemType] || 0) + 1; });
+    const typeEntries = Object.entries(perType).sort((a, b) => b[1] - a[1]);
+    const ctxType = document.getElementById('chart-asset-health-type');
+    if (chartAssetHealthType) { chartAssetHealthType.destroy(); chartAssetHealthType = null; }
+    if (ctxType) {
+        chartAssetHealthType = new Chart(ctxType, {
+            type: 'bar',
+            data: { labels: typeEntries.map(t => PROBLEM_TYPE_LABELS[t[0]] || t[0]), datasets: [{ label: 'Ocorrências', data: typeEntries.map(t => t[1]), backgroundColor: '#A02B93', borderRadius: 5, maxBarThickness: 60 }] },
+            options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { ticks: { color: '#8a99ad' }, grid: { color: '#2b394e' } }, y: { ticks: { color: '#8a99ad', stepSize: 1 }, grid: { color: '#2b394e' }, beginAtZero: true } } }
+        });
+    }
+
+    const openTbody = document.getElementById('asset-health-open-tbody');
+    const sortedOpen = health.open.slice().sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+    openTbody.innerHTML = sortedOpen.map(i => `
+        <tr>
+            <td>${i.createdAt ? new Date(i.createdAt).toLocaleString('pt-BR') : '—'}</td>
+            <td><span class="tag-chip">${escapeHtml(i.tag)}</span></td>
+            <td>${escapeHtml(AREA_LABEL[i.area] || i.area || '')}</td>
+            <td><span class="tag-chip" style="background:${CONDITION_COLORS[i.condition]}22; color:${CONDITION_COLORS[i.condition]};">${escapeHtml(CONDITION_LABELS[i.condition] || i.condition)}</span></td>
+            <td>${escapeHtml(PROBLEM_TYPE_LABELS[i.problemType] || i.problemType || '—')}</td>
+            <td>${escapeHtml(i.inspector || '—')}</td>
+            <td>${escapeHtml(i.observacao || '—')}</td>
+            <td>${i.photoUrl ? `<a href="${i.photoUrl}" target="_blank" rel="noopener">Ver foto</a>` : '—'}</td>
+            <td>${canResolveInspection() ? `<button class="btn-secondary" style="padding:5px 9px; font-size:11px;" onclick="openResolveInspectionModal('${i.id}')">Marcar Resolvida</button>` : '—'}</td>
+        </tr>
+    `).join('') || `<tr><td colspan="9" style="text-align:center; color:var(--text-muted);">Nenhuma inspeção em aberto no período.</td></tr>`;
+
+    const historyTbody = document.getElementById('asset-health-history-tbody');
+    const resolved = health.inPeriod.filter(i => i.status === 'RESOLVIDA').sort((a, b) => (b.resolvedAt || '').localeCompare(a.resolvedAt || ''));
+    historyTbody.innerHTML = resolved.map(i => `
+        <tr>
+            <td>${i.createdAt ? new Date(i.createdAt).toLocaleString('pt-BR') : '—'}</td>
+            <td><span class="tag-chip">${escapeHtml(i.tag)}</span></td>
+            <td>${escapeHtml(AREA_LABEL[i.area] || i.area || '')}</td>
+            <td>${escapeHtml(CONDITION_LABELS[i.condition] || i.condition)}</td>
+            <td>${escapeHtml(PROBLEM_TYPE_LABELS[i.problemType] || i.problemType || '—')}</td>
+            <td>${escapeHtml(i.inspector || '—')}</td>
+            <td>${escapeHtml(i.resolvedByLabel || '—')}</td>
+            <td>${escapeHtml(i.resolvedReason || '—')}</td>
+        </tr>
+    `).join('') || `<tr><td colspan="8" style="text-align:center; color:var(--text-muted);">Nenhuma inspeção resolvida no período.</td></tr>`;
+}
+document.getElementById('btn-asset-health-apply').addEventListener('click', async () => {
+    state.assetHealthFilter.from = document.getElementById('asset-health-from').value || null;
+    state.assetHealthFilter.to = document.getElementById('asset-health-to').value || null;
+    await ensureHistoryLoadedFrom(state.assetHealthFilter.from);
+    renderAssetHealth();
+});
+document.getElementById('btn-asset-health-clear').addEventListener('click', () => {
+    document.getElementById('asset-health-from').value = '';
+    document.getElementById('asset-health-to').value = '';
+    state.assetHealthFilter = { from: null, to: null };
+    renderAssetHealth();
+});
+
+function openResolveInspectionModal(id) {
+    if (!canResolveInspection()) { showAccessDenied('Perfil sem privilégios para resolver inspeções.'); return; }
+    const inspection = state.inspections.find(i => i.id === id);
+    if (!inspection) return;
+    openModal(`
+        <div class="modal-header"><h3>Marcar como Resolvida — ${escapeHtml(inspection.tag)}</h3><button class="modal-close" onclick="closeModal()">&times;</button></div>
+        <div class="modal-body">
+            <div class="m-info-row"><span>Condição</span><b>${escapeHtml(CONDITION_LABELS[inspection.condition] || inspection.condition)}</b></div>
+            <div class="m-info-row"><span>Tipo de problema</span><b>${escapeHtml(PROBLEM_TYPE_LABELS[inspection.problemType] || inspection.problemType || '—')}</b></div>
+            <div class="m-info-row"><span>Observação do técnico</span><b>${escapeHtml(inspection.observacao || '—')}</b></div>
+            <div class="m-field" style="margin-top:10px;"><label>O que foi feito para resolver? *</label><textarea id="resolve-insp-reason" rows="3" maxlength="300" placeholder="Ex: Troca de peça realizada, equipamento normalizado..."></textarea></div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn-secondary" onclick="closeModal()">Voltar</button>
+            <button class="btn-primary" onclick="confirmResolveInspection('${inspection.id}')">Confirmar Resolução</button>
+        </div>
+    `);
+}
+
+async function confirmResolveInspection(id) {
+    if (!canResolveInspection()) { showAccessDenied('Perfil sem privilégios para resolver inspeções.'); return; }
+    const inspection = state.inspections.find(i => i.id === id);
+    if (!inspection) return;
+    const reason = document.getElementById('resolve-insp-reason').value.trim();
+    if (reason.length < 5) { toast('Informe o que foi feito para resolver (mínimo 5 caracteres).', 'error'); return; }
+    const resolvedByLabel = `${activeProfile().user} (${state.profileKey})`;
+    const { error } = await sb.from('inspections').update({
+        status: 'RESOLVIDA', resolved_reason: reason, resolved_at: new Date().toISOString(),
+        resolved_by: state.currentUser.id, resolved_by_label: resolvedByLabel
+    }).eq('id', id);
+    if (error) { toast('Erro ao resolver inspeção: ' + error.message, 'error'); return; }
+    inspection.status = 'RESOLVIDA';
+    inspection.resolvedReason = reason;
+    inspection.resolvedAt = new Date().toISOString();
+    inspection.resolvedByLabel = resolvedByLabel;
+    closeModal();
+    toast('Inspeção marcada como resolvida.');
+    renderAssetHealth();
+}
+
+const LS_ASSETHEALTHOPEN_COLLAPSED = 'vale_saas_assethealthopen_collapsed_v1';
+function applyAssetHealthOpenCollapse(collapsed) {
+    document.getElementById('asset-health-open-section').classList.toggle('asset-health-open-collapsed', collapsed);
+    localStorage.setItem(LS_ASSETHEALTHOPEN_COLLAPSED, collapsed ? '1' : '0');
+}
+document.getElementById('btn-toggle-asset-health-open').addEventListener('click', () => {
+    applyAssetHealthOpenCollapse(!document.getElementById('asset-health-open-section').classList.contains('asset-health-open-collapsed'));
+});
+const LS_ASSETHEALTHHISTORY_COLLAPSED = 'vale_saas_assethealthhistory_collapsed_v1';
+function applyAssetHealthHistoryCollapse(collapsed) {
+    document.getElementById('asset-health-history-section').classList.toggle('asset-health-history-collapsed', collapsed);
+    localStorage.setItem(LS_ASSETHEALTHHISTORY_COLLAPSED, collapsed ? '1' : '0');
+}
+document.getElementById('btn-toggle-asset-health-history').addEventListener('click', () => {
+    applyAssetHealthHistoryCollapse(!document.getElementById('asset-health-history-section').classList.contains('asset-health-history-collapsed'));
+});
+
 function renderHeatmap() {
     renderHeatmapEquipSelect();
     document.getElementById('heatmap-from').value = state.heatmapFilter.from || '';
@@ -7489,6 +8031,8 @@ if ('serviceWorker' in navigator) {
     applyAuditCollapse(localStorage.getItem(LS_AUDIT_COLLAPSED) === '1');
     applyClosedBookingsCollapse(localStorage.getItem(LS_CLOSEDBOOKINGS_COLLAPSED) === '1');
     applyBookCollapse(localStorage.getItem(LS_BOOK_COLLAPSED) === '1');
+    applyAssetHealthOpenCollapse(localStorage.getItem(LS_ASSETHEALTHOPEN_COLLAPSED) === '1');
+    applyAssetHealthHistoryCollapse(localStorage.getItem(LS_ASSETHEALTHHISTORY_COLLAPSED) === '1');
 
     const { data: { session } } = await sb.auth.getSession();
     if (session && session.user) {
