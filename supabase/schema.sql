@@ -705,6 +705,17 @@ create table if not exists public.inspections (
 );
 alter table public.inspections enable row level security;
 
+-- Migração pra quem já criou a tabela antes do problem_type existir --
+-- "create table if not exists" acima não altera uma tabela já criada,
+-- então garantimos a coluna aqui, com backfill pra ROTINA antes de tornar
+-- NOT NULL (senão a alteração falha em linhas já existentes).
+alter table public.inspections add column if not exists problem_type text;
+update public.inspections set problem_type = 'ROTINA' where problem_type is null;
+alter table public.inspections alter column problem_type set not null;
+alter table public.inspections drop constraint if exists inspections_problem_type_check;
+alter table public.inspections add constraint inspections_problem_type_check
+  check (problem_type in ('ROTINA','SUJIDADE','ESTRUTURAL','ELETRICO','VAZAMENTO','CORROSAO','RUIDO_VIBRACAO','OUTRO'));
+
 -- Leitura: qualquer perfil com acesso ao site (inclusive Cliente Vale --
 -- esse indicador é justamente pensado pra Vale enxergar direto).
 drop policy if exists "inspections_select" on public.inspections;

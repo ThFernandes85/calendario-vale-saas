@@ -1396,6 +1396,14 @@ body.book-preview-mode .book-preview-toolbar {
             <div class="agenda-toolbar">
                 <div class="agenda-field"><label>Período — De</label><input type="date" id="asset-health-from"></div>
                 <div class="agenda-field"><label>Período — Até</label><input type="date" id="asset-health-to"></div>
+                <div class="agenda-field">
+                    <label>Responsável</label>
+                    <select id="asset-health-responsavel">
+                        <option value="">Todos</option>
+                        <option value="PCO">PCO (Sujidade)</option>
+                        <option value="PCM">PCM (Manutenção)</option>
+                    </select>
+                </div>
                 <div class="day-nav">
                     <button class="today-btn" id="btn-asset-health-apply">Aplicar Filtro</button>
                     <button id="btn-asset-health-clear">Limpar</button>
@@ -1446,7 +1454,7 @@ body.book-preview-mode .book-preview-toolbar {
             <div id="asset-health-open-content">
                 <div class="audit-table-wrap" style="margin-top:14px;">
                     <table class="audit-table">
-                        <thead><tr><th>Data</th><th>Ativo</th><th>Área</th><th>Condição</th><th>Tipo</th><th>Técnico</th><th>Observação</th><th>Foto</th><th>Ações</th></tr></thead>
+                        <thead><tr><th>Data</th><th>Ativo</th><th>Área</th><th>Condição</th><th>Tipo</th><th>Responsável</th><th>Técnico</th><th>Observação</th><th>Foto</th><th>Ações</th></tr></thead>
                         <tbody id="asset-health-open-tbody"></tbody>
                     </table>
                 </div>
@@ -1463,7 +1471,7 @@ body.book-preview-mode .book-preview-toolbar {
             <div id="asset-health-history-content">
                 <div class="audit-table-wrap" style="margin-top:14px;">
                     <table class="audit-table">
-                        <thead><tr><th>Data</th><th>Ativo</th><th>Área</th><th>Condição</th><th>Tipo</th><th>Técnico</th><th>Resolvida por</th><th>Motivo da Resolução</th></tr></thead>
+                        <thead><tr><th>Data</th><th>Ativo</th><th>Área</th><th>Condição</th><th>Tipo</th><th>Responsável</th><th>Técnico</th><th>Resolvida por</th><th>Motivo da Resolução</th></tr></thead>
                         <tbody id="asset-health-history-tbody"></tbody>
                     </table>
                 </div>
@@ -1765,7 +1773,7 @@ const state = {
     profileKey: null, currentUser: null, users: [], currentSite: 'MUTUCA',
     currentArea: 'ALL', agendaTag: null, weekStart: getSunday(todayStr()),
     bookings: [], auditLog: [], inspections: [], reportFilter: { from: null, to: null, username: null, isExtra: false, onlyLostHours: false },
-    heatmapFilter: { from: null, to: null, equip: null }, assetHealthFilter: { from: null, to: null }
+    heatmapFilter: { from: null, to: null, equip: null }, assetHealthFilter: { from: null, to: null, responsavel: null }
 };
 let pendingBookingDate = null;
 
@@ -4160,6 +4168,16 @@ const PROBLEM_TYPE_LABELS = {
     ELETRICO: 'Elétrico', VAZAMENTO: 'Vazamento', CORROSAO: 'Corrosão',
     RUIDO_VIBRACAO: 'Ruído / Vibração anormal', OUTRO: 'Outro',
 };
+// Direciona automaticamente pra quem trata aquele tipo de achado no dia a
+// dia -- Sujidade é PCO (quem agenda Limpeza), o resto é PCM (quem agenda
+// Manutenção). Só rótulo/filtro -- os dois continuam vendo TODAS as
+// inspeções, isso não restringe nada, só ajuda a achar o que é "da fila"
+// de cada um. ROTINA/OUTRO ficam sem responsável fixo (null = "Ambos").
+const PROBLEM_TYPE_RESPONSIBLE = {
+    SUJIDADE: 'PCO', ESTRUTURAL: 'PCM', ELETRICO: 'PCM', VAZAMENTO: 'PCM',
+    CORROSAO: 'PCM', RUIDO_VIBRACAO: 'PCM', ROTINA: null, OUTRO: null,
+};
+function inspectionResponsible(inspection) { return PROBLEM_TYPE_RESPONSIBLE[inspection.problemType] || null; }
 let mobileInspecaoCondition = null;
 
 function renderMobileInspecao() {
@@ -7169,10 +7187,13 @@ function currentAssetHealthPeriod() {
 // Mesmo espírito de sodexoAdherenceScore -- começa em 100% e só desconta
 // por inspeção Ruim/Crítica que ainda está ABERTA (resolvida não pesa mais,
 // senão nunca teria motivo pra alguém resolver um problema já corrigido).
-function computeAssetHealth(periodo) {
+// `responsavel` ('PCO'/'PCM'/null) filtra pra fila de cada um -- é só um
+// recorte de tela, PCM e PCO sempre conseguem ver tudo trocando pra "Todos".
+function computeAssetHealth(periodo, responsavel) {
     const { from, to } = periodo;
     const dateOf = i => (i.createdAt || '').slice(0, 10);
-    const inPeriod = state.inspections.filter(i => (!from || dateOf(i) >= from) && (!to || dateOf(i) <= to));
+    let inPeriod = state.inspections.filter(i => (!from || dateOf(i) >= from) && (!to || dateOf(i) <= to));
+    if (responsavel) inPeriod = inPeriod.filter(i => inspectionResponsible(i) === responsavel);
     const open = inPeriod.filter(i => i.status === 'ABERTA');
     const penalty = open.reduce((sum, i) => sum + (ASSET_HEALTH_PENALTY[i.condition] || 0), 0);
     const index = Math.max(0, Math.round((100 - penalty) * 10) / 10);
@@ -7184,8 +7205,9 @@ let chartAssetHealthTop = null, chartAssetHealthCondition = null, chartAssetHeal
 function renderAssetHealth() {
     document.getElementById('asset-health-from').value = state.assetHealthFilter.from || '';
     document.getElementById('asset-health-to').value = state.assetHealthFilter.to || '';
+    document.getElementById('asset-health-responsavel').value = state.assetHealthFilter.responsavel || '';
     updateAssetHealthBadge();
-    const health = computeAssetHealth(currentAssetHealthPeriod());
+    const health = computeAssetHealth(currentAssetHealthPeriod(), state.assetHealthFilter.responsavel);
 
     document.getElementById('asset-health-index').textContent = `${health.index}%`;
     document.getElementById('asset-health-open-count').textContent = health.openCount;
@@ -7232,6 +7254,13 @@ function renderAssetHealth() {
         });
     }
 
+    const RESPONSIBLE_COLORS = { PCO: '#2563eb', PCM: '#f59e0b' };
+    const responsibleBadge = i => {
+        const r = inspectionResponsible(i);
+        if (!r) return '<span style="color:var(--text-muted);">Ambos</span>';
+        return `<span class="tag-chip" style="background:${RESPONSIBLE_COLORS[r]}22; color:${RESPONSIBLE_COLORS[r]};">${r}</span>`;
+    };
+
     const openTbody = document.getElementById('asset-health-open-tbody');
     const sortedOpen = health.open.slice().sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
     openTbody.innerHTML = sortedOpen.map(i => `
@@ -7241,12 +7270,13 @@ function renderAssetHealth() {
             <td>${escapeHtml(AREA_LABEL[i.area] || i.area || '')}</td>
             <td><span class="tag-chip" style="background:${CONDITION_COLORS[i.condition]}22; color:${CONDITION_COLORS[i.condition]};">${escapeHtml(CONDITION_LABELS[i.condition] || i.condition)}</span></td>
             <td>${escapeHtml(PROBLEM_TYPE_LABELS[i.problemType] || i.problemType || '—')}</td>
+            <td>${responsibleBadge(i)}</td>
             <td>${escapeHtml(i.inspector || '—')}</td>
             <td>${escapeHtml(i.observacao || '—')}</td>
             <td>${i.photoUrl ? `<a href="${i.photoUrl}" target="_blank" rel="noopener">Ver foto</a>` : '—'}</td>
             <td>${canResolveInspection() ? `<button class="btn-secondary" style="padding:5px 9px; font-size:11px;" onclick="openResolveInspectionModal('${i.id}')">Marcar Resolvida</button>` : '—'}</td>
         </tr>
-    `).join('') || `<tr><td colspan="9" style="text-align:center; color:var(--text-muted);">Nenhuma inspeção em aberto no período.</td></tr>`;
+    `).join('') || `<tr><td colspan="10" style="text-align:center; color:var(--text-muted);">Nenhuma inspeção em aberto no período.</td></tr>`;
 
     const historyTbody = document.getElementById('asset-health-history-tbody');
     const resolved = health.inPeriod.filter(i => i.status === 'RESOLVIDA').sort((a, b) => (b.resolvedAt || '').localeCompare(a.resolvedAt || ''));
@@ -7257,22 +7287,25 @@ function renderAssetHealth() {
             <td>${escapeHtml(AREA_LABEL[i.area] || i.area || '')}</td>
             <td>${escapeHtml(CONDITION_LABELS[i.condition] || i.condition)}</td>
             <td>${escapeHtml(PROBLEM_TYPE_LABELS[i.problemType] || i.problemType || '—')}</td>
+            <td>${responsibleBadge(i)}</td>
             <td>${escapeHtml(i.inspector || '—')}</td>
             <td>${escapeHtml(i.resolvedByLabel || '—')}</td>
             <td>${escapeHtml(i.resolvedReason || '—')}</td>
         </tr>
-    `).join('') || `<tr><td colspan="8" style="text-align:center; color:var(--text-muted);">Nenhuma inspeção resolvida no período.</td></tr>`;
+    `).join('') || `<tr><td colspan="9" style="text-align:center; color:var(--text-muted);">Nenhuma inspeção resolvida no período.</td></tr>`;
 }
 document.getElementById('btn-asset-health-apply').addEventListener('click', async () => {
     state.assetHealthFilter.from = document.getElementById('asset-health-from').value || null;
     state.assetHealthFilter.to = document.getElementById('asset-health-to').value || null;
+    state.assetHealthFilter.responsavel = document.getElementById('asset-health-responsavel').value || null;
     await ensureHistoryLoadedFrom(state.assetHealthFilter.from);
     renderAssetHealth();
 });
 document.getElementById('btn-asset-health-clear').addEventListener('click', () => {
     document.getElementById('asset-health-from').value = '';
     document.getElementById('asset-health-to').value = '';
-    state.assetHealthFilter = { from: null, to: null };
+    document.getElementById('asset-health-responsavel').value = '';
+    state.assetHealthFilter = { from: null, to: null, responsavel: null };
     renderAssetHealth();
 });
 
