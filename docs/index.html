@@ -2036,7 +2036,10 @@ function applyEquipTerminology() {
     setText('btn-move-equip', `Mover ${tSub}`);
     setText('btn-rename-equip', `Renomear ${tSub}`);
     setText('btn-delete-equip', `Excluir ${tSub}`);
-    setText('lbl-kpi-livres', `${tp} Livres`);
+    // No contrato de Materiais (Fábrica/Viga Materiais) cada "equipamento"
+    // cadastrado é na verdade uma área do armazém -- só este card muda,
+    // o resto da terminologia desse site continua "Equipamento" mesmo.
+    setText('lbl-kpi-livres', `${isMaterialsContractSite() ? 'Áreas' : tp} Livres`);
 }
 // Gráfico de Indisponibilidade (Manutenção) é indicador de PCM -- também
 // liberado para quem administra o site inteiro (Admin Master, Gerente),
