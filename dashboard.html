@@ -1882,6 +1882,13 @@ const ROLE_META = {
     PORTARIA: { label: 'Portaria / Guarita (Mobile)', canBook: [], readOnly: true }
 };
 const TYPE_STATUS = { 'Manutenção Preventiva': 'manutencao', 'Manutenção Corretiva': 'manutencao', 'Limpeza Sodexo': 'limpeza', 'Limpeza Mecanizada': 'limpeza' };
+// Rótulo de exibição no card da agenda -- só nos sites do Contrato de
+// Controle de Materiais (Fábrica/Viga Materiais) o texto mostrado no
+// calendário muda pra "Atividade - Sodexo"; o valor `type` continua
+// "Limpeza Sodexo" em todo o resto do app (canBook, filtros, relatórios,
+// BOOK de Aderência) e em qualquer outro site, que não foi pedido pra
+// mudar e quebraria dado histórico se mudasse.
+function bookingTypeDisplayLabel(type) { return (type === 'Limpeza Sodexo' && isMaterialsContractSite()) ? 'Atividade - Sodexo' : type; }
 
 /* =========================================================
    ENCERRAMENTO DE BLOQUEIOS (closure_status)
@@ -2844,7 +2851,7 @@ function openDetailModal(booking) {
         <div class="modal-header"><h3>${booking.tag} — Detalhes do Bloqueio</h3><button class="modal-close" onclick="closeModal()">&times;</button></div>
         <div class="modal-body">
             <div class="m-info-row"><span>Área</span><b>${AREA_LABEL[booking.area] || booking.area}</b></div>
-            <div class="m-info-row"><span>${booking.activityDescription ? 'Atividade' : 'Tipo'}</span><b>${escapeHtml(booking.activityDescription || booking.type)}${booking.emergencial ? ' (Emergencial)' : ''}</b></div>
+            <div class="m-info-row"><span>${booking.activityDescription ? 'Atividade' : 'Tipo'}</span><b>${escapeHtml(booking.activityDescription || bookingTypeDisplayLabel(booking.type))}${booking.emergencial ? ' (Emergencial)' : ''}</b></div>
             <div class="m-info-row"><span>OM</span><b>${escapeHtml(booking.om || '—')}</b></div>
             <div class="m-info-row"><span>Data</span><b>${formatDateBR(booking.date)}</b></div>
             <div class="m-info-row"><span>Horário</span><b>${minutesToTime(booking.startMin)} — ${minutesToTime(booking.endMin)}</b></div>
@@ -6131,7 +6138,7 @@ function renderWeekGrid() {
                         const st = TYPE_STATUS[booking.type] === 'limpeza' ? 'limpeza' : (booking.emergencial ? 'critico' : 'manutencao');
                         const item = document.createElement('div');
                         item.className = `wg-multi-item badge-${st}`;
-                        item.textContent = `${booking.tag} · ${booking.emergencial ? 'Emergencial' : booking.type}`;
+                        item.textContent = `${booking.tag} · ${booking.emergencial ? 'Emergencial' : bookingTypeDisplayLabel(booking.type)}`;
                         item.title = `OM ${booking.om || '—'} — ${booking.justification} — ${booking.operator}`;
                         item.addEventListener('click', e => { e.stopPropagation(); openDetailModal(booking); });
                         cell.appendChild(item);
@@ -6139,7 +6146,7 @@ function renderWeekGrid() {
                 } else if (matches.length) {
                     const booking = matches[0];
                     const st = TYPE_STATUS[booking.type] === 'limpeza' ? 'limpeza' : (booking.emergencial ? 'critico' : 'manutencao');
-                    const badgeLabel = booking.emergencial ? 'Emergencial' : booking.type;
+                    const badgeLabel = booking.emergencial ? 'Emergencial' : bookingTypeDisplayLabel(booking.type);
                     cell.className = 'wg-slot';
                     cell.title = `OM ${booking.om || '—'} — ${booking.justification} — ${booking.operator}`;
                     cell.innerHTML = `<span class="wg-badge badge-${st}">${isAllMode ? `${booking.tag} · ${badgeLabel}` : badgeLabel}</span><span class="wg-time">${minutesToTime(booking.startMin)}–${minutesToTime(booking.endMin)}</span><span class="wg-just">${escapeHtml(booking.justification)}</span>`;
