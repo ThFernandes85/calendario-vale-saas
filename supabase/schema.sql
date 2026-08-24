@@ -76,6 +76,10 @@ create table if not exists public.profiles (
 -- TECNICO_CAMPO_VALE é o técnico de campo da própria VALE (não da Sodexo)
 -- -- perfil mobile-only, só registra inspeção de condição de ativo (ver
 -- tabela `inspections` mais abaixo), nunca agenda/encerra OM.
+-- SOLICITANTE_PORTARIA/APROVADOR_PORTARIA/PORTARIA são os 3 papéis
+-- mobile-only da Liberação de Portaria (ver tabela `portaria_liberacoes`
+-- mais abaixo) -- cada um cuida de uma etapa do fluxo de saída/retorno
+-- de equipamento pesado, nenhum deles agenda/encerra OM.
 do $$
 begin
   if exists (
@@ -86,7 +90,7 @@ begin
     alter table public.profiles drop constraint profiles_role_check;
   end if;
   alter table public.profiles add constraint profiles_role_check
-    check (role in ('ADMIN','PCM','PCO','PCM_PCO','ENG_CONF','ENG_EST','ENCARREGADO','CLIENTE_VALE','TECNICO_PLANEJAMENTO','GERENTE','TECNICO_CAMPO_VALE'));
+    check (role in ('ADMIN','PCM','PCO','PCM_PCO','ENG_CONF','ENG_EST','ENCARREGADO','CLIENTE_VALE','TECNICO_PLANEJAMENTO','GERENTE','TECNICO_CAMPO_VALE','SOLICITANTE_PORTARIA','APROVADOR_PORTARIA','PORTARIA'));
 end $$;
 
 -- WhatsApp do Encarregado (opcional -- nem todo mundo vai ter cadastrado de
@@ -737,6 +741,108 @@ create policy "inspections_update" on public.inspections for update
 
 drop policy if exists "inspections_admin_delete" on public.inspections;
 create policy "inspections_admin_delete" on public.inspections for delete
+  using (public.is_admin());
+
+-- ============================================================
+-- LIBERAÇÃO DE PORTARIA (saída/retorno de equipamento pesado) --
+-- 2 aprovações em cada perna (saída e retorno) + conferência física da
+-- portaria/guarita em cada perna. 3 papéis novos, mobile-only:
+-- SOLICITANTE_PORTARIA (pede saída, depois registra o retorno),
+-- APROVADOR_PORTARIA (aprova/rejeita as duas pernas), PORTARIA (só
+-- confere -- foto aprovada x o que está saindo/voltando -- e libera/
+-- confirma com um toque, sem preencher nada novo). has_site_access
+-- (site_key) resolve sozinho o recorte de empresa, igual inspections --
+-- sem coluna company_key própria.
+-- ============================================================
+create table if not exists public.portaria_liberacoes (
+  id uuid primary key default gen_random_uuid(),
+  site_key text not null references public.sites(key) on delete cascade,
+  tag text not null,
+  area_code text not null,
+
+  -- ---- dados da SAÍDA (preenchidos pelo Solicitante) ----
+  motivo text not null check (motivo in ('MANUTENCAO_EXTERNA','EMPRESTIMO_ENTRE_SITES','TRANSPORTE_MATERIAL','OUTRO')),
+  destino text not null,
+  combustivel_saida text not null check (combustivel_saida in ('VAZIO','1/4','1/2','3/4','CHEIO')),
+  odometro_km_saida numeric,
+  horimetro_saida numeric,
+  foto_equip_saida_url text not null,
+  foto_combustivel_saida_url text,
+  -- Se sai em cima de caminhão/carreta, a placa vira obrigatória no app
+  -- (ver validateSolicitacaoPortariaForm em docs/index.html).
+  transportado_caminhao boolean not null default false,
+  placa_veiculo text,
+  previsao_retorno timestamptz not null,
+  observacao_saida text,
+
+  -- ---- dados do RETORNO (preenchidos pelo Solicitante, depois de EM_CAMPO) ----
+  combustivel_retorno text check (combustivel_retorno in ('VAZIO','1/4','1/2','3/4','CHEIO')),
+  odometro_km_retorno numeric,
+  horimetro_retorno numeric,
+  foto_equip_retorno_url text,
+  foto_combustivel_retorno_url text,
+  observacao_retorno text,
+
+  -- ---- state machine ----
+  status text not null default 'SOLICITADA' check (status in (
+    'SOLICITADA','REJEITADA_SAIDA','APROVADA_SAIDA','EM_CAMPO',
+    'RETORNO_SOLICITADO','REJEITADA_RETORNO','APROVADA_RETORNO','CONCLUIDA'
+  )),
+
+  -- ---- trilha de auditoria (quem/quando em cada transição) ----
+  solicitante_id uuid references public.profiles(id) on delete set null,
+  solicitante_label text not null,
+  solicitado_at timestamptz not null default now(),
+
+  aprovador_saida_id uuid references public.profiles(id) on delete set null,
+  aprovador_saida_label text,
+  aprovador_saida_at timestamptz,
+  motivo_rejeicao_saida text,
+
+  liberado_portaria_id uuid references public.profiles(id) on delete set null,
+  liberado_portaria_label text,
+  liberado_portaria_at timestamptz,
+
+  retorno_registrado_por_id uuid references public.profiles(id) on delete set null,
+  retorno_registrado_por_label text,
+  retorno_registrado_at timestamptz,
+
+  aprovador_retorno_id uuid references public.profiles(id) on delete set null,
+  aprovador_retorno_label text,
+  aprovador_retorno_at timestamptz,
+  motivo_rejeicao_retorno text,
+
+  conferido_portaria_id uuid references public.profiles(id) on delete set null,
+  conferido_portaria_label text,
+  conferido_portaria_at timestamptz,
+
+  created_at timestamptz default now()
+);
+alter table public.portaria_liberacoes enable row level security;
+
+-- Leitura: qualquer perfil com acesso ao site (inclusive todo o shell
+-- desktop -- espelha inspections_select).
+drop policy if exists "portaria_select" on public.portaria_liberacoes;
+create policy "portaria_select" on public.portaria_liberacoes for select
+  using (public.has_site_access(site_key));
+
+-- Criação: só o próprio Solicitante (e Admin, pra corrigir/testar) -- o
+-- registro de retorno é um UPDATE na mesma linha, não um INSERT novo.
+drop policy if exists "portaria_insert" on public.portaria_liberacoes;
+create policy "portaria_insert" on public.portaria_liberacoes for insert
+  with check (public.has_site_access(site_key) and (public.is_admin() or public.current_role_key() = 'SOLICITANTE_PORTARIA'));
+
+-- Atualização: granularidade só por papel (quem pode mexer na linha),
+-- não por status/coluna -- mesma folga já aceita em inspections_update/
+-- bookings_update. A guarda fina de "só aprova quando status=SOLICITADA"
+-- etc. fica no app (canAprovarPortaria + checagem do status atual).
+drop policy if exists "portaria_update" on public.portaria_liberacoes;
+create policy "portaria_update" on public.portaria_liberacoes for update
+  using (public.has_site_access(site_key) and (public.is_admin() or public.current_role_key() in ('SOLICITANTE_PORTARIA','APROVADOR_PORTARIA','PORTARIA')))
+  with check (public.has_site_access(site_key) and (public.is_admin() or public.current_role_key() in ('SOLICITANTE_PORTARIA','APROVADOR_PORTARIA','PORTARIA')));
+
+drop policy if exists "portaria_admin_delete" on public.portaria_liberacoes;
+create policy "portaria_admin_delete" on public.portaria_liberacoes for delete
   using (public.is_admin());
 
 -- ============================================================

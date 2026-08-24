@@ -171,6 +171,12 @@ header {
 #asset-health-open-section.asset-health-open-collapsed #asset-health-open-content { display: none; }
 #asset-health-history-section.asset-health-history-collapsed .profile-toggle-btn svg { transform: rotate(-90deg); }
 #asset-health-history-section.asset-health-history-collapsed #asset-health-history-content { display: none; }
+#portaria-em-campo-section.portaria-em-campo-collapsed .profile-toggle-btn svg { transform: rotate(-90deg); }
+#portaria-em-campo-section.portaria-em-campo-collapsed #portaria-em-campo-content { display: none; }
+#portaria-pendente-section.portaria-pendente-collapsed .profile-toggle-btn svg { transform: rotate(-90deg); }
+#portaria-pendente-section.portaria-pendente-collapsed #portaria-pendente-content { display: none; }
+#portaria-historico-section.portaria-historico-collapsed .profile-toggle-btn svg { transform: rotate(-90deg); }
+#portaria-historico-section.portaria-historico-collapsed #portaria-historico-content { display: none; }
 
 .btn-area-filter {
     background-color: #1c2533; border: 1px solid var(--border-color); color: var(--text-primary);
@@ -540,12 +546,22 @@ body.book-preview-mode .book-preview-toolbar {
 #mobile-inspecao-screen {
     display: none; flex-direction: column; height: 100vh; background: var(--bg-main);
 }
+/* ---- TELAS MOBILE: LIBERAÇÃO DE PORTARIA (3 papéis) ---- */
+#mobile-solicitante-screen {
+    display: none; flex-direction: column; height: 100vh; background: var(--bg-main);
+}
+#mobile-aprovador-screen {
+    display: none; flex-direction: column; height: 100vh; background: var(--bg-main);
+}
+#mobile-portaria-screen {
+    display: none; flex-direction: column; height: 100vh; background: var(--bg-main);
+}
 .mobile-header {
     display: flex; align-items: center; justify-content: space-between;
     padding: 14px 16px; border-bottom: 1px solid var(--border-color); background: var(--bg-sidebar);
     flex: none;
 }
-#mobile-encarregado-body, #mobile-inspecao-body { flex: 1; overflow-y: auto; padding: 16px; }
+#mobile-encarregado-body, #mobile-inspecao-body, #mobile-solicitante-body, #mobile-aprovador-body, #mobile-portaria-body { flex: 1; overflow-y: auto; padding: 16px; }
 .mobile-search {
     width: 100%; padding: 12px 14px; margin-bottom: 12px; font-size: 15px;
     background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 10px; color: var(--text-primary);
@@ -779,6 +795,42 @@ body.book-preview-mode .book-preview-toolbar {
     <div id="mobile-inspecao-body"></div>
 </div>
 
+<!-- TELA MOBILE: SOLICITANTE (pede saída, registra retorno) -->
+<div id="mobile-solicitante-screen" style="display:none;">
+    <div class="mobile-header">
+        <div>
+            <div style="font-size:15px; font-weight:700; color:#fff;">Portaria · <span id="mobile-solicitante-site-label"></span></div>
+            <div style="font-size:12px; color:var(--text-secondary);" id="mobile-solicitante-user-label"></div>
+        </div>
+        <button type="button" class="btn-secondary" id="btn-mobile-solicitante-logout">Sair</button>
+    </div>
+    <div id="mobile-solicitante-body"></div>
+</div>
+
+<!-- TELA MOBILE: APROVADOR (aprova/rejeita saída e retorno) -->
+<div id="mobile-aprovador-screen" style="display:none;">
+    <div class="mobile-header">
+        <div>
+            <div style="font-size:15px; font-weight:700; color:#fff;">Portaria · <span id="mobile-aprovador-site-label"></span></div>
+            <div style="font-size:12px; color:var(--text-secondary);" id="mobile-aprovador-user-label"></div>
+        </div>
+        <button type="button" class="btn-secondary" id="btn-mobile-aprovador-logout">Sair</button>
+    </div>
+    <div id="mobile-aprovador-body"></div>
+</div>
+
+<!-- TELA MOBILE: PORTARIA / GUARITA (confere e libera/confirma) -->
+<div id="mobile-portaria-screen" style="display:none;">
+    <div class="mobile-header">
+        <div>
+            <div style="font-size:15px; font-weight:700; color:#fff;">Portaria · <span id="mobile-portaria-site-label"></span></div>
+            <div style="font-size:12px; color:var(--text-secondary);" id="mobile-portaria-user-label"></div>
+        </div>
+        <button type="button" class="btn-secondary" id="btn-mobile-portaria-logout">Sair</button>
+    </div>
+    <div id="mobile-portaria-body"></div>
+</div>
+
 <!-- SIDEBAR ESQUERDA -->
 <aside style="display:none;">
     <div>
@@ -847,6 +899,11 @@ body.book-preview-mode .book-preview-toolbar {
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
                 <span class="nav-label">Saúde dos Ativos</span>
                 <span class="nav-badge" id="nav-badge-saude-ativos"></span>
+            </button>
+            <button class="nav-item" data-view="portaria" title="Liberação de Portaria">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 21h18M5 21V7l7-4 7 4v14M9 9h1M9 13h1M14 9h1M14 13h1"/></svg>
+                <span class="nav-label">Liberação de Portaria</span>
+                <span class="nav-badge" id="nav-badge-portaria"></span>
             </button>
             <button class="nav-item" data-view="aprovacoes" title="Aprovações Vale" style="display:none;">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
@@ -1479,6 +1536,113 @@ body.book-preview-mode .book-preview-toolbar {
         </div>
     </div>
 
+    <!-- VIEW: LIBERAÇÃO DE PORTARIA (saída/retorno de equipamento pesado) -->
+    <div class="content-container" id="view-portaria">
+        <div>
+            <h2 style="font-size: 22px; margin-bottom: 6px; font-weight: 600;">Liberação de Portaria</h2>
+            <p style="color: var(--text-secondary); font-size: 14px;">Saída e retorno de equipamento pesado, com duas aprovações e conferência física da guarita em cada perna. Só acompanhamento -- as ações acontecem nas telas mobile dos 3 papéis dedicados.</p>
+        </div>
+
+        <div class="card-section">
+            <div class="agenda-toolbar">
+                <div class="agenda-field"><label>Período — De</label><input type="date" id="portaria-from"></div>
+                <div class="agenda-field"><label>Período — Até</label><input type="date" id="portaria-to"></div>
+                <div class="agenda-field">
+                    <label>Status</label>
+                    <select id="portaria-status">
+                        <option value="">Todos</option>
+                        <option value="EM_CAMPO">Em campo</option>
+                        <option value="SOLICITADA">Aguardando aprovação (saída)</option>
+                        <option value="APROVADA_SAIDA">Aprovada -- aguardando liberação</option>
+                        <option value="RETORNO_SOLICITADO">Aguardando aprovação (retorno)</option>
+                        <option value="APROVADA_RETORNO">Retorno aprovado -- aguardando conferência</option>
+                        <option value="REJEITADA_SAIDA">Saída rejeitada</option>
+                        <option value="REJEITADA_RETORNO">Retorno rejeitado</option>
+                        <option value="CONCLUIDA">Concluída</option>
+                    </select>
+                </div>
+                <div class="day-nav">
+                    <button class="today-btn" id="btn-portaria-apply">Aplicar Filtro</button>
+                    <button id="btn-portaria-clear">Limpar</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="kpi-grid">
+            <div class="kpi-card" style="--accent: #f59e0b;">
+                <div class="kpi-label">Em Campo Agora</div>
+                <div class="kpi-value" id="portaria-em-campo-count">—</div>
+                <div class="kpi-sub">Equipamento fora do site</div>
+            </div>
+            <div class="kpi-card" style="--accent: #ef4444;">
+                <div class="kpi-label">Atrasados</div>
+                <div class="kpi-value" id="portaria-atrasado-count">—</div>
+                <div class="kpi-sub">Passou da previsão de retorno</div>
+            </div>
+            <div class="kpi-card" style="--accent: #3CB5E5;">
+                <div class="kpi-label">Aguardando Ação</div>
+                <div class="kpi-value" id="portaria-pendente-count">—</div>
+                <div class="kpi-sub">Aprovação ou conferência da portaria</div>
+            </div>
+            <div class="kpi-card" style="--accent: #2ed573;">
+                <div class="kpi-label">Concluídas (período)</div>
+                <div class="kpi-value" id="portaria-concluida-count">—</div>
+                <div class="kpi-sub">Ciclo completo -- saída e retorno</div>
+            </div>
+        </div>
+
+        <div class="card-section" id="portaria-em-campo-section">
+            <div class="filter-title-row">
+                <div class="filter-title" style="margin-bottom:0;">Em Campo</div>
+                <button type="button" id="btn-toggle-portaria-em-campo" class="profile-toggle-btn" title="Minimizar/Expandir">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
+                </button>
+            </div>
+            <div id="portaria-em-campo-content">
+                <div class="audit-table-wrap" style="margin-top:14px;">
+                    <table class="audit-table">
+                        <thead><tr><th>Saída</th><th>Ativo</th><th>Área</th><th>Motivo</th><th>Destino</th><th>Placa</th><th>Previsão Retorno</th><th>Solicitante</th><th>Fotos</th><th>Ações</th></tr></thead>
+                        <tbody id="portaria-em-campo-tbody"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <div class="card-section" id="portaria-pendente-section">
+            <div class="filter-title-row">
+                <div class="filter-title" style="margin-bottom:0;">Aguardando Ação</div>
+                <button type="button" id="btn-toggle-portaria-pendente" class="profile-toggle-btn" title="Minimizar/Expandir">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
+                </button>
+            </div>
+            <div id="portaria-pendente-content">
+                <div class="audit-table-wrap" style="margin-top:14px;">
+                    <table class="audit-table">
+                        <thead><tr><th>Data</th><th>Ativo</th><th>Área</th><th>Motivo</th><th>Destino</th><th>Placa</th><th>Status</th><th>Solicitante</th><th>Fotos</th><th>Ações</th></tr></thead>
+                        <tbody id="portaria-pendente-tbody"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <div class="card-section" id="portaria-historico-section">
+            <div class="filter-title-row">
+                <div class="filter-title" style="margin-bottom:0;">Histórico</div>
+                <button type="button" id="btn-toggle-portaria-historico" class="profile-toggle-btn" title="Minimizar/Expandir">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
+                </button>
+            </div>
+            <div id="portaria-historico-content">
+                <div class="audit-table-wrap" style="margin-top:14px;">
+                    <table class="audit-table">
+                        <thead><tr><th>Data</th><th>Ativo</th><th>Área</th><th>Motivo</th><th>Destino</th><th>Status</th><th>Solicitante</th><th>Encerrado em</th><th>Fotos</th></tr></thead>
+                        <tbody id="portaria-historico-tbody"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- VIEW OCULTA: BOOK DE ADERÊNCIA (só aparece na prévia/impressão, sem item de navegação) -->
     <div class="book-preview-toolbar">
         <button class="btn-secondary" id="btn-book-back">&#8592; Voltar</button>
@@ -1708,7 +1872,14 @@ const ROLE_META = {
     // ativo (ver `renderMobileInspecao()` e o branch em `loginAs()`).
     // Nunca agenda/encerra OM -- por isso canBook vazio e readOnly no
     // sentido de bloqueio normal (a inspeção em si não passa por canBook).
-    TECNICO_CAMPO_VALE: { label: 'Técnico de Campo (Vale · Mobile)', canBook: [], readOnly: true }
+    TECNICO_CAMPO_VALE: { label: 'Técnico de Campo (Vale · Mobile)', canBook: [], readOnly: true },
+    // Os 3 papéis a seguir são mobile-only e cuidam de uma etapa cada da
+    // Liberação de Portaria (saída/retorno de equipamento pesado) -- ver
+    // renderMobileSolicitante/Aprovador/Portaria() e os branches em
+    // loginAs(). Nenhum agenda/encerra OM, por isso canBook vazio.
+    SOLICITANTE_PORTARIA: { label: 'Solicitante (Portaria · Mobile)', canBook: [], readOnly: true },
+    APROVADOR_PORTARIA: { label: 'Aprovador (Portaria · Mobile)', canBook: [], readOnly: true },
+    PORTARIA: { label: 'Portaria / Guarita (Mobile)', canBook: [], readOnly: true }
 };
 const TYPE_STATUS = { 'Manutenção Preventiva': 'manutencao', 'Manutenção Corretiva': 'manutencao', 'Limpeza Sodexo': 'limpeza', 'Limpeza Mecanizada': 'limpeza' };
 
@@ -1772,8 +1943,9 @@ function initialsOf(name) {
 const state = {
     profileKey: null, currentUser: null, users: [], currentSite: 'MUTUCA',
     currentArea: 'ALL', agendaTag: null, weekStart: getSunday(todayStr()),
-    bookings: [], auditLog: [], inspections: [], reportFilter: { from: null, to: null, username: null, isExtra: false, onlyLostHours: false },
-    heatmapFilter: { from: null, to: null, equip: null }, assetHealthFilter: { from: null, to: null, responsavel: null }
+    bookings: [], auditLog: [], inspections: [], portariaLiberacoes: [], reportFilter: { from: null, to: null, username: null, isExtra: false, onlyLostHours: false },
+    heatmapFilter: { from: null, to: null, equip: null }, assetHealthFilter: { from: null, to: null, responsavel: null },
+    portariaFilter: { from: null, to: null, status: null }
 };
 let pendingBookingDate = null;
 
@@ -1878,6 +2050,12 @@ function canSubmitInspection() { return state.profileKey === 'TECNICO_CAMPO_VALE
 // lida com Manutenção/operação do site no dia a dia.
 function canResolveInspection() { return ['PCM', 'PCO', 'PCM_PCO', 'GERENTE', 'ADMIN'].includes(state.profileKey); }
 
+// Liberação de Portaria -- um canX() por etapa do fluxo, cada um restrito
+// ao seu papel dedicado (+ Admin, pra corrigir/testar).
+function canSolicitarPortaria() { return state.profileKey === 'SOLICITANTE_PORTARIA' || state.profileKey === 'ADMIN'; }
+function canAprovarPortaria() { return state.profileKey === 'APROVADOR_PORTARIA' || state.profileKey === 'ADMIN'; }
+function canLiberarPortaria() { return state.profileKey === 'PORTARIA' || state.profileKey === 'ADMIN'; }
+
 /* =========================================================
    HELPERS DE DATA/HORA
    ========================================================= */
@@ -1949,6 +2127,30 @@ function mapInspectionFromDb(row) {
     };
 }
 
+function mapPortariaFromDb(row) {
+    return {
+        id: row.id, tag: row.tag, area: row.area_code,
+        motivo: row.motivo, destino: row.destino, combustivelSaida: row.combustivel_saida,
+        odometroKmSaida: row.odometro_km_saida, horimetroSaida: row.horimetro_saida,
+        fotoEquipSaidaUrl: row.foto_equip_saida_url, fotoCombustivelSaidaUrl: row.foto_combustivel_saida_url,
+        transportadoCaminhao: !!row.transportado_caminhao, placaVeiculo: row.placa_veiculo,
+        previsaoRetorno: row.previsao_retorno, observacaoSaida: row.observacao_saida,
+        combustivelRetorno: row.combustivel_retorno, odometroKmRetorno: row.odometro_km_retorno, horimetroRetorno: row.horimetro_retorno,
+        fotoEquipRetornoUrl: row.foto_equip_retorno_url, fotoCombustivelRetornoUrl: row.foto_combustivel_retorno_url,
+        observacaoRetorno: row.observacao_retorno,
+        status: row.status,
+        solicitanteId: row.solicitante_id, solicitante: row.solicitante_label, solicitadoAt: row.solicitado_at,
+        aprovadorSaidaId: row.aprovador_saida_id, aprovadorSaida: row.aprovador_saida_label, aprovadorSaidaAt: row.aprovador_saida_at,
+        motivoRejeicaoSaida: row.motivo_rejeicao_saida,
+        liberadoPortariaId: row.liberado_portaria_id, liberadoPortaria: row.liberado_portaria_label, liberadoPortariaAt: row.liberado_portaria_at,
+        retornoRegistradoPorId: row.retorno_registrado_por_id, retornoRegistradoPor: row.retorno_registrado_por_label, retornoRegistradoAt: row.retorno_registrado_at,
+        aprovadorRetornoId: row.aprovador_retorno_id, aprovadorRetorno: row.aprovador_retorno_label, aprovadorRetornoAt: row.aprovador_retorno_at,
+        motivoRejeicaoRetorno: row.motivo_rejeicao_retorno,
+        conferidoPortariaId: row.conferido_portaria_id, conferidoPortaria: row.conferido_portaria_label, conferidoPortariaAt: row.conferido_portaria_at,
+        createdAt: row.created_at
+    };
+}
+
 // O Supabase (PostgREST) limita quantas linhas uma única consulta devolve
 // (o padrão do projeto costuma ser 1000) -- com meses de bookings/auditoria
 // acumulados, um `select('*')` sem paginação corta silenciosamente o final
@@ -2001,10 +2203,11 @@ let loadedHistoryFrom = null;
 
 async function loadPersisted() {
     const windowStart = historyWindowStart();
-    const [{ data: bookings, error: bErr }, { data: audit, error: aErr }, { data: inspections, error: iErr }] = await Promise.all([
+    const [{ data: bookings, error: bErr }, { data: audit, error: aErr }, { data: inspections, error: iErr }, { data: portaria, error: pErr }] = await Promise.all([
         fetchAllRows('bookings', 'date', true, q => bookingsWindowFilter(q, windowStart)),
         fetchAllRows('audit_log', 'data_hora', false, q => q.gte('data_hora', windowStart)),
-        fetchAllRows('inspections', 'created_at', false)
+        fetchAllRows('inspections', 'created_at', false),
+        fetchAllRows('portaria_liberacoes', 'created_at', false)
     ]);
     if (bErr) { toast('Erro ao carregar agendamentos: ' + bErr.message, 'error'); state.bookings = []; }
     else state.bookings = (bookings || []).map(mapBookingFromDb);
@@ -2012,6 +2215,8 @@ async function loadPersisted() {
     else state.auditLog = (audit || []).map(mapAuditFromDb);
     if (iErr) { toast('Erro ao carregar inspeções: ' + iErr.message, 'error'); state.inspections = []; }
     else state.inspections = (inspections || []).map(mapInspectionFromDb);
+    if (pErr) { toast('Erro ao carregar liberações de portaria: ' + pErr.message, 'error'); state.portariaLiberacoes = []; }
+    else state.portariaLiberacoes = (portaria || []).map(mapPortariaFromDb);
     if (!bErr && !aErr) loadedHistoryFrom = windowStart;
     return { error: bErr || aErr || null };
 }
@@ -2061,7 +2266,7 @@ let bgRefreshInProgress = false;
 async function backgroundRefreshTick() {
     if (bgRefreshInProgress) return;
     if (!state.currentUser || !state.currentSite) return;
-    if (state.profileKey === 'ENCARREGADO' || state.profileKey === 'TECNICO_CAMPO_VALE') return;
+    if (['ENCARREGADO', 'TECNICO_CAMPO_VALE', 'SOLICITANTE_PORTARIA', 'APROVADOR_PORTARIA', 'PORTARIA'].includes(state.profileKey)) return;
     if (document.visibilityState !== 'visible') return;
     bgRefreshInProgress = true;
     try {
@@ -2070,19 +2275,21 @@ async function backgroundRefreshTick() {
         // plano não pode voltar a encolher pra janela padrão e apagar esse
         // período mais antigo que já estava sendo exibido na tela.
         const windowStart = loadedHistoryFrom || historyWindowStart();
-        const [{ data: bookings, error: bErr }, { data: audit, error: aErr }, { data: inspections, error: iErr }] = await Promise.all([
+        const [{ data: bookings, error: bErr }, { data: audit, error: aErr }, { data: inspections, error: iErr }, { data: portaria, error: pErr }] = await Promise.all([
             fetchAllRows('bookings', 'date', true, q => bookingsWindowFilter(q, windowStart)),
             fetchAllRows('audit_log', 'data_hora', false, q => q.gte('data_hora', windowStart)),
-            fetchAllRows('inspections', 'created_at', false)
+            fetchAllRows('inspections', 'created_at', false),
+            fetchAllRows('portaria_liberacoes', 'created_at', false)
         ]);
         // Falha passageira de rede -- tenta de novo no próximo ciclo, sem
         // apagar o que já está na tela (diferente de loadPersisted, que
         // zera state.bookings no erro -- aceitável num carregamento inicial,
         // mas não aqui, onde a tela já tem dados válidos sendo exibidos).
-        if (bErr || aErr || iErr) return;
+        if (bErr || aErr || iErr || pErr) return;
         state.bookings = (bookings || []).map(mapBookingFromDb);
         state.auditLog = (audit || []).map(mapAuditFromDb);
         state.inspections = (inspections || []).map(mapInspectionFromDb);
+        state.portariaLiberacoes = (portaria || []).map(mapPortariaFromDb);
         loadedHistoryFrom = windowStart;
 
         renderWeekGrid(); renderAtivos(); renderDashboard(); updateUpcomingBadge();
@@ -2092,6 +2299,7 @@ async function backgroundRefreshTick() {
             if (activeView.id === 'view-mapacalor') renderHeatmap();
             if (activeView.id === 'view-aprovacoes') renderValeApprovals();
             if (activeView.id === 'view-saude-ativos') renderAssetHealth();
+            if (activeView.id === 'view-portaria') renderPortariaView();
         }
     } finally {
         bgRefreshInProgress = false;
@@ -3417,6 +3625,33 @@ async function reconcileOfflineQueueFlags() {
                         createdAt: new Date(rec.createdAt).toISOString(), pendingOfflineSync: true,
                     });
                 }
+            } else if (rec.kind === 'portaria_saida') {
+                // Registro único, tabela própria (portaria_liberacoes) -- mesma
+                // lógica de reconstrução do 'inspection' acima, senão o pedido
+                // fica invisível até sincronizar.
+                if (!state.portariaLiberacoes.find(p => p.id === rec.bookingId)) {
+                    state.portariaLiberacoes.unshift({
+                        id: rec.bookingId, tag: rec.tag, area: rec.area, motivo: rec.motivo, destino: rec.destino,
+                        combustivelSaida: rec.combustivelSaida, odometroKmSaida: rec.odometroKmSaida, horimetroSaida: rec.horimetroSaida,
+                        fotoEquipSaidaUrl: null, fotoCombustivelSaidaUrl: null,
+                        transportadoCaminhao: rec.transportadoCaminhao, placaVeiculo: rec.placa,
+                        previsaoRetorno: rec.previsaoRetorno, observacaoSaida: rec.observacao,
+                        combustivelRetorno: null, odometroKmRetorno: null, horimetroRetorno: null,
+                        fotoEquipRetornoUrl: null, fotoCombustivelRetornoUrl: null, observacaoRetorno: null,
+                        status: 'SOLICITADA', solicitanteId: state.currentUser ? state.currentUser.id : null,
+                        solicitante: `${activeProfile().user} (${state.profileKey})`,
+                        createdAt: new Date(rec.createdAt).toISOString(), pendingOfflineSync: true,
+                    });
+                }
+            } else if (rec.kind === 'portaria_retorno') {
+                // Update numa linha já existente -- só marca como pendente,
+                // sem reconstruir (a linha já veio do servidor ou de um
+                // portaria_saida reconciliado acima).
+                const p = state.portariaLiberacoes.find(x => x.id === rec.bookingId);
+                if (p) {
+                    p.combustivelRetorno = rec.combustivelRetorno; p.odometroKmRetorno = rec.odometroKmRetorno; p.horimetroRetorno = rec.horimetroRetorno;
+                    p.observacaoRetorno = rec.observacao; p.status = 'RETORNO_SOLICITADO'; p.pendingOfflineSync = true;
+                }
             } else {
                 const booking = state.bookings.find(b => b.id === rec.bookingId);
                 if (booking && !booking.closureStatus) booking.pendingOfflineSync = true;
@@ -3652,6 +3887,71 @@ async function trySyncOfflineQueue() {
             syncedCount++;
         }
 
+        // Liberação de Portaria -- solicitação de saída (INSERT, registro
+        // novo) e registro de retorno (UPDATE numa linha já existente) sobem
+        // até 2 fotos cada, a do equipamento é obrigatória: se ela falhar,
+        // `break` e tenta de novo no próximo ciclo em vez de inserir/
+        // atualizar sem a foto (violaria foto_equip_..._url not null / a
+        // regra de negócio de sempre ter evidência do que está saindo).
+        const portariaSaidaRecords = (await offlineQueueGetAll()).filter(r => r.kind === 'portaria_saida');
+        for (const record of portariaSaidaRecords) {
+            const temp = state.portariaLiberacoes.find(p => p.id === record.bookingId);
+            let fotoEquipUrl = null, fotoCombustivelUrl = null;
+            if (record.fotoEquipFile) fotoEquipUrl = await uploadPortariaPhoto(record.bookingId, record.fotoEquipFile, 'equip-saida', true);
+            if (!fotoEquipUrl) break;
+            if (record.fotoCombustivelFile) fotoCombustivelUrl = await uploadPortariaPhoto(record.bookingId, record.fotoCombustivelFile, 'combustivel-saida', true);
+            const { data, error } = await sb.from('portaria_liberacoes').insert({
+                site_key: state.currentSite, tag: record.tag, area_code: record.area, motivo: record.motivo, destino: record.destino,
+                combustivel_saida: record.combustivelSaida, odometro_km_saida: record.odometroKmSaida, horimetro_saida: record.horimetroSaida,
+                foto_equip_saida_url: fotoEquipUrl, foto_combustivel_saida_url: fotoCombustivelUrl,
+                transportado_caminhao: record.transportadoCaminhao, placa_veiculo: record.placa,
+                previsao_retorno: record.previsaoRetorno, observacao_saida: record.observacao, status: 'SOLICITADA',
+                solicitante_id: state.currentUser.id, solicitante_label: `${activeProfile().user} (${state.profileKey})`
+            }).select().single();
+            if (error) break;
+
+            const real = mapPortariaFromDb(data);
+            if (temp) {
+                const idx = state.portariaLiberacoes.findIndex(p => p.id === temp.id);
+                if (idx !== -1) state.portariaLiberacoes[idx] = real;
+            } else {
+                state.portariaLiberacoes.unshift(real);
+            }
+            await offlineQueueRemove(record.id);
+            syncedCount++;
+
+            // Qualquer registro de retorno já na fila apontando pro id
+            // temporário passa a apontar pro id real recém-criado -- mesmo
+            // remapeamento já usado no bloco create->close de bookings.
+            const retornosRelacionados = (await offlineQueueGetAll()).filter(r => r.kind === 'portaria_retorno' && r.bookingId === (temp ? temp.id : null));
+            for (const rel of retornosRelacionados) {
+                rel.bookingId = real.id;
+                await offlineQueueAdd(rel);
+            }
+        }
+
+        const portariaRetornoRecords = (await offlineQueueGetAll()).filter(r => r.kind === 'portaria_retorno');
+        for (const record of portariaRetornoRecords) {
+            const p = state.portariaLiberacoes.find(x => x.id === record.bookingId);
+            if (!p) { await offlineQueueRemove(record.id); continue; }
+            let fotoEquipUrl = null, fotoCombustivelUrl = null;
+            if (record.fotoEquipFile) fotoEquipUrl = await uploadPortariaPhoto(record.bookingId, record.fotoEquipFile, 'equip-retorno', true);
+            if (!fotoEquipUrl) break;
+            if (record.fotoCombustivelFile) fotoCombustivelUrl = await uploadPortariaPhoto(record.bookingId, record.fotoCombustivelFile, 'combustivel-retorno', true);
+            const { error } = await sb.from('portaria_liberacoes').update({
+                combustivel_retorno: record.combustivelRetorno, odometro_km_retorno: record.odometroKmRetorno, horimetro_retorno: record.horimetroRetorno,
+                foto_equip_retorno_url: fotoEquipUrl, foto_combustivel_retorno_url: fotoCombustivelUrl, observacao_retorno: record.observacao,
+                status: 'RETORNO_SOLICITADO', retorno_registrado_por_id: state.currentUser.id,
+                retorno_registrado_por_label: `${activeProfile().user} (${state.profileKey})`, retorno_registrado_at: new Date().toISOString()
+            }).eq('id', p.id);
+            if (error) break;
+            p.combustivelRetorno = record.combustivelRetorno; p.odometroKmRetorno = record.odometroKmRetorno; p.horimetroRetorno = record.horimetroRetorno;
+            p.fotoEquipRetornoUrl = fotoEquipUrl; p.fotoCombustivelRetornoUrl = fotoCombustivelUrl; p.observacaoRetorno = record.observacao;
+            p.status = 'RETORNO_SOLICITADO'; p.pendingOfflineSync = false;
+            await offlineQueueRemove(record.id);
+            syncedCount++;
+        }
+
         if (syncedCount > 0) {
             toast(`${syncedCount} lançamento(s) sincronizado(s) automaticamente.`, 'success');
             // Só re-renderiza a lista se o encarregado estiver mesmo nela --
@@ -3659,9 +3959,13 @@ async function trySyncOfflineQueue() {
             // sincronizar em segundo plano não pode arrancar ele da tela.
             if (state.profileKey === 'ENCARREGADO' && mobileSelectedTag === null) renderMobileEquipList();
             if (state.profileKey === 'TECNICO_CAMPO_VALE' && mobileInspecaoSelectedTag === null) renderMobileInspecaoEquipList();
+            if (state.profileKey === 'SOLICITANTE_PORTARIA' && mobileSolicitanteSelectedTag === null) renderMobileSolicitanteHome();
+            if (state.profileKey === 'APROVADOR_PORTARIA') renderMobileAprovadorList();
+            if (state.profileKey === 'PORTARIA') renderMobilePortariaList();
             renderDashboard(); renderCharts(); renderWeekGrid();
             const activeView = document.querySelector('.content-container.view-active');
             if (activeView && activeView.id === 'view-saude-ativos') renderAssetHealth();
+            if (activeView && activeView.id === 'view-portaria') renderPortariaView();
         }
     } finally {
         offlineSyncInProgress = false;
@@ -4348,6 +4652,625 @@ async function queueInspectionOffline(v) {
     renderMobileInspecaoEquipList();
 }
 
+/* =========================================================
+   MOBILE: LIBERAÇÃO DE PORTARIA (saída/retorno de equipamento pesado)
+   3 papéis dedicados -- Solicitante, Aprovador, Portaria/Guarita --
+   sobre uma linha só de `portaria_liberacoes`, avançando por status.
+   ========================================================= */
+const PORTARIA_MOTIVO_LABELS = {
+    MANUTENCAO_EXTERNA: 'Manutenção externa', EMPRESTIMO_ENTRE_SITES: 'Empréstimo entre sites',
+    TRANSPORTE_MATERIAL: 'Transporte de material', OUTRO: 'Outro',
+};
+const COMBUSTIVEL_LEVELS = [
+    { value: 'VAZIO', label: 'Vazio', color: '#ef4444' }, { value: '1/4', label: '1/4', color: '#f59e0b' },
+    { value: '1/2', label: '1/2', color: '#f5c518' }, { value: '3/4', label: '3/4', color: '#84cc16' },
+    { value: 'CHEIO', label: 'Cheio', color: '#2ed573' },
+];
+const PORTARIA_STATUS_LABELS = {
+    SOLICITADA: 'Aguardando aprovação (saída)', REJEITADA_SAIDA: 'Saída rejeitada',
+    APROVADA_SAIDA: 'Aprovada -- aguardando liberação', EM_CAMPO: 'Em campo',
+    RETORNO_SOLICITADO: 'Aguardando aprovação (retorno)', REJEITADA_RETORNO: 'Retorno rejeitado',
+    APROVADA_RETORNO: 'Retorno aprovado -- aguardando conferência', CONCLUIDA: 'Concluída',
+};
+const PORTARIA_STATUS_COLORS = {
+    SOLICITADA: '#f5c518', REJEITADA_SAIDA: '#ef4444', APROVADA_SAIDA: '#3CB5E5', EM_CAMPO: '#f59e0b',
+    RETORNO_SOLICITADO: '#f5c518', REJEITADA_RETORNO: '#ef4444', APROVADA_RETORNO: '#3CB5E5', CONCLUIDA: '#2ed573',
+};
+function portariaStatusCardHtml(p) {
+    return `<div class="mobile-card" style="padding:12px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
+            <span class="mobile-equip-tag">${escapeHtml(p.tag)}</span>
+            <span class="tag-chip" style="background:${PORTARIA_STATUS_COLORS[p.status]}22; color:${PORTARIA_STATUS_COLORS[p.status]};">${PORTARIA_STATUS_LABELS[p.status] || p.status}</span>
+        </div>
+        <div class="mobile-card-sub">${escapeHtml(PORTARIA_MOTIVO_LABELS[p.motivo] || p.motivo)} · ${escapeHtml(p.destino || '')}</div>
+    </div>`;
+}
+// Molde compartilhado Aprovador/Portaria -- links pras fotos já enviadas
+// daquela perna (saída ou retorno), pra conferir visualmente antes de agir.
+function portariaFotosLinksHtml(p, leg) {
+    const equipUrl = leg === 'saida' ? p.fotoEquipSaidaUrl : p.fotoEquipRetornoUrl;
+    const combUrl = leg === 'saida' ? p.fotoCombustivelSaidaUrl : p.fotoCombustivelRetornoUrl;
+    return `
+        ${equipUrl ? `<a href="${equipUrl}" target="_blank" rel="noopener" class="btn-secondary" style="display:inline-block; padding:6px 10px; font-size:11px; margin-right:6px;">📷 Foto do equipamento</a>` : ''}
+        ${combUrl ? `<a href="${combUrl}" target="_blank" rel="noopener" class="btn-secondary" style="display:inline-block; padding:6px 10px; font-size:11px;">⛽ Foto do combustível</a>` : ''}
+    `;
+}
+// Reaproveita compressImageFile + o bucket closure-photos já existente --
+// só muda o prefixo do caminho e o sufixo <tipo> (equip-saida/combustivel-
+// saida/equip-retorno/combustivel-retorno).
+async function uploadPortariaPhoto(pathId, file, tipo, silent) {
+    const compressed = await compressImageFile(file, 1600, 0.75);
+    const ext = (compressed.name.split('.').pop() || 'jpg').toLowerCase();
+    const path = `${state.currentSite}/portaria/${pathId}/foto-${tipo}-${Date.now()}.${ext}`;
+    const { error } = await sb.storage.from('closure-photos').upload(path, compressed, { upsert: true });
+    if (error) { if (!silent) toast('Erro ao enviar foto: ' + error.message, 'error'); return null; }
+    const { data } = sb.storage.from('closure-photos').getPublicUrl(path);
+    return data.publicUrl;
+}
+
+/* ---- Solicitante: pede saída, depois registra o retorno ---- */
+function renderMobileSolicitante() {
+    document.getElementById('mobile-solicitante-site-label').textContent = SITES[state.currentSite] || state.currentSite;
+    document.getElementById('mobile-solicitante-user-label').textContent = activeProfile().user;
+    renderMobileSolicitanteHome();
+    reconcileOfflineQueueFlags().then(() => trySyncOfflineQueue());
+}
+
+function renderMobileSolicitanteHome() {
+    mobileSolicitanteSelectedTag = null;
+    const body = document.getElementById('mobile-solicitante-body');
+    const meus = state.portariaLiberacoes.filter(p => p.solicitanteId === state.currentUser.id).sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+    const acionaveis = meus.filter(p => p.status === 'EM_CAMPO' || p.status === 'REJEITADA_RETORNO');
+    const acionaveisCards = acionaveis.map(p => `
+        <button type="button" class="mobile-equip-card" onclick="openMobileRetornoForm('${p.id}')" style="align-items:flex-start; flex-direction:column; gap:4px;">
+            <span class="mobile-equip-tag">${escapeHtml(p.tag)}</span>
+            <span class="mobile-equip-area">${p.status === 'REJEITADA_RETORNO' ? 'Retorno rejeitado -- corrigir e reenviar' : `Previsão de retorno: ${p.previsaoRetorno ? new Date(p.previsaoRetorno).toLocaleString('pt-BR') : '—'}`}</span>
+        </button>`).join('');
+    const statusCards = meus.slice(0, 15).map(p => portariaStatusCardHtml(p)).join('') || `<div class="mobile-empty">Nenhum pedido registrado ainda.</div>`;
+    body.innerHTML = `
+        <button type="button" class="btn-primary mobile-submit" id="btn-nova-solicitacao-portaria" style="margin-bottom:16px;">+ Nova Solicitação de Saída</button>
+        ${acionaveis.length ? `<div class="mobile-card-title" style="margin-bottom:8px;">Em campo -- registrar retorno</div><div style="display:flex; flex-direction:column; gap:8px; margin-bottom:20px;">${acionaveisCards}</div>` : ''}
+        <div class="mobile-card-title" style="margin-bottom:8px;">Meus pedidos</div>
+        <div style="display:flex; flex-direction:column; gap:8px;">${statusCards}</div>
+    `;
+    document.getElementById('btn-nova-solicitacao-portaria').addEventListener('click', renderMobileSolicitanteEquipList);
+}
+
+let mobileSolicitanteSelectedTag = null;
+function renderMobileSolicitanteEquipList() {
+    mobileSolicitanteSelectedTag = null;
+    const body = document.getElementById('mobile-solicitante-body');
+    if (!ALL_EQUIP.length) { body.innerHTML = `<div class="mobile-empty">Nenhum equipamento cadastrado neste site.</div>`; return; }
+    const cards = ALL_EQUIP.map(eq => `
+        <button type="button" class="mobile-equip-card" onclick="openMobileSolicitanteForEquip('${eq.tag}')">
+            <span class="mobile-equip-tag">${escapeHtml(eq.tag)}</span>
+            <span class="mobile-equip-area">${escapeHtml(AREA_LABEL[eq.area] || eq.area || '')}</span>
+        </button>`).join('');
+    body.innerHTML = `
+        <button type="button" class="mobile-back" onclick="renderMobileSolicitanteHome()">&larr; Voltar</button>
+        <input type="text" id="mobile-solicitante-search" class="mobile-search" placeholder="Buscar ativo ou área...">
+        <div id="mobile-solicitante-equip-list" class="mobile-equip-list">${cards}</div>`;
+    document.getElementById('mobile-solicitante-search').addEventListener('input', (e) => {
+        const q = e.target.value.trim().toUpperCase();
+        document.querySelectorAll('#mobile-solicitante-equip-list .mobile-equip-card').forEach(card => {
+            card.style.display = card.textContent.toUpperCase().includes(q) ? 'flex' : 'none';
+        });
+    });
+}
+function openMobileSolicitanteForEquip(tag) {
+    mobileSolicitanteSelectedTag = tag;
+    renderMobileSolicitacaoForm();
+}
+
+let mobileSolicitanteCombustivel = null;
+let mobileSolicitanteTransportado = false;
+function renderMobileSolicitacaoForm() {
+    mobileSolicitanteCombustivel = null;
+    mobileSolicitanteTransportado = false;
+    const tag = mobileSolicitanteSelectedTag;
+    const area = areaOf(tag);
+    const body = document.getElementById('mobile-solicitante-body');
+    body.innerHTML = `
+        <button type="button" class="mobile-back" onclick="renderMobileSolicitanteEquipList()">&larr; Voltar</button>
+        <div class="mobile-card">
+            <div class="mobile-card-title">🚧 ${escapeHtml(tag)} — ${escapeHtml(AREA_LABEL[area] || area || '')}</div>
+            <div class="mobile-card-sub">Solicitação de saída de portaria.</div>
+            <div class="m-field"><label>Motivo *</label>
+                <select id="port-motivo">
+                    <option value="">Selecione...</option>
+                    ${Object.entries(PORTARIA_MOTIVO_LABELS).map(([value, label]) => `<option value="${value}">${escapeHtml(label)}</option>`).join('')}
+                </select>
+            </div>
+            <div class="m-field"><label>Destino *</label><input type="text" id="port-destino" maxlength="120" placeholder="Para onde vai..."></div>
+            <div class="m-field"><label>Combustível na saída *</label>
+                <div id="port-combustivel-saida-group" style="display:flex; gap:6px;">
+                    ${COMBUSTIVEL_LEVELS.map(c => `<button type="button" class="port-combustivel-saida-btn" data-value="${c.value}" style="flex:1; padding:10px 2px; font-size:11px; font-weight:600; border-radius:8px; border:2px solid ${c.color}; background:transparent; color:${c.color}; cursor:pointer;">${c.label}</button>`).join('')}
+                </div>
+            </div>
+            <div class="m-field" style="display:flex; gap:10px;">
+                <div style="flex:1;"><label>Odômetro (KM)</label><input type="number" id="port-km-saida" placeholder="Opcional" min="0"></div>
+                <div style="flex:1;"><label>Horímetro</label><input type="number" id="port-hr-saida" placeholder="Opcional" min="0" step="0.1"></div>
+            </div>
+            <div class="m-field">
+                <label>Foto do equipamento saindo *</label>
+                <div style="display:flex; gap:6px;">
+                    <button type="button" class="btn-secondary" style="flex:1; padding:10px 4px; font-size:12px;" onclick="document.getElementById('port-foto-equip-camera').click()">📷 Câmera</button>
+                    <button type="button" class="btn-secondary" style="flex:1; padding:10px 4px; font-size:12px;" onclick="document.getElementById('port-foto-equip-galeria').click()">🖼️ Galeria</button>
+                </div>
+                <input type="file" id="port-foto-equip-camera" accept="image/*" capture="environment" style="display:none;">
+                <input type="file" id="port-foto-equip-galeria" accept="image/*" style="display:none;">
+                <div id="port-foto-equip-status" style="font-size:11px; color:var(--text-secondary); margin-top:6px;">Nenhuma foto selecionada</div>
+            </div>
+            <div class="m-field">
+                <label>Foto do combustível (opcional)</label>
+                <div style="display:flex; gap:6px;">
+                    <button type="button" class="btn-secondary" style="flex:1; padding:10px 4px; font-size:12px;" onclick="document.getElementById('port-foto-combustivel-camera').click()">📷 Câmera</button>
+                    <button type="button" class="btn-secondary" style="flex:1; padding:10px 4px; font-size:12px;" onclick="document.getElementById('port-foto-combustivel-galeria').click()">🖼️ Galeria</button>
+                </div>
+                <input type="file" id="port-foto-combustivel-camera" accept="image/*" capture="environment" style="display:none;">
+                <input type="file" id="port-foto-combustivel-galeria" accept="image/*" style="display:none;">
+                <div id="port-foto-combustivel-status" style="font-size:11px; color:var(--text-secondary); margin-top:6px;">Nenhuma foto selecionada</div>
+            </div>
+            <div class="m-field"><label>Saindo em cima de caminhão/carreta?</label>
+                <div style="display:flex; gap:8px;">
+                    <button type="button" class="port-caminhao-btn" data-value="true" style="flex:1; padding:10px 4px; font-size:12px; font-weight:600; border-radius:8px; border:2px solid var(--border-color); background:transparent; color:var(--text-secondary); cursor:pointer;">Sim</button>
+                    <button type="button" class="port-caminhao-btn" data-value="false" style="flex:1; padding:10px 4px; font-size:12px; font-weight:600; border-radius:8px; border:2px solid var(--border-color); background:transparent; color:var(--text-secondary); cursor:pointer;">Não</button>
+                </div>
+            </div>
+            <div class="m-field" id="port-placa-field" style="display:none;"><label>Placa do veículo *</label><input type="text" id="port-placa" maxlength="8" placeholder="Ex: ABC1D23" style="text-transform:uppercase;"></div>
+            <div class="m-field"><label>Previsão de retorno *</label><input type="datetime-local" id="port-previsao-retorno"></div>
+            <div class="m-field"><label>Observação (opcional)</label><textarea id="port-obs-saida" rows="3" maxlength="300" placeholder="Alguma observação sobre a saída..."></textarea></div>
+        </div>
+        <button type="button" class="btn-primary mobile-submit" id="port-submit-btn">Enviar Solicitação</button>
+    `;
+    document.querySelectorAll('.port-combustivel-saida-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            mobileSolicitanteCombustivel = btn.dataset.value;
+            document.querySelectorAll('.port-combustivel-saida-btn').forEach(b => {
+                const c = COMBUSTIVEL_LEVELS.find(x => x.value === b.dataset.value);
+                const selected = b.dataset.value === mobileSolicitanteCombustivel;
+                b.style.background = selected ? c.color : 'transparent';
+                b.style.color = selected ? '#fff' : c.color;
+            });
+        });
+    });
+    document.querySelectorAll('.port-caminhao-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            mobileSolicitanteTransportado = btn.dataset.value === 'true';
+            document.querySelectorAll('.port-caminhao-btn').forEach(b => {
+                const selected = (b.dataset.value === 'true') === mobileSolicitanteTransportado;
+                b.style.background = selected ? '#3CB5E5' : 'transparent';
+                b.style.color = selected ? '#fff' : 'var(--text-secondary)';
+                b.style.borderColor = selected ? '#3CB5E5' : 'var(--border-color)';
+            });
+            document.getElementById('port-placa-field').style.display = mobileSolicitanteTransportado ? 'block' : 'none';
+        });
+    });
+    ['camera', 'galeria'].forEach(mode => {
+        document.getElementById(`port-foto-equip-${mode}`).addEventListener('change', (e) => {
+            if (e.target.files[0]) document.getElementById('port-foto-equip-status').textContent = `Selecionado: ${e.target.files[0].name}`;
+        });
+        document.getElementById(`port-foto-combustivel-${mode}`).addEventListener('change', (e) => {
+            if (e.target.files[0]) document.getElementById('port-foto-combustivel-status').textContent = `Selecionado: ${e.target.files[0].name}`;
+        });
+    });
+    document.getElementById('port-submit-btn').addEventListener('click', submitMobileSolicitacaoPortaria);
+}
+
+function validateSolicitacaoPortariaForm() {
+    const tag = mobileSolicitanteSelectedTag;
+    const motivo = document.getElementById('port-motivo').value;
+    const destino = document.getElementById('port-destino').value.trim();
+    const kmSaida = document.getElementById('port-km-saida').value;
+    const hrSaida = document.getElementById('port-hr-saida').value;
+    const fotoEquip = pickedFile('port-foto-equip-camera', 'port-foto-equip-galeria');
+    const fotoCombustivel = pickedFile('port-foto-combustivel-camera', 'port-foto-combustivel-galeria');
+    const previsaoRetorno = document.getElementById('port-previsao-retorno').value;
+    const observacao = document.getElementById('port-obs-saida').value.trim();
+    const placa = document.getElementById('port-placa').value.trim().toUpperCase();
+    if (!tag) return { ok: false, message: 'Selecione o equipamento.' };
+    if (!motivo) return { ok: false, message: 'Selecione o motivo da saída.' };
+    if (!destino) return { ok: false, message: 'Informe o destino.' };
+    if (!mobileSolicitanteCombustivel) return { ok: false, message: 'Selecione o nível de combustível na saída.' };
+    if (!fotoEquip) return { ok: false, message: 'Foto do equipamento saindo é obrigatória.' };
+    if (!previsaoRetorno) return { ok: false, message: 'Informe a previsão de retorno.' };
+    // Late addition explícita do usuário: placa só é obrigatória se estiver
+    // saindo em cima de caminhão/carreta.
+    if (mobileSolicitanteTransportado && !placa) return { ok: false, message: 'Informe a placa do veículo (equipamento saindo em cima de caminhão/carreta).' };
+    return {
+        ok: true, tag, area: areaOf(tag), motivo, destino, combustivelSaida: mobileSolicitanteCombustivel,
+        odometroKmSaida: kmSaida ? Number(kmSaida) : null, horimetroSaida: hrSaida ? Number(hrSaida) : null,
+        fotoEquip, fotoCombustivel, transportadoCaminhao: mobileSolicitanteTransportado,
+        placa: mobileSolicitanteTransportado ? placa : null, previsaoRetorno, observacao,
+    };
+}
+
+async function submitMobileSolicitacaoPortaria() {
+    if (!canSolicitarPortaria()) { showAccessDenied('Perfil sem privilégios para solicitar liberação de portaria.'); return; }
+    const v = validateSolicitacaoPortariaForm();
+    if (!v.ok) { toast(v.message, 'error'); return; }
+    if (!navigator.onLine) { await queueSolicitacaoPortariaOffline(v); return; }
+
+    const btn = document.getElementById('port-submit-btn');
+    btn.disabled = true; btn.textContent = 'Enviando...';
+    const tempPathId = crypto.randomUUID();
+    const fotoEquipUrl = await uploadPortariaPhoto(tempPathId, v.fotoEquip, 'equip-saida');
+    if (!fotoEquipUrl) { btn.disabled = false; btn.textContent = 'Enviar Solicitação'; return; }
+    let fotoCombustivelUrl = null;
+    if (v.fotoCombustivel) fotoCombustivelUrl = await uploadPortariaPhoto(tempPathId, v.fotoCombustivel, 'combustivel-saida');
+
+    const { data, error } = await sb.from('portaria_liberacoes').insert({
+        site_key: state.currentSite, tag: v.tag, area_code: v.area, motivo: v.motivo, destino: v.destino,
+        combustivel_saida: v.combustivelSaida, odometro_km_saida: v.odometroKmSaida, horimetro_saida: v.horimetroSaida,
+        foto_equip_saida_url: fotoEquipUrl, foto_combustivel_saida_url: fotoCombustivelUrl,
+        transportado_caminhao: v.transportadoCaminhao, placa_veiculo: v.placa,
+        previsao_retorno: new Date(v.previsaoRetorno).toISOString(), observacao_saida: v.observacao || null,
+        status: 'SOLICITADA', solicitante_id: state.currentUser.id, solicitante_label: `${activeProfile().user} (${state.profileKey})`
+    }).select().single();
+    if (error) {
+        toast('Erro ao enviar solicitação: ' + error.message, 'error');
+        btn.disabled = false; btn.textContent = 'Enviar Solicitação';
+        return;
+    }
+    state.portariaLiberacoes.unshift(mapPortariaFromDb(data));
+    toast('Solicitação de saída enviada. Aguardando aprovação.', 'success');
+    renderMobileSolicitanteHome();
+}
+
+// Sem sinal: guarda tudo (incluindo as fotos, como File cru -- sobrevive
+// ao clone estruturado do IndexedDB) numa entrada própria da fila
+// offline, sincronizada em trySyncOfflineQueue.
+async function queueSolicitacaoPortariaOffline(v) {
+    const tempId = 'offline_port_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
+    state.portariaLiberacoes.unshift({
+        id: tempId, tag: v.tag, area: v.area, motivo: v.motivo, destino: v.destino,
+        combustivelSaida: v.combustivelSaida, odometroKmSaida: v.odometroKmSaida, horimetroSaida: v.horimetroSaida,
+        fotoEquipSaidaUrl: null, fotoCombustivelSaidaUrl: null,
+        transportadoCaminhao: v.transportadoCaminhao, placaVeiculo: v.placa,
+        previsaoRetorno: new Date(v.previsaoRetorno).toISOString(), observacaoSaida: v.observacao || null,
+        combustivelRetorno: null, odometroKmRetorno: null, horimetroRetorno: null,
+        fotoEquipRetornoUrl: null, fotoCombustivelRetornoUrl: null, observacaoRetorno: null,
+        status: 'SOLICITADA', solicitanteId: state.currentUser.id, solicitante: `${activeProfile().user} (${state.profileKey})`,
+        solicitadoAt: new Date().toISOString(), createdAt: new Date().toISOString(), pendingOfflineSync: true,
+    });
+    await offlineQueueAdd({
+        id: tempId, kind: 'portaria_saida', bookingId: tempId,
+        tag: v.tag, area: v.area, motivo: v.motivo, destino: v.destino, combustivelSaida: v.combustivelSaida,
+        odometroKmSaida: v.odometroKmSaida, horimetroSaida: v.horimetroSaida,
+        transportadoCaminhao: v.transportadoCaminhao, placa: v.placa,
+        previsaoRetorno: new Date(v.previsaoRetorno).toISOString(), observacao: v.observacao || null,
+        fotoEquipFile: v.fotoEquip || null, fotoCombustivelFile: v.fotoCombustivel || null, createdAt: Date.now(),
+    });
+    toast('Sem conexão -- guardado no celular. Será enviado sozinho quando a internet voltar.', 'warn');
+    renderMobileSolicitanteHome();
+}
+
+let mobileRetornoCombustivel = null;
+function openMobileRetornoForm(id) {
+    renderMobileRetornoForm(id);
+}
+function renderMobileRetornoForm(id) {
+    mobileRetornoCombustivel = null;
+    const p = state.portariaLiberacoes.find(x => x.id === id);
+    if (!p) { renderMobileSolicitanteHome(); return; }
+    const body = document.getElementById('mobile-solicitante-body');
+    body.innerHTML = `
+        <button type="button" class="mobile-back" onclick="renderMobileSolicitanteHome()">&larr; Voltar</button>
+        <div class="mobile-card">
+            <div class="mobile-card-title">↩️ ${escapeHtml(p.tag)} — Registrar Retorno</div>
+            <div class="mobile-card-sub">${p.status === 'REJEITADA_RETORNO' ? `Retorno rejeitado: ${escapeHtml(p.motivoRejeicaoRetorno || '—')} -- corrija e reenvie.` : 'Confirme os dados de chegada do equipamento.'}</div>
+            <div class="m-field"><label>Combustível no retorno *</label>
+                <div id="port-combustivel-retorno-group" style="display:flex; gap:6px;">
+                    ${COMBUSTIVEL_LEVELS.map(c => `<button type="button" class="port-combustivel-retorno-btn" data-value="${c.value}" style="flex:1; padding:10px 2px; font-size:11px; font-weight:600; border-radius:8px; border:2px solid ${c.color}; background:transparent; color:${c.color}; cursor:pointer;">${c.label}</button>`).join('')}
+                </div>
+            </div>
+            <div class="m-field" style="display:flex; gap:10px;">
+                <div style="flex:1;"><label>Odômetro (KM)</label><input type="number" id="port-km-retorno" placeholder="Opcional" min="0"></div>
+                <div style="flex:1;"><label>Horímetro</label><input type="number" id="port-hr-retorno" placeholder="Opcional" min="0" step="0.1"></div>
+            </div>
+            <div class="m-field">
+                <label>Foto do equipamento voltando *</label>
+                <div style="display:flex; gap:6px;">
+                    <button type="button" class="btn-secondary" style="flex:1; padding:10px 4px; font-size:12px;" onclick="document.getElementById('port-foto-equip-ret-camera').click()">📷 Câmera</button>
+                    <button type="button" class="btn-secondary" style="flex:1; padding:10px 4px; font-size:12px;" onclick="document.getElementById('port-foto-equip-ret-galeria').click()">🖼️ Galeria</button>
+                </div>
+                <input type="file" id="port-foto-equip-ret-camera" accept="image/*" capture="environment" style="display:none;">
+                <input type="file" id="port-foto-equip-ret-galeria" accept="image/*" style="display:none;">
+                <div id="port-foto-equip-ret-status" style="font-size:11px; color:var(--text-secondary); margin-top:6px;">Nenhuma foto selecionada</div>
+            </div>
+            <div class="m-field">
+                <label>Foto do combustível (opcional)</label>
+                <div style="display:flex; gap:6px;">
+                    <button type="button" class="btn-secondary" style="flex:1; padding:10px 4px; font-size:12px;" onclick="document.getElementById('port-foto-combustivel-ret-camera').click()">📷 Câmera</button>
+                    <button type="button" class="btn-secondary" style="flex:1; padding:10px 4px; font-size:12px;" onclick="document.getElementById('port-foto-combustivel-ret-galeria').click()">🖼️ Galeria</button>
+                </div>
+                <input type="file" id="port-foto-combustivel-ret-camera" accept="image/*" capture="environment" style="display:none;">
+                <input type="file" id="port-foto-combustivel-ret-galeria" accept="image/*" style="display:none;">
+                <div id="port-foto-combustivel-ret-status" style="font-size:11px; color:var(--text-secondary); margin-top:6px;">Nenhuma foto selecionada</div>
+            </div>
+            <div class="m-field"><label>Observação (opcional)</label><textarea id="port-obs-retorno" rows="3" maxlength="300" placeholder="Alguma observação sobre o retorno..."></textarea></div>
+        </div>
+        <button type="button" class="btn-primary mobile-submit" id="port-retorno-submit-btn">Enviar Retorno</button>
+    `;
+    document.querySelectorAll('.port-combustivel-retorno-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            mobileRetornoCombustivel = btn.dataset.value;
+            document.querySelectorAll('.port-combustivel-retorno-btn').forEach(b => {
+                const c = COMBUSTIVEL_LEVELS.find(x => x.value === b.dataset.value);
+                const selected = b.dataset.value === mobileRetornoCombustivel;
+                b.style.background = selected ? c.color : 'transparent';
+                b.style.color = selected ? '#fff' : c.color;
+            });
+        });
+    });
+    ['camera', 'galeria'].forEach(mode => {
+        document.getElementById(`port-foto-equip-ret-${mode}`).addEventListener('change', (e) => {
+            if (e.target.files[0]) document.getElementById('port-foto-equip-ret-status').textContent = `Selecionado: ${e.target.files[0].name}`;
+        });
+        document.getElementById(`port-foto-combustivel-ret-${mode}`).addEventListener('change', (e) => {
+            if (e.target.files[0]) document.getElementById('port-foto-combustivel-ret-status').textContent = `Selecionado: ${e.target.files[0].name}`;
+        });
+    });
+    document.getElementById('port-retorno-submit-btn').addEventListener('click', () => submitMobileRetornoPortaria(id));
+}
+
+function validateRetornoPortariaForm() {
+    const kmRetorno = document.getElementById('port-km-retorno').value;
+    const hrRetorno = document.getElementById('port-hr-retorno').value;
+    const fotoEquip = pickedFile('port-foto-equip-ret-camera', 'port-foto-equip-ret-galeria');
+    const fotoCombustivel = pickedFile('port-foto-combustivel-ret-camera', 'port-foto-combustivel-ret-galeria');
+    const observacao = document.getElementById('port-obs-retorno').value.trim();
+    if (!mobileRetornoCombustivel) return { ok: false, message: 'Selecione o nível de combustível no retorno.' };
+    if (!fotoEquip) return { ok: false, message: 'Foto do equipamento voltando é obrigatória.' };
+    return {
+        ok: true, combustivelRetorno: mobileRetornoCombustivel,
+        odometroKmRetorno: kmRetorno ? Number(kmRetorno) : null, horimetroRetorno: hrRetorno ? Number(hrRetorno) : null,
+        fotoEquip, fotoCombustivel, observacao,
+    };
+}
+
+async function submitMobileRetornoPortaria(id) {
+    if (!canSolicitarPortaria()) { showAccessDenied('Perfil sem privilégios para registrar retorno de portaria.'); return; }
+    const v = validateRetornoPortariaForm();
+    if (!v.ok) { toast(v.message, 'error'); return; }
+    if (!navigator.onLine) { await queueRetornoPortariaOffline(id, v); return; }
+
+    const btn = document.getElementById('port-retorno-submit-btn');
+    btn.disabled = true; btn.textContent = 'Enviando...';
+    const fotoEquipUrl = await uploadPortariaPhoto(id, v.fotoEquip, 'equip-retorno');
+    if (!fotoEquipUrl) { btn.disabled = false; btn.textContent = 'Enviar Retorno'; return; }
+    let fotoCombustivelUrl = null;
+    if (v.fotoCombustivel) fotoCombustivelUrl = await uploadPortariaPhoto(id, v.fotoCombustivel, 'combustivel-retorno');
+
+    const { error } = await sb.from('portaria_liberacoes').update({
+        combustivel_retorno: v.combustivelRetorno, odometro_km_retorno: v.odometroKmRetorno, horimetro_retorno: v.horimetroRetorno,
+        foto_equip_retorno_url: fotoEquipUrl, foto_combustivel_retorno_url: fotoCombustivelUrl, observacao_retorno: v.observacao || null,
+        status: 'RETORNO_SOLICITADO', retorno_registrado_por_id: state.currentUser.id,
+        retorno_registrado_por_label: `${activeProfile().user} (${state.profileKey})`, retorno_registrado_at: new Date().toISOString()
+    }).eq('id', id);
+    if (error) {
+        toast('Erro ao registrar retorno: ' + error.message, 'error');
+        btn.disabled = false; btn.textContent = 'Enviar Retorno';
+        return;
+    }
+    const p = state.portariaLiberacoes.find(x => x.id === id);
+    if (p) {
+        p.combustivelRetorno = v.combustivelRetorno; p.odometroKmRetorno = v.odometroKmRetorno; p.horimetroRetorno = v.horimetroRetorno;
+        p.fotoEquipRetornoUrl = fotoEquipUrl; p.fotoCombustivelRetornoUrl = fotoCombustivelUrl; p.observacaoRetorno = v.observacao || null;
+        p.status = 'RETORNO_SOLICITADO';
+    }
+    toast('Retorno registrado. Aguardando aprovação.', 'success');
+    renderMobileSolicitanteHome();
+}
+
+async function queueRetornoPortariaOffline(id, v) {
+    const p = state.portariaLiberacoes.find(x => x.id === id);
+    if (p) {
+        p.combustivelRetorno = v.combustivelRetorno; p.odometroKmRetorno = v.odometroKmRetorno; p.horimetroRetorno = v.horimetroRetorno;
+        p.observacaoRetorno = v.observacao || null; p.status = 'RETORNO_SOLICITADO'; p.pendingOfflineSync = true;
+    }
+    await offlineQueueAdd({
+        id: 'offline_portret_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8),
+        kind: 'portaria_retorno', bookingId: id,
+        combustivelRetorno: v.combustivelRetorno, odometroKmRetorno: v.odometroKmRetorno, horimetroRetorno: v.horimetroRetorno,
+        observacao: v.observacao || null, fotoEquipFile: v.fotoEquip || null, fotoCombustivelFile: v.fotoCombustivel || null, createdAt: Date.now(),
+    });
+    toast('Sem conexão -- guardado no celular. Será enviado sozinho quando a internet voltar.', 'warn');
+    renderMobileSolicitanteHome();
+}
+
+/* ---- Aprovador: aprova/rejeita as duas pernas (saída e retorno) ---- */
+function renderMobileAprovador() {
+    document.getElementById('mobile-aprovador-site-label').textContent = SITES[state.currentSite] || state.currentSite;
+    document.getElementById('mobile-aprovador-user-label').textContent = activeProfile().user;
+    renderMobileAprovadorList();
+    reconcileOfflineQueueFlags().then(() => trySyncOfflineQueue());
+}
+
+function renderMobileAprovadorList() {
+    const body = document.getElementById('mobile-aprovador-body');
+    const pendSaida = state.portariaLiberacoes.filter(p => p.status === 'SOLICITADA').sort((a, b) => (a.createdAt || '').localeCompare(b.createdAt || ''));
+    const pendRetorno = state.portariaLiberacoes.filter(p => p.status === 'RETORNO_SOLICITADO').sort((a, b) => (a.retornoRegistradoAt || '').localeCompare(b.retornoRegistradoAt || ''));
+    const saidaCards = pendSaida.map(p => `
+        <div class="mobile-card">
+            <div class="mobile-card-title">${escapeHtml(p.tag)} — ${escapeHtml(PORTARIA_MOTIVO_LABELS[p.motivo] || p.motivo)}</div>
+            <div class="mobile-card-sub">Destino: ${escapeHtml(p.destino || '—')} · Combustível: ${escapeHtml(p.combustivelSaida || '—')}${p.transportadoCaminhao ? ` · Placa: ${escapeHtml(p.placaVeiculo || '—')}` : ''}</div>
+            <div class="mobile-card-sub">Solicitante: ${escapeHtml(p.solicitante || '—')}</div>
+            <div style="margin:8px 0;">${portariaFotosLinksHtml(p, 'saida')}</div>
+            <div style="display:flex; gap:8px; margin-top:8px;">
+                <button type="button" class="btn-secondary" style="flex:1; color:#ef4444; border-color:#ef4444;" onclick="openRejeitarSaidaModal('${p.id}')">Rejeitar</button>
+                <button type="button" class="btn-primary" style="flex:1;" onclick="confirmAprovarSaidaPortaria('${p.id}')">Aprovar</button>
+            </div>
+        </div>`).join('') || `<div class="mobile-empty">Nenhuma saída aguardando aprovação.</div>`;
+    const retornoCards = pendRetorno.map(p => `
+        <div class="mobile-card">
+            <div class="mobile-card-title">${escapeHtml(p.tag)} — Retorno</div>
+            <div class="mobile-card-sub">Combustível no retorno: ${escapeHtml(p.combustivelRetorno || '—')}</div>
+            <div class="mobile-card-sub">Registrado por: ${escapeHtml(p.retornoRegistradoPor || '—')}</div>
+            <div style="margin:8px 0;">${portariaFotosLinksHtml(p, 'retorno')}</div>
+            <div style="display:flex; gap:8px; margin-top:8px;">
+                <button type="button" class="btn-secondary" style="flex:1; color:#ef4444; border-color:#ef4444;" onclick="openRejeitarRetornoModal('${p.id}')">Rejeitar</button>
+                <button type="button" class="btn-primary" style="flex:1;" onclick="confirmAprovarRetornoPortaria('${p.id}')">Aprovar</button>
+            </div>
+        </div>`).join('') || `<div class="mobile-empty">Nenhum retorno aguardando aprovação.</div>`;
+    body.innerHTML = `
+        <div class="mobile-card-title" style="margin-bottom:8px;">Aguardando aprovação de saída</div>
+        <div style="display:flex; flex-direction:column; gap:10px; margin-bottom:24px;">${saidaCards}</div>
+        <div class="mobile-card-title" style="margin-bottom:8px;">Aguardando aprovação de retorno</div>
+        <div style="display:flex; flex-direction:column; gap:10px;">${retornoCards}</div>
+    `;
+}
+
+async function confirmAprovarSaidaPortaria(id) {
+    if (!canAprovarPortaria()) { showAccessDenied('Perfil sem privilégios para aprovar liberação de portaria.'); return; }
+    const label = `${activeProfile().user} (${state.profileKey})`;
+    const { error } = await sb.from('portaria_liberacoes').update({
+        status: 'APROVADA_SAIDA', aprovador_saida_id: state.currentUser.id, aprovador_saida_label: label, aprovador_saida_at: new Date().toISOString()
+    }).eq('id', id);
+    if (error) { toast('Erro ao aprovar saída: ' + error.message, 'error'); return; }
+    const p = state.portariaLiberacoes.find(x => x.id === id);
+    if (p) { p.status = 'APROVADA_SAIDA'; p.aprovadorSaidaId = state.currentUser.id; p.aprovadorSaida = label; p.aprovadorSaidaAt = new Date().toISOString(); }
+    toast('Saída aprovada.', 'success');
+    renderMobileAprovadorList();
+}
+
+function openRejeitarSaidaModal(id) {
+    if (!canAprovarPortaria()) { showAccessDenied('Perfil sem privilégios para rejeitar liberação de portaria.'); return; }
+    const p = state.portariaLiberacoes.find(x => x.id === id);
+    if (!p) return;
+    openModal(`
+        <div class="modal-header"><h3>Rejeitar Saída — ${escapeHtml(p.tag)}</h3><button class="modal-close" onclick="closeModal()">&times;</button></div>
+        <div class="modal-body">
+            <div class="m-field"><label>Motivo da rejeição *</label><textarea id="rej-saida-motivo" rows="3" maxlength="300" placeholder="Ex: Combustível insuficiente para o destino..."></textarea></div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn-secondary" onclick="closeModal()">Voltar</button>
+            <button class="btn-primary" onclick="confirmRejeitarSaidaPortaria('${p.id}')">Confirmar Rejeição</button>
+        </div>
+    `);
+}
+
+async function confirmRejeitarSaidaPortaria(id) {
+    if (!canAprovarPortaria()) { showAccessDenied('Perfil sem privilégios para rejeitar liberação de portaria.'); return; }
+    const reason = document.getElementById('rej-saida-motivo').value.trim();
+    if (reason.length < 5) { toast('Informe o motivo da rejeição (mínimo 5 caracteres).', 'error'); return; }
+    const label = `${activeProfile().user} (${state.profileKey})`;
+    const { error } = await sb.from('portaria_liberacoes').update({
+        status: 'REJEITADA_SAIDA', motivo_rejeicao_saida: reason, aprovador_saida_id: state.currentUser.id, aprovador_saida_label: label, aprovador_saida_at: new Date().toISOString()
+    }).eq('id', id);
+    if (error) { toast('Erro ao rejeitar saída: ' + error.message, 'error'); return; }
+    const p = state.portariaLiberacoes.find(x => x.id === id);
+    if (p) { p.status = 'REJEITADA_SAIDA'; p.motivoRejeicaoSaida = reason; p.aprovadorSaidaId = state.currentUser.id; p.aprovadorSaida = label; p.aprovadorSaidaAt = new Date().toISOString(); }
+    closeModal();
+    toast('Saída rejeitada.', 'success');
+    renderMobileAprovadorList();
+}
+
+async function confirmAprovarRetornoPortaria(id) {
+    if (!canAprovarPortaria()) { showAccessDenied('Perfil sem privilégios para aprovar liberação de portaria.'); return; }
+    const label = `${activeProfile().user} (${state.profileKey})`;
+    const { error } = await sb.from('portaria_liberacoes').update({
+        status: 'APROVADA_RETORNO', aprovador_retorno_id: state.currentUser.id, aprovador_retorno_label: label, aprovador_retorno_at: new Date().toISOString()
+    }).eq('id', id);
+    if (error) { toast('Erro ao aprovar retorno: ' + error.message, 'error'); return; }
+    const p = state.portariaLiberacoes.find(x => x.id === id);
+    if (p) { p.status = 'APROVADA_RETORNO'; p.aprovadorRetornoId = state.currentUser.id; p.aprovadorRetorno = label; p.aprovadorRetornoAt = new Date().toISOString(); }
+    toast('Retorno aprovado.', 'success');
+    renderMobileAprovadorList();
+}
+
+function openRejeitarRetornoModal(id) {
+    if (!canAprovarPortaria()) { showAccessDenied('Perfil sem privilégios para rejeitar liberação de portaria.'); return; }
+    const p = state.portariaLiberacoes.find(x => x.id === id);
+    if (!p) return;
+    openModal(`
+        <div class="modal-header"><h3>Rejeitar Retorno — ${escapeHtml(p.tag)}</h3><button class="modal-close" onclick="closeModal()">&times;</button></div>
+        <div class="modal-body">
+            <div class="m-field"><label>Motivo da rejeição *</label><textarea id="rej-retorno-motivo" rows="3" maxlength="300" placeholder="Ex: Combustível divergente do informado..."></textarea></div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn-secondary" onclick="closeModal()">Voltar</button>
+            <button class="btn-primary" onclick="confirmRejeitarRetornoPortaria('${p.id}')">Confirmar Rejeição</button>
+        </div>
+    `);
+}
+
+async function confirmRejeitarRetornoPortaria(id) {
+    if (!canAprovarPortaria()) { showAccessDenied('Perfil sem privilégios para rejeitar liberação de portaria.'); return; }
+    const reason = document.getElementById('rej-retorno-motivo').value.trim();
+    if (reason.length < 5) { toast('Informe o motivo da rejeição (mínimo 5 caracteres).', 'error'); return; }
+    const label = `${activeProfile().user} (${state.profileKey})`;
+    const { error } = await sb.from('portaria_liberacoes').update({
+        status: 'REJEITADA_RETORNO', motivo_rejeicao_retorno: reason, aprovador_retorno_id: state.currentUser.id, aprovador_retorno_label: label, aprovador_retorno_at: new Date().toISOString()
+    }).eq('id', id);
+    if (error) { toast('Erro ao rejeitar retorno: ' + error.message, 'error'); return; }
+    const p = state.portariaLiberacoes.find(x => x.id === id);
+    if (p) { p.status = 'REJEITADA_RETORNO'; p.motivoRejeicaoRetorno = reason; p.aprovadorRetornoId = state.currentUser.id; p.aprovadorRetorno = label; p.aprovadorRetornoAt = new Date().toISOString(); }
+    closeModal();
+    toast('Retorno rejeitado.', 'success');
+    renderMobileAprovadorList();
+}
+
+/* ---- Portaria/Guarita: só confere e libera/confirma, sem digitar nada ---- */
+function renderMobilePortaria() {
+    document.getElementById('mobile-portaria-site-label').textContent = SITES[state.currentSite] || state.currentSite;
+    document.getElementById('mobile-portaria-user-label').textContent = activeProfile().user;
+    renderMobilePortariaList();
+    reconcileOfflineQueueFlags().then(() => trySyncOfflineQueue());
+}
+
+function renderMobilePortariaList() {
+    const body = document.getElementById('mobile-portaria-body');
+    const saidasAprovadas = state.portariaLiberacoes.filter(p => p.status === 'APROVADA_SAIDA').sort((a, b) => (a.aprovadorSaidaAt || '').localeCompare(b.aprovadorSaidaAt || ''));
+    const retornosAprovados = state.portariaLiberacoes.filter(p => p.status === 'APROVADA_RETORNO').sort((a, b) => (a.aprovadorRetornoAt || '').localeCompare(b.aprovadorRetornoAt || ''));
+    const saidaCards = saidasAprovadas.map(p => `
+        <div class="mobile-card">
+            <div class="mobile-card-title">${escapeHtml(p.tag)} — Saída aprovada</div>
+            <div class="mobile-card-sub">Destino: ${escapeHtml(p.destino || '—')}${p.transportadoCaminhao ? ` · Placa: ${escapeHtml(p.placaVeiculo || '—')}` : ''}</div>
+            <div style="margin:8px 0;">${portariaFotosLinksHtml(p, 'saida')}</div>
+            <button type="button" class="btn-primary mobile-submit" onclick="confirmLiberarSaidaPortaria('${p.id}')">Conferi — Liberar Saída</button>
+        </div>`).join('') || `<div class="mobile-empty">Nenhuma saída aguardando liberação.</div>`;
+    const retornoCards = retornosAprovados.map(p => `
+        <div class="mobile-card">
+            <div class="mobile-card-title">${escapeHtml(p.tag)} — Retorno aprovado</div>
+            <div class="mobile-card-sub">Combustível no retorno: ${escapeHtml(p.combustivelRetorno || '—')}</div>
+            <div style="margin:8px 0;">${portariaFotosLinksHtml(p, 'retorno')}</div>
+            <button type="button" class="btn-primary mobile-submit" onclick="confirmConferirRetornoPortaria('${p.id}')">Conferi — Confirmar Retorno</button>
+        </div>`).join('') || `<div class="mobile-empty">Nenhum retorno aguardando conferência.</div>`;
+    body.innerHTML = `
+        <div class="mobile-card-title" style="margin-bottom:8px;">Saídas aprovadas — aguardando liberação</div>
+        <div style="display:flex; flex-direction:column; gap:10px; margin-bottom:24px;">${saidaCards}</div>
+        <div class="mobile-card-title" style="margin-bottom:8px;">Retornos aprovados — aguardando conferência</div>
+        <div style="display:flex; flex-direction:column; gap:10px;">${retornoCards}</div>
+    `;
+}
+
+async function confirmLiberarSaidaPortaria(id) {
+    if (!canLiberarPortaria()) { showAccessDenied('Perfil sem privilégios para liberar saída na portaria.'); return; }
+    const label = `${activeProfile().user} (${state.profileKey})`;
+    const { error } = await sb.from('portaria_liberacoes').update({
+        status: 'EM_CAMPO', liberado_portaria_id: state.currentUser.id, liberado_portaria_label: label, liberado_portaria_at: new Date().toISOString()
+    }).eq('id', id);
+    if (error) { toast('Erro ao liberar saída: ' + error.message, 'error'); return; }
+    const p = state.portariaLiberacoes.find(x => x.id === id);
+    if (p) { p.status = 'EM_CAMPO'; p.liberadoPortariaId = state.currentUser.id; p.liberadoPortaria = label; p.liberadoPortariaAt = new Date().toISOString(); }
+    toast('Saída liberada.', 'success');
+    renderMobilePortariaList();
+}
+
+async function confirmConferirRetornoPortaria(id) {
+    if (!canLiberarPortaria()) { showAccessDenied('Perfil sem privilégios para confirmar retorno na portaria.'); return; }
+    const label = `${activeProfile().user} (${state.profileKey})`;
+    const { error } = await sb.from('portaria_liberacoes').update({
+        status: 'CONCLUIDA', conferido_portaria_id: state.currentUser.id, conferido_portaria_label: label, conferido_portaria_at: new Date().toISOString()
+    }).eq('id', id);
+    if (error) { toast('Erro ao confirmar retorno: ' + error.message, 'error'); return; }
+    const p = state.portariaLiberacoes.find(x => x.id === id);
+    if (p) { p.status = 'CONCLUIDA'; p.conferidoPortariaId = state.currentUser.id; p.conferidoPortaria = label; p.conferidoPortariaAt = new Date().toISOString(); }
+    toast('Retorno confirmado.', 'success');
+    renderMobilePortariaList();
+}
+
 function renderMobileCloseForm(booking) {
     const outcomes = closureOutcomesFor(booking);
     const body = document.getElementById('mobile-encarregado-body');
@@ -4726,6 +5649,28 @@ async function loginAs(user, options) {
         return;
     }
 
+    // Os 3 papéis da Liberação de Portaria também nunca veem o shell
+    // desktop -- cada um só a sua tela mobile dedicada de uma etapa do
+    // fluxo de saída/retorno de equipamento pesado.
+    if (user.role === 'SOLICITANTE_PORTARIA') {
+        document.getElementById('mobile-solicitante-screen').style.display = 'flex';
+        renderMobileSolicitante();
+        if (refreshInterval) clearInterval(refreshInterval);
+        return;
+    }
+    if (user.role === 'APROVADOR_PORTARIA') {
+        document.getElementById('mobile-aprovador-screen').style.display = 'flex';
+        renderMobileAprovador();
+        if (refreshInterval) clearInterval(refreshInterval);
+        return;
+    }
+    if (user.role === 'PORTARIA') {
+        document.getElementById('mobile-portaria-screen').style.display = 'flex';
+        renderMobilePortaria();
+        if (refreshInterval) clearInterval(refreshInterval);
+        return;
+    }
+
     document.querySelector('aside').style.display = 'flex';
     document.querySelector('main').style.display = 'flex';
     renderSiteSelect();
@@ -4759,11 +5704,17 @@ async function logout() {
     document.querySelector('main').style.display = 'none';
     document.getElementById('mobile-encarregado-screen').style.display = 'none';
     document.getElementById('mobile-inspecao-screen').style.display = 'none';
+    document.getElementById('mobile-solicitante-screen').style.display = 'none';
+    document.getElementById('mobile-aprovador-screen').style.display = 'none';
+    document.getElementById('mobile-portaria-screen').style.display = 'none';
 }
 document.getElementById('btn-mobile-logout').addEventListener('click', logout);
 document.getElementById('btn-mobile-lost-hours').addEventListener('click', renderMobileLostHoursForm);
 document.getElementById('btn-mobile-overtime').addEventListener('click', renderMobileOvertimeForm);
 document.getElementById('btn-mobile-inspecao-logout').addEventListener('click', logout);
+document.getElementById('btn-mobile-solicitante-logout').addEventListener('click', logout);
+document.getElementById('btn-mobile-aprovador-logout').addEventListener('click', logout);
+document.getElementById('btn-mobile-portaria-logout').addEventListener('click', logout);
 document.getElementById('btn-logout').addEventListener('click', logout);
 
 const LS_REMEMBER_EMAIL = 'terravia_remember_email';
@@ -4907,6 +5858,7 @@ function updateUpcomingBadge() {
     if (count > 0) { badge.textContent = count; badge.style.display = 'flex'; }
     else { badge.style.display = 'none'; }
     updateAssetHealthBadge();
+    updatePortariaBadge();
 }
 // Total de inspeções ABERTAS (sem filtro de período -- é um alerta "tem
 // algo pendente", não um recorte de tela) -- mesmo padrão do badge do
@@ -5014,6 +5966,7 @@ const VIEW_META = {
     relatorios: { title: 'Relatórios & Auditoria', sub: 'Indicadores operacionais e trilha de auditoria' },
     mapacalor: { title: 'Mapa de Calor', sub: 'Indicadores de manutenção e limpeza por equipamento' },
     'saude-ativos': { title: 'Saúde dos Ativos', sub: 'Inspeções de campo da Vale e índice de saúde por site' },
+    portaria: { title: 'Liberação de Portaria', sub: 'Acompanhamento de saída/retorno de equipamento pesado' },
     aprovacoes: { title: 'Aprovações Vale', sub: 'Avaliação das limpezas do workflow S11D' },
     usuarios: { title: 'Usuários & Acessos', sub: 'Gestão de contas e permissões (Admin Master)' },
     importacao: { title: 'Importação em Massa', sub: 'Lançamento em lote via planilha + fotos (Admin Master e Gerente)' }
@@ -5033,6 +5986,7 @@ function switchView(view) {
     if (view === 'calendario') renderWeekGrid();
     if (view === 'mapacalor') renderHeatmap();
     if (view === 'saude-ativos') renderAssetHealth();
+    if (view === 'portaria') renderPortariaView();
     if (view === 'aprovacoes') renderValeApprovals();
     if (view === 'importacao') resetImportUi();
 }
@@ -7366,6 +8320,157 @@ document.getElementById('btn-toggle-asset-health-history').addEventListener('cli
     applyAssetHealthHistoryCollapse(!document.getElementById('asset-health-history-section').classList.contains('asset-health-history-collapsed'));
 });
 
+/* =========================================================
+   RENDER: LIBERAÇÃO DE PORTARIA (view desktop -- só acompanhamento,
+   as ações do fluxo acontecem nas 3 telas mobile dedicadas)
+   ========================================================= */
+function currentPortariaPeriod() {
+    if (state.portariaFilter.from || state.portariaFilter.to) return { from: state.portariaFilter.from, to: state.portariaFilter.to };
+    return periodoMedicaoAtual();
+}
+
+function computePortariaKpis(periodo) {
+    const { from, to } = periodo;
+    const dateOf = p => (p.createdAt || '').slice(0, 10);
+    const inPeriod = state.portariaLiberacoes.filter(p => (!from || dateOf(p) >= from) && (!to || dateOf(p) <= to));
+    const emCampo = inPeriod.filter(p => p.status === 'EM_CAMPO');
+    const now = new Date();
+    const atrasados = emCampo.filter(p => p.previsaoRetorno && new Date(p.previsaoRetorno) < now);
+    const pendentes = inPeriod.filter(p => ['SOLICITADA', 'APROVADA_SAIDA', 'RETORNO_SOLICITADO', 'APROVADA_RETORNO', 'REJEITADA_RETORNO'].includes(p.status));
+    const concluidas = inPeriod.filter(p => p.status === 'CONCLUIDA');
+    const historico = inPeriod.filter(p => p.status === 'CONCLUIDA' || p.status === 'REJEITADA_SAIDA');
+    return { inPeriod, emCampo, atrasados, pendentes, concluidas, historico };
+}
+
+// Botões de override -- só aparecem pro Admin Master, pra cobrir o caso do
+// Aprovador/Portaria mobile estar indisponível. Reaproveitam as MESMAS
+// funções de ação já usadas nas telas mobile (só troca quem chama).
+function portariaAdminActionsHtml(p) {
+    if (state.profileKey !== 'ADMIN') return '—';
+    if (p.status === 'SOLICITADA') return `<button class="btn-secondary" style="padding:5px 9px; font-size:11px;" onclick="confirmAprovarSaidaPortaria('${p.id}')">Aprovar Saída</button>`;
+    if (p.status === 'APROVADA_SAIDA') return `<button class="btn-secondary" style="padding:5px 9px; font-size:11px;" onclick="confirmLiberarSaidaPortaria('${p.id}')">Liberar Saída</button>`;
+    if (p.status === 'RETORNO_SOLICITADO') return `<button class="btn-secondary" style="padding:5px 9px; font-size:11px;" onclick="confirmAprovarRetornoPortaria('${p.id}')">Aprovar Retorno</button>`;
+    if (p.status === 'APROVADA_RETORNO') return `<button class="btn-secondary" style="padding:5px 9px; font-size:11px;" onclick="confirmConferirRetornoPortaria('${p.id}')">Confirmar Retorno</button>`;
+    return '—';
+}
+
+function renderPortariaView() {
+    document.getElementById('portaria-from').value = state.portariaFilter.from || '';
+    document.getElementById('portaria-to').value = state.portariaFilter.to || '';
+    document.getElementById('portaria-status').value = state.portariaFilter.status || '';
+    updatePortariaBadge();
+    const kpis = computePortariaKpis(currentPortariaPeriod());
+    const statusFiltro = state.portariaFilter.status;
+    const emCampo = statusFiltro ? kpis.emCampo.filter(p => p.status === statusFiltro) : kpis.emCampo;
+    const pendentes = statusFiltro ? kpis.pendentes.filter(p => p.status === statusFiltro) : kpis.pendentes;
+    const historico = statusFiltro ? kpis.historico.filter(p => p.status === statusFiltro) : kpis.historico;
+
+    document.getElementById('portaria-em-campo-count').textContent = kpis.emCampo.length;
+    document.getElementById('portaria-atrasado-count').textContent = kpis.atrasados.length;
+    document.getElementById('portaria-pendente-count').textContent = kpis.pendentes.length;
+    document.getElementById('portaria-concluida-count').textContent = kpis.concluidas.length;
+
+    const fotosLinks = p => `
+        ${p.fotoEquipSaidaUrl ? `<a href="${p.fotoEquipSaidaUrl}" target="_blank" rel="noopener">Saída</a>` : ''}
+        ${p.fotoEquipRetornoUrl ? ` · <a href="${p.fotoEquipRetornoUrl}" target="_blank" rel="noopener">Retorno</a>` : ''}
+    ` || '—';
+
+    const emCampoTbody = document.getElementById('portaria-em-campo-tbody');
+    emCampoTbody.innerHTML = emCampo.slice().sort((a, b) => (b.liberadoPortariaAt || '').localeCompare(a.liberadoPortariaAt || '')).map(p => `
+        <tr${p.previsaoRetorno && new Date(p.previsaoRetorno) < new Date() ? ' style="background:#ef444422;"' : ''}>
+            <td>${p.liberadoPortariaAt ? new Date(p.liberadoPortariaAt).toLocaleString('pt-BR') : '—'}</td>
+            <td><span class="tag-chip">${escapeHtml(p.tag)}</span></td>
+            <td>${escapeHtml(AREA_LABEL[p.area] || p.area || '')}</td>
+            <td>${escapeHtml(PORTARIA_MOTIVO_LABELS[p.motivo] || p.motivo)}</td>
+            <td>${escapeHtml(p.destino || '—')}</td>
+            <td>${p.transportadoCaminhao ? escapeHtml(p.placaVeiculo || '—') : '—'}</td>
+            <td>${p.previsaoRetorno ? new Date(p.previsaoRetorno).toLocaleString('pt-BR') : '—'}</td>
+            <td>${escapeHtml(p.solicitante || '—')}</td>
+            <td>${fotosLinks(p)}</td>
+            <td>${portariaAdminActionsHtml(p)}</td>
+        </tr>
+    `).join('') || `<tr><td colspan="10" style="text-align:center; color:var(--text-muted);">Nenhum equipamento em campo no período.</td></tr>`;
+
+    const pendenteTbody = document.getElementById('portaria-pendente-tbody');
+    pendenteTbody.innerHTML = pendentes.slice().sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || '')).map(p => `
+        <tr>
+            <td>${p.createdAt ? new Date(p.createdAt).toLocaleString('pt-BR') : '—'}</td>
+            <td><span class="tag-chip">${escapeHtml(p.tag)}</span></td>
+            <td>${escapeHtml(AREA_LABEL[p.area] || p.area || '')}</td>
+            <td>${escapeHtml(PORTARIA_MOTIVO_LABELS[p.motivo] || p.motivo)}</td>
+            <td>${escapeHtml(p.destino || '—')}</td>
+            <td>${p.transportadoCaminhao ? escapeHtml(p.placaVeiculo || '—') : '—'}</td>
+            <td><span class="tag-chip" style="background:${PORTARIA_STATUS_COLORS[p.status]}22; color:${PORTARIA_STATUS_COLORS[p.status]};">${PORTARIA_STATUS_LABELS[p.status] || p.status}</span></td>
+            <td>${escapeHtml(p.solicitante || '—')}</td>
+            <td>${fotosLinks(p)}</td>
+            <td>${portariaAdminActionsHtml(p)}</td>
+        </tr>
+    `).join('') || `<tr><td colspan="10" style="text-align:center; color:var(--text-muted);">Nada aguardando ação no período.</td></tr>`;
+
+    const historicoTbody = document.getElementById('portaria-historico-tbody');
+    historicoTbody.innerHTML = historico.slice().sort((a, b) => (b.conferidoPortariaAt || b.aprovadorSaidaAt || '').localeCompare(a.conferidoPortariaAt || a.aprovadorSaidaAt || '')).map(p => `
+        <tr>
+            <td>${p.createdAt ? new Date(p.createdAt).toLocaleString('pt-BR') : '—'}</td>
+            <td><span class="tag-chip">${escapeHtml(p.tag)}</span></td>
+            <td>${escapeHtml(AREA_LABEL[p.area] || p.area || '')}</td>
+            <td>${escapeHtml(PORTARIA_MOTIVO_LABELS[p.motivo] || p.motivo)}</td>
+            <td>${escapeHtml(p.destino || '—')}</td>
+            <td><span class="tag-chip" style="background:${PORTARIA_STATUS_COLORS[p.status]}22; color:${PORTARIA_STATUS_COLORS[p.status]};">${PORTARIA_STATUS_LABELS[p.status] || p.status}</span></td>
+            <td>${escapeHtml(p.solicitante || '—')}</td>
+            <td>${p.conferidoPortariaAt ? new Date(p.conferidoPortariaAt).toLocaleString('pt-BR') : (p.aprovadorSaidaAt ? new Date(p.aprovadorSaidaAt).toLocaleString('pt-BR') : '—')}</td>
+            <td>${fotosLinks(p)}</td>
+        </tr>
+    `).join('') || `<tr><td colspan="9" style="text-align:center; color:var(--text-muted);">Nenhum registro concluído/rejeitado no período.</td></tr>`;
+}
+document.getElementById('btn-portaria-apply').addEventListener('click', async () => {
+    state.portariaFilter.from = document.getElementById('portaria-from').value || null;
+    state.portariaFilter.to = document.getElementById('portaria-to').value || null;
+    state.portariaFilter.status = document.getElementById('portaria-status').value || null;
+    await ensureHistoryLoadedFrom(state.portariaFilter.from);
+    renderPortariaView();
+});
+document.getElementById('btn-portaria-clear').addEventListener('click', () => {
+    document.getElementById('portaria-from').value = '';
+    document.getElementById('portaria-to').value = '';
+    document.getElementById('portaria-status').value = '';
+    state.portariaFilter = { from: null, to: null, status: null };
+    renderPortariaView();
+});
+
+function updatePortariaBadge() {
+    const badge = document.getElementById('nav-badge-portaria');
+    if (!badge) return;
+    const count = state.portariaLiberacoes.filter(p => ['SOLICITADA', 'APROVADA_SAIDA', 'RETORNO_SOLICITADO', 'APROVADA_RETORNO', 'REJEITADA_RETORNO'].includes(p.status)).length;
+    if (count > 0) { badge.textContent = count; badge.style.display = 'flex'; } else { badge.style.display = 'none'; }
+}
+
+const LS_PORTARIAEMCAMPO_COLLAPSED = 'vale_saas_portariaemcampo_collapsed_v1';
+function applyPortariaEmCampoCollapse(collapsed) {
+    document.getElementById('portaria-em-campo-section').classList.toggle('portaria-em-campo-collapsed', collapsed);
+    localStorage.setItem(LS_PORTARIAEMCAMPO_COLLAPSED, collapsed ? '1' : '0');
+}
+document.getElementById('btn-toggle-portaria-em-campo').addEventListener('click', () => {
+    applyPortariaEmCampoCollapse(!document.getElementById('portaria-em-campo-section').classList.contains('portaria-em-campo-collapsed'));
+});
+
+const LS_PORTARIAPENDENTE_COLLAPSED = 'vale_saas_portariapendente_collapsed_v1';
+function applyPortariaPendenteCollapse(collapsed) {
+    document.getElementById('portaria-pendente-section').classList.toggle('portaria-pendente-collapsed', collapsed);
+    localStorage.setItem(LS_PORTARIAPENDENTE_COLLAPSED, collapsed ? '1' : '0');
+}
+document.getElementById('btn-toggle-portaria-pendente').addEventListener('click', () => {
+    applyPortariaPendenteCollapse(!document.getElementById('portaria-pendente-section').classList.contains('portaria-pendente-collapsed'));
+});
+
+const LS_PORTARIAHISTORICO_COLLAPSED = 'vale_saas_portariahistorico_collapsed_v1';
+function applyPortariaHistoricoCollapse(collapsed) {
+    document.getElementById('portaria-historico-section').classList.toggle('portaria-historico-collapsed', collapsed);
+    localStorage.setItem(LS_PORTARIAHISTORICO_COLLAPSED, collapsed ? '1' : '0');
+}
+document.getElementById('btn-toggle-portaria-historico').addEventListener('click', () => {
+    applyPortariaHistoricoCollapse(!document.getElementById('portaria-historico-section').classList.contains('portaria-historico-collapsed'));
+});
+
 function renderHeatmap() {
     renderHeatmapEquipSelect();
     document.getElementById('heatmap-from').value = state.heatmapFilter.from || '';
@@ -7530,10 +8635,12 @@ function openUserModal(id) {
         // ENCARREGADO é sempre de UM site só (é o encarregado de campo daquela
         // unidade) -- vira seleção única (rádio) pra não dar de deixar dois
         // sites marcados por engano e o celular acabar caindo no site errado.
-        const isSingleSite = roleSelect.value === 'ENCARREGADO';
+        // Os 3 papéis de Liberação de Portaria são igualmente amarrados a um
+        // site físico só (a guarita/portaria é de uma unidade).
+        const isSingleSite = ['ENCARREGADO', 'SOLICITANTE_PORTARIA', 'APROVADOR_PORTARIA', 'PORTARIA'].includes(roleSelect.value);
         document.getElementById('um-export-wrap').style.display = isAdminRole ? 'none' : 'block';
         document.getElementById('um-sites-wrap').style.display = isAdminRole ? 'none' : 'block';
-        document.getElementById('um-sites-label').textContent = isSingleSite ? 'Site (o encarregado só pode ter um)' : 'Sites com Acesso';
+        document.getElementById('um-sites-label').textContent = isSingleSite ? 'Site (este perfil só pode ter um)' : 'Sites com Acesso';
         const currentlyChecked = [...document.querySelectorAll('.um-site-cb:checked')].map(cb => cb.value);
         document.getElementById('um-sites-list').innerHTML = renderSiteAccessOptions(isSingleSite, currentlyChecked);
     };
@@ -8097,6 +9204,9 @@ if ('serviceWorker' in navigator) {
     applyBookCollapse(localStorage.getItem(LS_BOOK_COLLAPSED) === '1');
     applyAssetHealthOpenCollapse(localStorage.getItem(LS_ASSETHEALTHOPEN_COLLAPSED) === '1');
     applyAssetHealthHistoryCollapse(localStorage.getItem(LS_ASSETHEALTHHISTORY_COLLAPSED) === '1');
+    applyPortariaEmCampoCollapse(localStorage.getItem(LS_PORTARIAEMCAMPO_COLLAPSED) === '1');
+    applyPortariaPendenteCollapse(localStorage.getItem(LS_PORTARIAPENDENTE_COLLAPSED) === '1');
+    applyPortariaHistoricoCollapse(localStorage.getItem(LS_PORTARIAHISTORICO_COLLAPSED) === '1');
 
     const { data: { session } } = await sb.auth.getSession();
     if (session && session.user) {
