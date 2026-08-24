@@ -895,12 +895,12 @@ body.book-preview-mode .book-preview-toolbar {
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="5" height="5" rx="1"/><rect x="9.5" y="3" width="5" height="5" rx="1"/><rect x="16" y="3" width="5" height="5" rx="1"/><rect x="3" y="9.5" width="5" height="5" rx="1"/><rect x="9.5" y="9.5" width="5" height="5" rx="1"/><rect x="16" y="9.5" width="5" height="5" rx="1"/><rect x="3" y="16" width="5" height="5" rx="1"/><rect x="9.5" y="16" width="5" height="5" rx="1"/><rect x="16" y="16" width="5" height="5" rx="1"/></svg>
                 <span class="nav-label">Mapa de Calor</span>
             </button>
-            <button class="nav-item" data-view="saude-ativos" title="Saúde dos Ativos">
+            <button class="nav-item" data-view="saude-ativos" title="Saúde dos Ativos" style="display:none;">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
                 <span class="nav-label">Saúde dos Ativos</span>
                 <span class="nav-badge" id="nav-badge-saude-ativos"></span>
             </button>
-            <button class="nav-item" data-view="portaria" title="Liberação de Portaria">
+            <button class="nav-item" data-view="portaria" title="Liberação de Portaria" style="display:none;">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 21h18M5 21V7l7-4 7 4v14M9 9h1M9 13h1M14 9h1M14 13h1"/></svg>
                 <span class="nav-label">Liberação de Portaria</span>
                 <span class="nav-badge" id="nav-badge-portaria"></span>
@@ -5955,6 +5955,8 @@ function onProfileChanged() {
     document.querySelector('[data-view="usuarios"]').style.display = state.profileKey === 'ADMIN' ? 'flex' : 'none';
     document.querySelector('[data-view="importacao"]').style.display = (state.profileKey === 'ADMIN' || state.profileKey === 'GERENTE') ? 'flex' : 'none';
     document.querySelector('[data-view="aprovacoes"]').style.display = canViewValeApprovals() ? 'flex' : 'none';
+    document.querySelector('[data-view="saude-ativos"]').style.display = state.profileKey === 'ADMIN' ? 'flex' : 'none';
+    document.querySelector('[data-view="portaria"]').style.display = state.profileKey === 'ADMIN' ? 'flex' : 'none';
     // "Top 5 Equipamentos - Indisponibilidade" só faz sentido em site com
     // equipamento de verdade passando por Manutenção -- em Fábrica/Viga
     // Materiais o "equipamento" é uma área do armazém, então esse
@@ -5996,6 +5998,8 @@ function switchView(view) {
     if (view === 'usuarios' && state.profileKey !== 'ADMIN') { showAccessDenied('Apenas o Admin Master pode gerenciar usuários.'); return; }
     if (view === 'importacao' && state.profileKey !== 'ADMIN' && state.profileKey !== 'GERENTE') { showAccessDenied('Apenas o Admin Master e o Gerente podem fazer importação em massa.'); return; }
     if (view === 'aprovacoes' && !canViewValeApprovals()) { showAccessDenied('Perfil sem privilégios para acessar as Aprovações Vale.'); return; }
+    if (view === 'saude-ativos' && state.profileKey !== 'ADMIN') { showAccessDenied('Apenas o Admin Master pode acessar Saúde dos Ativos.'); return; }
+    if (view === 'portaria' && state.profileKey !== 'ADMIN') { showAccessDenied('Apenas o Admin Master pode acessar Liberação de Portaria.'); return; }
     document.querySelectorAll('.nav-item').forEach(b => b.classList.toggle('active', b.dataset.view === view));
     document.querySelectorAll('.content-container').forEach(c => c.classList.toggle('view-active', c.id === 'view-' + view));
     document.getElementById('header-title').textContent = VIEW_META[view].title;
