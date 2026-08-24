@@ -5955,8 +5955,12 @@ function onProfileChanged() {
     document.querySelector('[data-view="usuarios"]').style.display = state.profileKey === 'ADMIN' ? 'flex' : 'none';
     document.querySelector('[data-view="importacao"]').style.display = (state.profileKey === 'ADMIN' || state.profileKey === 'GERENTE') ? 'flex' : 'none';
     document.querySelector('[data-view="aprovacoes"]').style.display = canViewValeApprovals() ? 'flex' : 'none';
+    // "Top 5 Equipamentos - Indisponibilidade" só faz sentido em site com
+    // equipamento de verdade passando por Manutenção -- em Fábrica/Viga
+    // Materiais o "equipamento" é uma área do armazém, então esse
+    // indicador fica de fora (é só do Mutuca).
     const chartBoxManut = document.getElementById('chart-box-manut');
-    if (chartBoxManut) chartBoxManut.style.display = canSeeAvailabilityChart() ? 'flex' : 'none';
+    if (chartBoxManut) chartBoxManut.style.display = (canSeeAvailabilityChart() && !isMaterialsContractSite()) ? 'flex' : 'none';
     const extraFilterWrap = document.getElementById('report-extra-filter-wrap');
     if (extraFilterWrap) extraFilterWrap.style.display = isMaterialsContractSite() ? '' : 'none';
     const lostHoursFilterWrap = document.getElementById('report-lost-hours-filter-wrap');
@@ -6734,7 +6738,7 @@ function renderCharts() {
 
     const ctx1 = document.getElementById('chart-top5');
     if (chartTop5) { chartTop5.destroy(); chartTop5 = null; }
-    if (ctx1 && canSeeAvailabilityChart()) {
+    if (ctx1 && canSeeAvailabilityChart() && !isMaterialsContractSite()) {
         chartTop5 = new Chart(ctx1, {
             type: 'bar',
             data: { labels: top5Manut.map(t => t[0]), datasets: [{ label: 'Intervenções de Manutenção', data: top5Manut.map(t => t[1]), backgroundColor: '#f59e0b', borderRadius: 5, maxBarThickness: 60 }] },
