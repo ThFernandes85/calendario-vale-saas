@@ -2027,7 +2027,7 @@ function applyEquipTerminology() {
     // área-mãe achava o campo errado) -- por isso o nível do ativo usa
     // "Sub-área" no S11D, reservando "Área" pra operação no grupo inteiro.
     const tSub = isClientApprovalSite() ? 'Sub-área' : 'Equipamento';
-    setText('ativos-page-title', isClientApprovalSite() ? 'Gerenciamento de Áreas' : 'Gerenciamento de Equipamentos Industriais');
+    setText('ativos-page-title', (isClientApprovalSite() || isMaterialsContractSite()) ? 'Gerenciamento de Áreas' : 'Gerenciamento de Equipamentos Industriais');
     setText('lbl-new-equip-tag', isClientApprovalSite() ? 'Tag da Sub-área' : 'Tag do Equipamento');
     setText('lbl-move-equip-tag', `${tSub} a Mover`);
     setText('lbl-rename-equip-tag', `${tSub} a Renomear`);
