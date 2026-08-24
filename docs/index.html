@@ -968,7 +968,7 @@ body.book-preview-mode .book-preview-toolbar {
                 <div class="kpi-sub">Bloqueios ativos da PCM</div>
             </div>
             <div class="kpi-card" style="--accent: var(--color-limpeza);">
-                <div class="kpi-label">Em Limpeza</div>
+                <div class="kpi-label" id="lbl-kpi-limpeza">Em Limpeza</div>
                 <div class="kpi-value" id="kpi-limpeza">0</div>
                 <div class="kpi-sub">Bloqueios ativos da PCO</div>
             </div>
@@ -1150,7 +1150,7 @@ body.book-preview-mode .book-preview-toolbar {
                 <div class="agenda-legend">
                     <div class="lg-item"><span class="status-dot st-livre"></span>Livre</div>
                     <div class="lg-item"><span class="status-dot st-manutencao"></span>Manutenção</div>
-                    <div class="lg-item"><span class="status-dot st-limpeza"></span>Limpeza</div>
+                    <div class="lg-item"><span class="status-dot st-limpeza"></span><span id="lg-limpeza-ativos">Limpeza</span></div>
                     <div class="lg-item"><span class="status-dot st-critico"></span>Crítico</div>
                 </div>
                 <button type="button" id="btn-toggle-ativos-grid" class="profile-toggle-btn" title="Minimizar/Expandir">
@@ -1194,7 +1194,7 @@ body.book-preview-mode .book-preview-toolbar {
                 <div class="agenda-legend" style="margin-left:auto;">
                     <div class="lg-item"><span class="status-dot st-livre"></span>Livre</div>
                     <div class="lg-item"><span class="status-dot st-manutencao"></span>Manutenção</div>
-                    <div class="lg-item"><span class="status-dot st-limpeza"></span>Limpeza</div>
+                    <div class="lg-item"><span class="status-dot st-limpeza"></span><span id="lg-limpeza-calendario">Limpeza</span></div>
                     <div class="lg-item"><span class="status-dot st-critico"></span>Emergencial</div>
                 </div>
             </div>
@@ -2047,6 +2047,13 @@ function applyEquipTerminology() {
     // cadastrado é na verdade uma área do armazém -- só este card muda,
     // o resto da terminologia desse site continua "Equipamento" mesmo.
     setText('lbl-kpi-livres', `${isMaterialsContractSite() ? 'Áreas' : tp} Livres`);
+    // Idem pro status "Limpeza" -- no contrato de Materiais não é limpeza
+    // de equipamento, é lançamento de Atividade (ver bookingTypeDisplayLabel
+    // acima, mesma decisão aplicada aqui nos rótulos de status).
+    const limpezaLabel = isMaterialsContractSite() ? 'Atividade' : 'Limpeza';
+    setText('lbl-kpi-limpeza', `Em ${limpezaLabel}`);
+    setText('lg-limpeza-ativos', limpezaLabel);
+    setText('lg-limpeza-calendario', limpezaLabel);
 }
 // Gráfico de Indisponibilidade (Manutenção) é indicador de PCM -- também
 // liberado para quem administra o site inteiro (Admin Master, Gerente),
@@ -2644,7 +2651,7 @@ function getLiveStatus(tag) {
     const started = state.bookings.filter(bk => isActiveBooking(bk) && bk.tag === tag && bk.date === today && nowMin >= bk.startMin);
     const b = started.length ? started.reduce((latest, cur) => cur.startMin > latest.startMin ? cur : latest) : null;
     if (!b) return { status: 'livre', label: 'Livre' };
-    if (TYPE_STATUS[b.type] === 'limpeza') return { status: 'limpeza', label: 'Limpeza', booking: b };
+    if (TYPE_STATUS[b.type] === 'limpeza') return { status: 'limpeza', label: isMaterialsContractSite() ? 'Atividade' : 'Limpeza', booking: b };
     if (b.emergencial) return { status: 'critico', label: 'Crítico', booking: b };
     return { status: 'manutencao', label: 'Manut.', booking: b };
 }
@@ -6206,7 +6213,7 @@ function renderDashboard() {
         chartStatus = new Chart(ctx, {
             type: 'doughnut',
             data: {
-                labels: ['Livre', 'Manutenção', 'Limpeza', 'Crítico'],
+                labels: ['Livre', 'Manutenção', isMaterialsContractSite() ? 'Atividade' : 'Limpeza', 'Crítico'],
                 datasets: [{ data: [counts.livre, counts.manutencao, counts.limpeza, counts.critico], backgroundColor: ['#10b981', '#f59e0b', '#2563eb', '#ef4444'], borderWidth: 0 }]
             },
             options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom', labels: { color: '#8a99ad', boxWidth: 12, font: { size: 11 } } } } }
