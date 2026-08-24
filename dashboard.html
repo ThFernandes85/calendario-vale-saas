@@ -7921,7 +7921,11 @@ async function analyzeImportSpreadsheet() {
         // DATA idênticos (aí sim é duplicidade de verdade). No modo cheio
         // (com fotos), continua só por OM, porque ali cada OM só pode
         // aparecer uma vez na planilha (cria OU encerra OU corrige fotos).
-        if (!result.error && !s11dMode) {
+        // Fábrica/Viga Materiais também ficam de fora desse check: uma OM
+        // de Materiais pode durar mais de uma semana e ter mais de um
+        // lançamento na mesma tag/data dentro da mesma planilha semanal --
+        // isso é esperado, não duplicidade de verdade.
+        if (!result.error && !s11dMode && !isMaterialsContractSite()) {
             const dedupKey = scheduleOnly ? `${result.om}|${result.tag}|${result.date}` : result.om;
             if (seenOms[dedupKey] !== undefined) {
                 result.error = scheduleOnly
