@@ -1894,6 +1894,13 @@ const TYPE_STATUS = { 'Manutenção Preventiva': 'manutencao', 'Manutenção Cor
 // BOOK de Aderência) e em qualquer outro site, que não foi pedido pra
 // mudar e quebraria dado histórico se mudasse.
 function bookingTypeDisplayLabel(type) { return (type === 'Limpeza Sodexo' && isMaterialsContractSite()) ? 'Atividade - Sodexo' : type; }
+// Mesma ideia, mas pra texto de auditoria (`acao`), que às vezes é só o tipo
+// ("Limpeza Sodexo") e às vezes o tipo com um desfecho junto ("Limpeza
+// Sodexo (Encerrado)") -- por isso troca a substring em vez de comparar
+// igualdade exata. Continua só exibição: o valor gravado no banco não muda.
+function auditActionDisplayLabel(acao) {
+    return isMaterialsContractSite() ? String(acao || '').replace(/Limpeza Sodexo/g, 'Atividade Sodexo') : acao;
+}
 
 /* =========================================================
    ENCERRAMENTO DE BLOQUEIOS (closure_status)
@@ -6258,7 +6265,7 @@ function renderDashboard() {
         <div class="slot-row" style="cursor:default;">
             <span class="slot-hour" style="width:110px;">${new Date(a.dataHora).toLocaleDateString('pt-BR')}</span>
             <span class="slot-badge badge-${TYPE_STATUS[a.acao.replace(' (Cancelado)','')] || 'manutencao'}">${escapeHtml(a.tag)}</span>
-            <span class="slot-desc">${escapeHtml(a.acao)} — ${escapeHtml(a.justificativa)}</span>
+            <span class="slot-desc">${escapeHtml(auditActionDisplayLabel(a.acao))} — ${escapeHtml(a.justificativa)}</span>
         </div>
     `).join('') || '<div style="color:var(--text-muted); font-size:13px;">Nenhum evento registrado ainda.</div>';
 
@@ -6898,7 +6905,7 @@ function renderAudit() {
             <td>${formatAgendamento(a)}</td>
             <td><span class="tag-chip">${escapeHtml(a.tag)}</span></td>
             <td>${AREA_LABEL[a.area] || escapeHtml(a.area || '')}</td>
-            <td>${escapeHtml(a.acao)}</td>
+            <td>${escapeHtml(auditActionDisplayLabel(a.acao))}</td>
             <td>${escapeHtml(a.om || '—')}</td>
             <td>${escapeHtml(a.justificativa)}</td>
             <td>${escapeHtml(a.operador)}</td>
