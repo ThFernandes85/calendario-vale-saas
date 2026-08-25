@@ -4103,8 +4103,12 @@ function renderMobileEquipList() {
     const cards = ALL_EQUIP.map(eq => {
         const live = getLiveStatus(eq.tag);
         const aguardando = aguardandoEnvio.some(b => b.tag === eq.tag);
+        // OMs em aberto nessa tag ficam num data-attribute (não aparecem no
+        // card) só pra entrar na busca -- assim dá pra achar o equipamento
+        // digitando o número da OM, sem poluir o visual do card.
+        const openOms = state.bookings.filter(b => b.tag === eq.tag && isActiveBooking(b) && b.om).map(b => b.om).join(' ');
         return `
-            <button type="button" class="mobile-equip-card" onclick="openMobileEquip('${eq.tag}')">
+            <button type="button" class="mobile-equip-card" data-om="${escapeHtml(openOms)}" onclick="openMobileEquip('${eq.tag}')">
                 <span class="status-dot st-${live.status}"></span>
                 <span class="mobile-equip-tag">${escapeHtml(eq.tag)}</span>
                 <span class="mobile-equip-area">${aguardando ? '<span class="mobile-overdue-badge" style="background:var(--color-limpeza);">📡 Aguardando envio</span>' : escapeHtml(AREA_LABEL[eq.area] || eq.area || '')}</span>
@@ -4114,7 +4118,7 @@ function renderMobileEquipList() {
         ${coldStartAlertHtml}
         ${offlineAlertHtml}
         ${alertHtml}
-        <input type="text" id="mobile-equip-search" class="mobile-search" placeholder="${(isClientApprovalSite() || isMaterialsContractSite()) ? 'Buscar por área...' : 'Buscar equipamento...'}">
+        <input type="text" id="mobile-equip-search" class="mobile-search" placeholder="${(isClientApprovalSite() || isMaterialsContractSite()) ? 'Buscar por área ou OM...' : 'Buscar equipamento ou OM...'}">
         <div id="mobile-equip-list" class="mobile-equip-list">${cards}</div>`;
     const syncNowBtn = document.getElementById('mobile-sync-now-btn');
     if (syncNowBtn) syncNowBtn.addEventListener('click', () => {
@@ -4127,7 +4131,8 @@ function renderMobileEquipList() {
     document.getElementById('mobile-equip-search').addEventListener('input', (e) => {
         const q = e.target.value.trim().toUpperCase();
         document.querySelectorAll('#mobile-equip-list .mobile-equip-card').forEach(card => {
-            card.style.display = card.textContent.toUpperCase().includes(q) ? 'flex' : 'none';
+            const haystack = card.textContent.toUpperCase() + ' ' + card.dataset.om.toUpperCase();
+            card.style.display = haystack.includes(q) ? 'flex' : 'none';
         });
     });
 }
