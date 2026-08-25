@@ -171,6 +171,9 @@ header {
 #asset-health-open-section.asset-health-open-collapsed #asset-health-open-content { display: none; }
 #asset-health-history-section.asset-health-history-collapsed .profile-toggle-btn svg { transform: rotate(-90deg); }
 #asset-health-history-section.asset-health-history-collapsed #asset-health-history-content { display: none; }
+#chart-box-aderencia.chart-aderencia-collapsed { height: auto; }
+#chart-box-aderencia.chart-aderencia-collapsed .profile-toggle-btn svg { transform: rotate(-90deg); }
+#chart-box-aderencia.chart-aderencia-collapsed canvas { display: none; }
 #portaria-em-campo-section.portaria-em-campo-collapsed .profile-toggle-btn svg { transform: rotate(-90deg); }
 #portaria-em-campo-section.portaria-em-campo-collapsed #portaria-em-campo-content { display: none; }
 #portaria-pendente-section.portaria-pendente-collapsed .profile-toggle-btn svg { transform: rotate(-90deg); }
@@ -1310,8 +1313,13 @@ body.book-preview-mode .book-preview-toolbar {
             </div>
         </div>
 
-        <div class="chart-box" style="margin-bottom:18px;">
-            <h3>Evolução da Nota de Aderência — Sodexo (últimos 6 períodos)</h3>
+        <div class="chart-box" id="chart-box-aderencia" style="margin-bottom:18px;">
+            <div class="filter-title-row">
+                <h3 style="margin-bottom:0;">Evolução da Nota de Aderência — Sodexo (últimos 6 períodos)</h3>
+                <button type="button" id="btn-toggle-chart-aderencia" class="profile-toggle-btn" title="Minimizar/Expandir">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
+                </button>
+            </div>
             <canvas id="chart-aderencia-historico"></canvas>
         </div>
 
@@ -8431,6 +8439,18 @@ function applyAssetHealthHistoryCollapse(collapsed) {
 document.getElementById('btn-toggle-asset-health-history').addEventListener('click', () => {
     applyAssetHealthHistoryCollapse(!document.getElementById('asset-health-history-section').classList.contains('asset-health-history-collapsed'));
 });
+const LS_CHARTADERENCIA_COLLAPSED = 'vale_saas_chartaderencia_collapsed_v1';
+function applyChartAderenciaCollapse(collapsed) {
+    document.getElementById('chart-box-aderencia').classList.toggle('chart-aderencia-collapsed', collapsed);
+    localStorage.setItem(LS_CHARTADERENCIA_COLLAPSED, collapsed ? '1' : '0');
+    // Chart.js não recalcula sozinho o tamanho de um canvas que estava
+    // display:none -- sem isso o gráfico reaparecia colapsado (altura 0)
+    // depois de expandir de novo.
+    if (!collapsed && chartAderenciaHistorico) chartAderenciaHistorico.resize();
+}
+document.getElementById('btn-toggle-chart-aderencia').addEventListener('click', () => {
+    applyChartAderenciaCollapse(!document.getElementById('chart-box-aderencia').classList.contains('chart-aderencia-collapsed'));
+});
 
 /* =========================================================
    RENDER: LIBERAÇÃO DE PORTARIA (view desktop -- só acompanhamento,
@@ -9316,6 +9336,7 @@ if ('serviceWorker' in navigator) {
     applyBookCollapse(localStorage.getItem(LS_BOOK_COLLAPSED) === '1');
     applyAssetHealthOpenCollapse(localStorage.getItem(LS_ASSETHEALTHOPEN_COLLAPSED) === '1');
     applyAssetHealthHistoryCollapse(localStorage.getItem(LS_ASSETHEALTHHISTORY_COLLAPSED) === '1');
+    applyChartAderenciaCollapse(localStorage.getItem(LS_CHARTADERENCIA_COLLAPSED) === '1');
     applyPortariaEmCampoCollapse(localStorage.getItem(LS_PORTARIAEMCAMPO_COLLAPSED) === '1');
     applyPortariaPendenteCollapse(localStorage.getItem(LS_PORTARIAPENDENTE_COLLAPSED) === '1');
     applyPortariaHistoricoCollapse(localStorage.getItem(LS_PORTARIAHISTORICO_COLLAPSED) === '1');
