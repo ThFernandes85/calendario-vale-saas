@@ -954,12 +954,12 @@ body.book-preview-mode .book-preview-toolbar {
     <div class="content-container view-active" id="view-dashboard">
         <div>
             <h2 style="font-size: 22px; margin-bottom: 6px; font-weight: 600;">Visão Executiva do Complexo</h2>
-            <p style="color: var(--text-secondary); font-size: 14px;">Indicadores em tempo real de disponibilidade operacional dos 94 ativos monitorados.</p>
+            <p style="color: var(--text-secondary); font-size: 14px;" id="dashboard-subtitle">Indicadores em tempo real de disponibilidade operacional dos 94 ativos monitorados.</p>
         </div>
 
         <div class="kpi-grid">
             <div class="kpi-card" style="--accent: var(--color-admin);">
-                <div class="kpi-label">Total de Ativos</div>
+                <div class="kpi-label" id="lbl-kpi-total">Total de Ativos</div>
                 <div class="kpi-value" id="kpi-total">0</div>
                 <div class="kpi-sub">Distribuídos em 5 áreas operacionais</div>
             </div>
@@ -971,12 +971,12 @@ body.book-preview-mode .book-preview-toolbar {
             <div class="kpi-card" style="--accent: var(--color-manutencao);">
                 <div class="kpi-label">Em Manutenção</div>
                 <div class="kpi-value" id="kpi-manutencao">0</div>
-                <div class="kpi-sub">Bloqueios ativos da PCM</div>
+                <div class="kpi-sub" id="kpi-manutencao-sub">Bloqueios ativos da PCM</div>
             </div>
             <div class="kpi-card" style="--accent: var(--color-limpeza);">
                 <div class="kpi-label" id="lbl-kpi-limpeza">Em Limpeza</div>
                 <div class="kpi-value" id="kpi-limpeza">0</div>
-                <div class="kpi-sub">Bloqueios ativos da PCO</div>
+                <div class="kpi-sub" id="kpi-limpeza-sub">Bloqueios ativos da PCO</div>
             </div>
             <div class="kpi-card" style="--accent: var(--color-critico);">
                 <div class="kpi-label">OMs em Atraso</div>
@@ -2109,6 +2109,16 @@ function applyEquipTerminology() {
     setText('lbl-kpi-limpeza', `Em ${limpezaLabel}`);
     setText('lg-limpeza-ativos', limpezaLabel);
     setText('lg-limpeza-calendario', limpezaLabel);
+    // Cabeçalho do Dashboard Geral -- mesma troca "Ativos" -> "Áreas" pro
+    // Contrato de Materiais, e a contagem usa ALL_EQUIP de verdade em vez de
+    // um número fixo no texto.
+    setText('lbl-kpi-total', `Total de ${isMaterialsContractSite() ? 'Áreas' : 'Ativos'}`);
+    setText('dashboard-subtitle', `Indicadores em tempo real de disponibilidade operacional ${isMaterialsContractSite() ? 'das' : 'dos'} ${ALL_EQUIP.length} ${isMaterialsContractSite() ? 'áreas monitoradas' : 'ativos monitorados'}.`);
+    // "Bloqueios ativos da PCM/PCO" não se aplica ao Contrato de Materiais
+    // (não é bloqueio, é Atividade, sem essa separação de papel) -- tira a
+    // legenda em vez de inventar um texto novo que ninguém pediu.
+    setText('kpi-manutencao-sub', isMaterialsContractSite() ? '' : 'Bloqueios ativos da PCM');
+    setText('kpi-limpeza-sub', isMaterialsContractSite() ? '' : 'Bloqueios ativos da PCO');
 }
 // Gráfico de Indisponibilidade (Manutenção) é indicador de PCM -- também
 // liberado para quem administra o site inteiro (Admin Master, Gerente),
