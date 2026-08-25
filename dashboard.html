@@ -6800,11 +6800,19 @@ function renderCharts() {
     // baseado nele nunca zera quando o Admin apaga um lançamento incorreto.
     // state.bookings reflete o estado atual de verdade: some da conta assim
     // que é excluído (individualmente ou em massa).
-    const { from: chartsFrom, to: chartsTo } = state.reportFilter;
+    // "Só atividades extras" também filtra os 2 gráficos gerais abaixo (Top
+    // 5 Áreas e Volume por Área) -- vira um drill-down de verdade ("quais
+    // áreas mais geram atividade extra"). "Só Horas Perdidas" não entra
+    // aqui de propósito: Hora Perdida é um tipo à parte, fora de
+    // TYPE_STATUS, então nunca aparece nestes 2 gráficos (zerar tudo só
+    // pra "respeitar" o filtro não ajudaria ninguém) -- ela já tem o
+    // próprio gráfico de evolução dedicado mais abaixo.
+    const { from: chartsFrom, to: chartsTo, isExtra: chartsIsExtra } = state.reportFilter;
     const typedBookings = state.bookings.filter(b => {
         if (TYPE_STATUS[b.type] === undefined) return false;
         if (chartsFrom && b.date < chartsFrom) return false;
         if (chartsTo && b.date > chartsTo) return false;
+        if (chartsIsExtra && !b.isExtra) return false;
         return true;
     });
 
