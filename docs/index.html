@@ -173,7 +173,10 @@ header {
 #asset-health-history-section.asset-health-history-collapsed #asset-health-history-content { display: none; }
 #chart-box-aderencia.chart-aderencia-collapsed { height: auto; }
 #chart-box-aderencia.chart-aderencia-collapsed .profile-toggle-btn svg { transform: rotate(-90deg); }
-#chart-box-aderencia.chart-aderencia-collapsed canvas { display: none; }
+/* !important necessário -- o Chart.js grava display:block inline no
+   próprio <canvas> (parte de como ele controla o resize), e estilo
+   inline vence CSS externo mesmo com seletor por ID. */
+#chart-box-aderencia.chart-aderencia-collapsed canvas { display: none !important; }
 #portaria-em-campo-section.portaria-em-campo-collapsed .profile-toggle-btn svg { transform: rotate(-90deg); }
 #portaria-em-campo-section.portaria-em-campo-collapsed #portaria-em-campo-content { display: none; }
 #portaria-pendente-section.portaria-pendente-collapsed .profile-toggle-btn svg { transform: rotate(-90deg); }
