@@ -985,6 +985,34 @@ body.book-preview-mode .book-preview-toolbar {
             </div>
         </div>
 
+        <div class="kpi-grid" style="margin-top:18px;">
+            <div class="kpi-card" style="--accent: var(--color-limpeza);">
+                <div class="kpi-label">Nota de Aderência — Sodexo</div>
+                <div class="kpi-value" id="dash-kpi-nota">—</div>
+                <div class="kpi-sub" id="dash-kpi-nota-sub">Ciclo de medição atual</div>
+            </div>
+            <div class="kpi-card" id="dash-kpi-lost-hours-card" style="--accent: #f59e0b; display:none;">
+                <div class="kpi-label">Horas Perdidas (Ciclo Atual)</div>
+                <div class="kpi-value" id="dash-kpi-lost-hours">—</div>
+                <div class="kpi-sub" id="dash-kpi-lost-hours-sub">Tempo ocioso aguardando material</div>
+            </div>
+            <div class="kpi-card" id="dash-kpi-overtime-card" style="--accent: #8b5cf6; display:none;">
+                <div class="kpi-label">Hora Extra (Ciclo Atual)</div>
+                <div class="kpi-value" id="dash-kpi-overtime">—</div>
+                <div class="kpi-sub" id="dash-kpi-overtime-sub">Jornada extra do Encarregado</div>
+            </div>
+            <div class="kpi-card" id="dash-kpi-atividade-extra-card" style="--accent: #14b8a6; display:none;">
+                <div class="kpi-label">Atividade Extra (Ciclo Atual)</div>
+                <div class="kpi-value" id="dash-kpi-atividade-extra">—</div>
+                <div class="kpi-sub" id="dash-kpi-atividade-extra-sub">Atividades extras concluídas no ciclo</div>
+            </div>
+            <div class="kpi-card" id="dash-kpi-pendente-vale-card" style="--accent: var(--color-operacao); display:none;">
+                <div class="kpi-label">Pendente Vale</div>
+                <div class="kpi-value" id="dash-kpi-pendente-vale">—</div>
+                <div class="kpi-sub" id="dash-kpi-pendente-vale-sub">Não desconta da nota da Sodexo</div>
+            </div>
+        </div>
+
         <div class="charts-grid">
             <div class="chart-box">
                 <h3>Distribuição de Status Atual</h3>
@@ -993,6 +1021,10 @@ body.book-preview-mode .book-preview-toolbar {
             <div class="chart-box">
                 <h3>Últimas Ações Registradas</h3>
                 <div class="agenda-list" id="dashboard-recent" style="max-height: 260px;"></div>
+            </div>
+            <div class="chart-box">
+                <h3 id="dash-chart-aderencia-title">Evolução da Nota de Aderência (últimos 6 períodos)</h3>
+                <canvas id="chart-dashboard-aderencia"></canvas>
             </div>
         </div>
     </div>
@@ -6292,6 +6324,88 @@ function renderDashboard() {
             options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom', labels: { color: '#8a99ad', boxWidth: 12, font: { size: 11 } } } } }
         });
     }
+    renderDashboardAderencia();
+}
+
+let chartDashboardAderencia = null;
+// Resumo "de relance" da Nota de Aderência + indicadores específicos do
+// contrato, direto no Dashboard -- sem precisar entrar em Relatórios.
+// Sempre usa o ciclo de medição ATUAL (não o filtro de período de
+// Relatórios, que é de outra tela e não deveria vazar aqui).
+function renderDashboardAderencia() {
+    const periodo = periodoMedicaoAtual();
+    const s11d = isClientApprovalSite();
+    const materiais = isMaterialsContractSite();
+    const unidadeMin = s11d ? 'atividade' : 'OM';
+
+    const b = sodexoCleaningBreakdown(periodo);
+    const notaEl = document.getElementById('dash-kpi-nota');
+    const notaSub = document.getElementById('dash-kpi-nota-sub');
+    if (!b) {
+        notaEl.textContent = '—';
+        notaSub.textContent = 'Nenhuma atividade encerrada no ciclo atual';
+    } else {
+        notaEl.textContent = `${sodexoAdherenceScore(b)}%`;
+        notaSub.textContent = `${b.total} ${unidadeMin}(s) no ciclo atual`;
+    }
+
+    // Horas Perdidas / Hora Extra / Atividade Extra -- só Fábrica/Viga Materiais.
+    document.getElementById('dash-kpi-lost-hours-card').style.display = materiais ? '' : 'none';
+    document.getElementById('dash-kpi-overtime-card').style.display = materiais ? '' : 'none';
+    document.getElementById('dash-kpi-atividade-extra-card').style.display = materiais ? '' : 'none';
+    if (materiais) {
+        const lost = state.bookings
+            .filter(bk => bk.type === LOST_HOURS_TYPE && bk.date >= periodo.from && bk.date <= periodo.to)
+            .reduce((sum, bk) => sum + (bk.lostHours || 0), 0);
+        document.getElementById('dash-kpi-lost-hours').textContent = `${lost.toFixed(1)}h`;
+        document.getElementById('dash-kpi-lost-hours-sub').textContent = lost > 0 ? 'Tempo ocioso aguardando material' : 'Nenhum registro no ciclo atual';
+
+        const overtimeEntries = state.bookings.filter(bk => bk.type === OVERTIME_TYPE && bk.date >= periodo.from && bk.date <= periodo.to);
+        const overtimeTotal = overtimeEntries.reduce((sum, bk) => sum + (bk.overtimeHours || 0), 0);
+        document.getElementById('dash-kpi-overtime').textContent = `${overtimeTotal.toFixed(1)}h`;
+        document.getElementById('dash-kpi-overtime-sub').textContent = overtimeTotal > 0 ? 'Jornada extra do Encarregado' : 'Nenhum registro no ciclo atual';
+
+        const extraEntries = state.bookings.filter(bk => bk.type === SODEXO_CLEANING_TYPE && bk.isExtra
+            && ['ENCERRADA', 'APROVADO_VALE'].includes(bk.closureStatus) && bk.date >= periodo.from && bk.date <= periodo.to);
+        document.getElementById('dash-kpi-atividade-extra').textContent = String(extraEntries.length);
+        document.getElementById('dash-kpi-atividade-extra-sub').textContent = extraEntries.length > 0 ? 'Concluídas no ciclo atual' : 'Nenhuma atividade extra no ciclo atual';
+    }
+
+    // Pendente Vale -- só S11D, onde a decisão de aprovação é dela.
+    document.getElementById('dash-kpi-pendente-vale-card').style.display = s11d ? '' : 'none';
+    if (s11d) {
+        const pvEl = document.getElementById('dash-kpi-pendente-vale');
+        const pvSub = document.getElementById('dash-kpi-pendente-vale-sub');
+        if (!b) { pvEl.textContent = '—'; pvSub.textContent = 'Nenhuma atividade no ciclo atual'; }
+        else { pvEl.textContent = `${b.pendenteVale} (${b.pctPendenteVale}%)`; pvSub.textContent = 'Aguardando decisão da Vale'; }
+    }
+
+    // Mini-gráfico de tendência -- mesma lógica de renderAderenciaHistoricoChart
+    // (em Relatórios), só que num canvas próprio do Dashboard, sempre visível
+    // sem precisar trocar de aba.
+    const ctxDash = document.getElementById('chart-dashboard-aderencia');
+    if (chartDashboardAderencia) { chartDashboardAderencia.destroy(); chartDashboardAderencia = null; }
+    if (ctxDash) {
+        const periodos = lastNMeasurementPeriods(6);
+        const notas = periodos.map(p => {
+            const pb = sodexoCleaningBreakdown(p);
+            return pb ? sodexoAdherenceScore(pb) : null;
+        });
+        chartDashboardAderencia = new Chart(ctxDash, {
+            type: 'line',
+            data: {
+                labels: periodos.map(p => p.label),
+                datasets: [{ label: 'Nota', data: notas, borderColor: '#2563eb', backgroundColor: 'rgba(37,99,235,0.12)', fill: true, spanGaps: false, tension: 0.3, pointRadius: 3 }],
+            },
+            options: {
+                responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } },
+                scales: {
+                    x: { ticks: { color: '#8a99ad' }, grid: { color: '#2b394e' } },
+                    y: { min: 0, ticks: { color: '#8a99ad', callback: (v) => v + '%' }, grid: { color: '#2b394e' } },
+                },
+            },
+        });
+    }
 }
 
 /* =========================================================
@@ -6475,7 +6589,7 @@ let chartAtividadeExtra = null, chartHorasPerdidas = null, chartOvertime = null;
 // impressão acontecer antes de medir de novo.
 window.addEventListener('beforeprint', () => {
     requestAnimationFrame(() => requestAnimationFrame(() => {
-        [chartStatus, chartTop5, chartTop5Limpeza, chartArea, chartAderenciaHistorico, chartAtividadeExtra, chartHorasPerdidas, chartOvertime].forEach(c => { if (c) c.resize(); });
+        [chartStatus, chartDashboardAderencia, chartTop5, chartTop5Limpeza, chartArea, chartAderenciaHistorico, chartAtividadeExtra, chartHorasPerdidas, chartOvertime].forEach(c => { if (c) c.resize(); });
     }));
 });
 
