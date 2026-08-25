@@ -1303,6 +1303,11 @@ body.book-preview-mode .book-preview-toolbar {
                 <div class="kpi-value" id="kpi-overtime">—</div>
                 <div class="kpi-sub" id="kpi-overtime-sub">Jornada extra do Encarregado</div>
             </div>
+            <div class="kpi-card" id="kpi-atividade-extra-card" style="--accent: #14b8a6; display:none;">
+                <div class="kpi-label">Atividade Extra (Período)</div>
+                <div class="kpi-value" id="kpi-atividade-extra">—</div>
+                <div class="kpi-sub" id="kpi-atividade-extra-sub">Atividades extras concluídas no período</div>
+            </div>
         </div>
 
         <div class="chart-box" style="margin-bottom:18px;">
@@ -6591,6 +6596,26 @@ function renderOvertimeKpi() {
     sub.textContent = total > 0 ? `${total50.toFixed(1)}h a 50% · ${total100.toFixed(1)}h a 100%` : 'Nenhum registro no período selecionado';
 }
 
+// KPI de contagem de Atividade Extra no período -- mesmo filtro (tipo,
+// isExtra, desfecho concluído) já usado no gráfico histórico
+// (renderAtividadeExtraChart), só que sobre o período do filtro de
+// Relatórios em vez dos últimos 6 ciclos de medição.
+function renderAtividadeExtraKpi() {
+    const card = document.getElementById('kpi-atividade-extra-card');
+    if (card) card.style.display = isMaterialsContractSite() ? '' : 'none';
+    if (!isMaterialsContractSite()) return;
+    const el = document.getElementById('kpi-atividade-extra');
+    if (!el) return;
+    const sub = document.getElementById('kpi-atividade-extra-sub');
+    const { from, to } = currentReportPeriod();
+    const entries = state.bookings.filter(b => b.type === SODEXO_CLEANING_TYPE && b.isExtra
+        && ['ENCERRADA', 'APROVADO_VALE'].includes(b.closureStatus)
+        && (!from || b.date >= from) && (!to || b.date <= to));
+    const totalHoras = Math.round(entries.reduce((sum, b) => sum + (b.endMin - b.startMin) / 60, 0) * 10) / 10;
+    el.textContent = String(entries.length);
+    sub.textContent = entries.length > 0 ? `${totalHoras}h somadas à nota no período` : 'Nenhuma atividade extra no período selecionado';
+}
+
 // Soma de horas de atividades extras concluídas (Área J ou marcadas
 // manualmente) por período de medição -- linha do tempo pra mostrar ao
 // cliente o quanto de atendimento extra foi feito além do programado.
@@ -6757,6 +6782,7 @@ function renderCharts() {
     renderAderenciaHistoricoChart();
     renderLostHoursKpi();
     renderOvertimeKpi();
+    renderAtividadeExtraKpi();
     renderAtividadeExtraChart();
     renderHorasPerdidasChart();
     renderOvertimeChart();
