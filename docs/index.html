@@ -4141,16 +4141,53 @@ function openMobileEquip(tag) {
     mobileSelectedTag = tag;
     // Só considera bloqueios de Limpeza -- é tudo que o encarregado pode
     // criar/encerrar por aqui (Manutenção continua exclusiva do PCM no shell desktop).
-    const aberto = state.bookings.find(b =>
+    // Com a semana inteira programada de uma vez (importação em massa), é
+    // comum uma tag já ter MAIS de uma OM em aberto ao mesmo tempo (uma por
+    // dia da semana) -- pegar só a primeira (.find) fazia o encarregado
+    // adiantar um serviço e cair sempre na OM errada pra encerrar. Com mais
+    // de uma em aberto, mostra uma lista pra ele escolher qual encerrar.
+    const abertos = state.bookings.filter(b =>
         b.tag === tag && isActiveBooking(b) && (b.type === 'Limpeza Sodexo' || b.type === 'Limpeza Mecanizada')
     );
-    if (aberto && (aberto.pendingOfflineSync || aberto.pendingOfflineCreate)) {
-        renderMobileOfflineStatus(aberto);
-    } else if (aberto) {
-        renderMobileCloseForm(aberto);
+    if (abertos.length > 1) {
+        renderMobileEquipOmChooser(tag, abertos);
+    } else if (abertos.length === 1 && (abertos[0].pendingOfflineSync || abertos[0].pendingOfflineCreate)) {
+        renderMobileOfflineStatus(abertos[0]);
+    } else if (abertos.length === 1) {
+        renderMobileCloseForm(abertos[0]);
     } else {
         renderMobileNewForm(tag);
     }
+}
+
+// Lista de escolha quando a mesma tag tem mais de uma OM em aberto --
+// ordenada por data (mais antiga primeiro), cada linha abre direto o
+// encerramento (ou a tela de "aguardando envio") daquela OM específica.
+function renderMobileEquipOmChooser(tag, abertos) {
+    const sorted = abertos.slice().sort((a, b) => a.date.localeCompare(b.date) || a.startMin - b.startMin);
+    const body = document.getElementById('mobile-encarregado-body');
+    body.innerHTML = `
+        <button type="button" class="mobile-back" onclick="renderMobileEquipList()">&larr; Voltar</button>
+        <div class="mobile-card">
+            <div class="mobile-card-title">${escapeHtml(tag)} — ${escapeHtml(AREA_LABEL[areaOf(tag)] || areaOf(tag) || '')}</div>
+            <div class="mobile-card-sub">Este equipamento tem ${sorted.length} OMs em aberto. Selecione qual encerrar:</div>
+        </div>
+        <div class="mobile-alert-list" style="margin-top:10px;">
+            ${sorted.map(b => `
+                <button type="button" class="mobile-alert-item" onclick="openMobileEquipOm('${b.id}')">
+                    <span class="mobile-equip-tag">OM ${escapeHtml(b.om || '—')}</span>
+                    <span class="mobile-equip-area">${formatDateBR(b.date)} · ${minutesToTime(b.startMin)}${b.pendingOfflineSync || b.pendingOfflineCreate ? ' · 📡 aguardando envio' : ''}</span>
+                </button>
+            `).join('')}
+        </div>
+    `;
+}
+
+function openMobileEquipOm(id) {
+    const booking = state.bookings.find(b => b.id === id);
+    if (!booking) return;
+    if (booking.pendingOfflineSync || booking.pendingOfflineCreate) renderMobileOfflineStatus(booking);
+    else renderMobileCloseForm(booking);
 }
 
 // Tela mostrada em vez do formulário de encerramento quando esse lançamento
