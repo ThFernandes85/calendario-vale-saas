@@ -2067,6 +2067,11 @@ function canFixPhotos() {
 // sem depender do Admin Master toda vez). RLS de bookings_delete já libera
 // GERENTE pra isso -- essa função só reflete no front o que o banco já permite.
 function canDeleteBooking() { return state.profileKey === 'ADMIN' || state.profileKey === 'GERENTE'; }
+// Cancelar Todos do Dia é mais sensível que excluir um lançamento só (apaga
+// TODOS os agendamentos do site na data, de qualquer tipo/status) -- Admin
+// Master em qualquer site, e o Gerente só no Contrato de Materiais (Fábrica/
+// Viga), mesmo recorte já usado em canFixPhotos.
+function canCancelDay() { return state.profileKey === 'ADMIN' || (state.profileKey === 'GERENTE' && isMaterialsContractSite()); }
 // S11D (limpeza predial) fala em "Área"/"Sub-área", nunca "Equipamento" --
 // esse termo só faz sentido pro Mutuca (máquina industrial de verdade).
 // Usado em todo texto de tela que hoje diz "Equipamento", condicionado ao
@@ -3015,7 +3020,7 @@ function cancelDayMatches(dateStr) {
 }
 
 function openCancelDayModal() {
-    if (state.profileKey !== 'ADMIN') { showAccessDenied('Apenas o Admin Master pode cancelar agendamentos em massa.'); return; }
+    if (!canCancelDay()) { showAccessDenied('Apenas o Admin Master (ou o Gerente no Contrato de Materiais) pode cancelar agendamentos em massa.'); return; }
     openModal(`
         <div class="modal-header"><h3>Cancelar Todos os Agendamentos do Dia</h3><button class="modal-close" onclick="closeModal()">&times;</button></div>
         <div class="modal-body">
@@ -3067,7 +3072,7 @@ function updateCancelDayConfirmState() {
 }
 
 async function confirmCancelDay() {
-    if (state.profileKey !== 'ADMIN') { showAccessDenied('Apenas o Admin Master pode cancelar agendamentos em massa.'); return; }
+    if (!canCancelDay()) { showAccessDenied('Apenas o Admin Master (ou o Gerente no Contrato de Materiais) pode cancelar agendamentos em massa.'); return; }
     const dateStr = document.getElementById('cancel-day-date').value;
     const reason = document.getElementById('cancel-day-just').value.trim();
     if (!dateStr) { toast('Escolha uma data.', 'error'); return; }
@@ -6222,7 +6227,7 @@ const WEEKDAY_NAMES = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sext
 
 function renderWeekGrid() {
     const cancelDayBtn = document.getElementById('btn-cancel-day');
-    if (cancelDayBtn) cancelDayBtn.style.display = state.profileKey === 'ADMIN' ? '' : 'none';
+    if (cancelDayBtn) cancelDayBtn.style.display = canCancelDay() ? '' : 'none';
     const lostHoursWrap = document.getElementById('btn-lost-hours-wrap');
     if (lostHoursWrap) lostHoursWrap.style.display = (canRegisterLostHours() && isMaterialsContractSite()) ? '' : 'none';
     const tag = state.agendaTag;
