@@ -897,7 +897,7 @@ body.book-preview-mode .book-preview-toolbar {
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><rect x="7" y="12" width="3" height="6"/><rect x="13" y="8" width="3" height="10"/><rect x="19" y="5" width="0" height="13"/><path d="M19 5v13"/></svg>
                 <span class="nav-label">Relatórios &amp; Auditoria</span>
             </button>
-            <button class="nav-item" data-view="mapacalor" title="Mapa de Calor">
+            <button class="nav-item" data-view="mapacalor" title="Mapa de Calor" style="display:none;">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="5" height="5" rx="1"/><rect x="9.5" y="3" width="5" height="5" rx="1"/><rect x="16" y="3" width="5" height="5" rx="1"/><rect x="3" y="9.5" width="5" height="5" rx="1"/><rect x="9.5" y="9.5" width="5" height="5" rx="1"/><rect x="16" y="9.5" width="5" height="5" rx="1"/><rect x="3" y="16" width="5" height="5" rx="1"/><rect x="9.5" y="16" width="5" height="5" rx="1"/><rect x="16" y="16" width="5" height="5" rx="1"/></svg>
                 <span class="nav-label">Mapa de Calor</span>
             </button>
@@ -2054,8 +2054,19 @@ function canViewValeApprovals() { return canDecideValeApprovals() || state.profi
 function canManageAssets() { return state.profileKey === 'ADMIN' || state.profileKey === 'TECNICO_PLANEJAMENTO' || state.profileKey === 'GERENTE'; }
 // Corrigir Fotos é Admin Master em qualquer site; no S11D o Técnico de
 // Planejamento e GU também pode -- ele que acompanha a evidência fotográfica
-// das limpezas no dia a dia por lá, mas isso não vale pro Mutuca.
-function canFixPhotos() { return state.profileKey === 'ADMIN' || (state.profileKey === 'TECNICO_PLANEJAMENTO' && isClientApprovalSite()); }
+// das limpezas no dia a dia por lá, mas isso não vale pro Mutuca. No
+// Contrato de Materiais (Fábrica/Viga), o Gerente também pode -- é ele quem
+// acompanha de perto a evidência de entrega lançada pelos encarregados.
+function canFixPhotos() {
+    return state.profileKey === 'ADMIN'
+        || (state.profileKey === 'TECNICO_PLANEJAMENTO' && isClientApprovalSite())
+        || (state.profileKey === 'GERENTE' && isMaterialsContractSite());
+}
+// Excluir lançamento incorreto -- Admin Master em qualquer site, e também
+// o Gerente (ele precisa desse controle de corrigir erro de lançamento
+// sem depender do Admin Master toda vez). RLS de bookings_delete já libera
+// GERENTE pra isso -- essa função só reflete no front o que o banco já permite.
+function canDeleteBooking() { return state.profileKey === 'ADMIN' || state.profileKey === 'GERENTE'; }
 // S11D (limpeza predial) fala em "Área"/"Sub-área", nunca "Equipamento" --
 // esse termo só faz sentido pro Mutuca (máquina industrial de verdade).
 // Usado em todo texto de tela que hoje diz "Equipamento", condicionado ao
@@ -2098,6 +2109,11 @@ function applyEquipTerminology() {
     setText('btn-move-equip', `Mover ${tSub}`);
     setText('btn-rename-equip', `Renomear ${tSub}`);
     setText('btn-delete-equip', `Excluir ${tSub}`);
+    // Mapa de Calor é por equipamento/ativo (contagem de intervenções por
+    // tag) -- não faz sentido no Contrato de Materiais, onde cada "tag" já
+    // é só um representante da área (o indicador equivalente de lá é o Top
+    // 5 Áreas em Relatórios, que já agrupa por área de verdade).
+    document.querySelector('[data-view="mapacalor"]').style.display = isMaterialsContractSite() ? 'none' : 'flex';
     // No contrato de Materiais (Fábrica/Viga Materiais) cada "equipamento"
     // cadastrado é na verdade uma área do armazém -- só este card muda,
     // o resto da terminologia desse site continua "Equipamento" mesmo.
@@ -2918,7 +2934,7 @@ async function submitLostHours() {
 function openDetailModal(booking) {
     const p = activeProfile();
     const canCancel = p.readOnly === false && (state.profileKey === 'ADMIN' || p.canBook.includes(booking.type));
-    const canDelete = state.profileKey === 'ADMIN';
+    const canDelete = canDeleteBooking();
     openModal(`
         <div class="modal-header"><h3>${booking.tag} — Detalhes do Bloqueio</h3><button class="modal-close" onclick="closeModal()">&times;</button></div>
         <div class="modal-body">
@@ -2940,7 +2956,7 @@ function openDetailModal(booking) {
 }
 
 function openDeleteBookingModal(id) {
-    if (state.profileKey !== 'ADMIN') { showAccessDenied('Apenas o Admin Master pode excluir um lançamento incorreto.'); return; }
+    if (!canDeleteBooking()) { showAccessDenied('Apenas o Admin Master ou o Gerente podem excluir um lançamento incorreto.'); return; }
     const booking = state.bookings.find(b => b.id === id);
     if (!booking) return;
     openModal(`
@@ -2963,7 +2979,7 @@ function openDeleteBookingModal(id) {
 }
 
 async function confirmDeleteBooking(id) {
-    if (state.profileKey !== 'ADMIN') { showAccessDenied('Apenas o Admin Master pode excluir um lançamento incorreto.'); return; }
+    if (!canDeleteBooking()) { showAccessDenied('Apenas o Admin Master ou o Gerente podem excluir um lançamento incorreto.'); return; }
     const idx = state.bookings.findIndex(b => b.id === id);
     if (idx === -1) return;
     const booking = state.bookings[idx];
@@ -3302,7 +3318,7 @@ const FIXABLE_PHOTO_STATUSES = ['ENCERRADA', 'APROVADO_VALE', 'REPROVADO_VALE', 
 // closurePhotoSlotsFor pra cobrir tanto os 2 slots do Mutuca (antes/depois)
 // quanto os 3 do S11D (antes/durante/depois).
 function openFixPhotosModal(id) {
-    if (!canFixPhotos()) { showAccessDenied('Apenas o Admin Master (e o Técnico de Planejamento e GU no S11D) pode corrigir fotos.'); return; }
+    if (!canFixPhotos()) { showAccessDenied('Apenas o Admin Master (Técnico de Planejamento e GU no S11D, ou Gerente no Contrato de Materiais) pode corrigir fotos.'); return; }
     const booking = state.bookings.find(b => b.id === id);
     if (!booking) return;
     const preview = (url) => url
@@ -3338,7 +3354,7 @@ function openFixPhotosModal(id) {
 }
 
 async function confirmFixPhotos(id) {
-    if (!canFixPhotos()) { showAccessDenied('Apenas o Admin Master (e o Técnico de Planejamento e GU no S11D) pode corrigir fotos.'); return; }
+    if (!canFixPhotos()) { showAccessDenied('Apenas o Admin Master (Técnico de Planejamento e GU no S11D, ou Gerente no Contrato de Materiais) pode corrigir fotos.'); return; }
     const booking = state.bookings.find(b => b.id === id);
     if (!booking) return;
     const slots = closurePhotoSlotsFor(booking);
@@ -3366,7 +3382,7 @@ async function confirmFixPhotos(id) {
     }
     booking.closurePhotoBefore = photoBeforeUrl; booking.closurePhotoAfter = photoAfterUrl; booking.closurePhotosExtra = photosExtra;
     await addAuditEntry({
-        tag: booking.tag, acao: `${booking.type} (Fotos corrigidas manualmente)`, justificativa: 'Foto substituída pelo Admin Master via "Corrigir Fotos".',
+        tag: booking.tag, acao: `${booking.type} (Fotos corrigidas manualmente)`, justificativa: `Foto substituída por ${activeProfile().user} (${state.profileKey}) via "Corrigir Fotos".`,
         om: booking.om, agendamentoData: booking.date, agendamentoHorario: `${minutesToTime(booking.startMin)}–${minutesToTime(booking.endMin)}`
     });
     closeModal();
@@ -6105,6 +6121,7 @@ function switchView(view) {
     if (view === 'usuarios' && state.profileKey !== 'ADMIN') { showAccessDenied('Apenas o Admin Master pode gerenciar usuários.'); return; }
     if (view === 'importacao' && state.profileKey !== 'ADMIN' && state.profileKey !== 'GERENTE') { showAccessDenied('Apenas o Admin Master e o Gerente podem fazer importação em massa.'); return; }
     if (view === 'aprovacoes' && !canViewValeApprovals()) { showAccessDenied('Perfil sem privilégios para acessar as Aprovações Vale.'); return; }
+    if (view === 'mapacalor' && isMaterialsContractSite()) { showAccessDenied('Mapa de Calor não está disponível em sites de Contrato de Materiais.'); return; }
     if (view === 'saude-ativos' && state.profileKey !== 'ADMIN') { showAccessDenied('Apenas o Admin Master pode acessar Saúde dos Ativos.'); return; }
     if (view === 'portaria' && state.profileKey !== 'ADMIN') { showAccessDenied('Apenas o Admin Master pode acessar Liberação de Portaria.'); return; }
     document.querySelectorAll('.nav-item').forEach(b => b.classList.toggle('active', b.dataset.view === view));
@@ -6661,7 +6678,6 @@ function renderClosedBookings() {
     const tbody = document.getElementById('closed-bookings-tbody');
     if (!tbody) return;
     const { from, to, isExtra, onlyLostHours } = state.reportFilter;
-    const isAdmin = state.profileKey === 'ADMIN';
     const statusFilterEl = document.getElementById('closed-status-filter');
     const statusFilter = statusFilterEl ? statusFilterEl.value : 'ALL';
     const rows = state.bookings.filter(b => {
@@ -6686,7 +6702,7 @@ function renderClosedBookings() {
             <td>${escapeHtml(b.closureReason || '—')}</td>
             <td>
                 ${canFixPhotos() && b.type === SODEXO_CLEANING_TYPE && FIXABLE_PHOTO_STATUSES.includes(b.closureStatus) ? `<button class="btn-secondary" style="padding:5px 9px; font-size:11px; margin-right:6px;" onclick="openFixPhotosModal('${b.id}')">Corrigir Fotos</button>` : ''}
-                ${isAdmin ? `<button class="btn-danger" style="padding:5px 9px; font-size:11px;" onclick="openDeleteBookingModal('${b.id}')">Excluir</button>` : '—'}
+                ${canDeleteBooking() ? `<button class="btn-danger" style="padding:5px 9px; font-size:11px;" onclick="openDeleteBookingModal('${b.id}')">Excluir</button>` : '—'}
             </td>
         </tr>
     `).join('') || `<tr><td colspan="9" style="text-align:center; color:var(--text-muted);">${isClientApprovalSite()
