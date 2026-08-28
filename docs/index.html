@@ -379,6 +379,42 @@ table.heatmap-table tr:hover td { filter: brightness(1.15); }
 @keyframes login-cloudDrift { from { transform:translateX(0); } to { transform:translateX(-6vw); } }
 @keyframes login-sceneCycle { 0% { opacity:0; } 3% { opacity:1; } 22% { opacity:1; } 25% { opacity:0; } 100% { opacity:0; } }
 @keyframes login-forkliftMove { 0%,100% { transform:translateX(0); } 50% { transform:translateX(60px); } }
+/* Sala de Controle (Painel de Correias) -- desenho da correia em CSS puro,
+   portado do handoff de design (Painel Correias TV.dc.html). */
+@keyframes correiasBeltMove { from { background-position: 0 0; } to { background-position: 44px 0; } }
+@keyframes correiasCritPulse { 0%,100% { opacity: 0.2; } 50% { opacity: 0.75; } }
+@keyframes correiasLivePulse { 0%,100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.35; transform: scale(0.8); } }
+@keyframes correiasSpin { to { transform: rotate(360deg); } }
+#view-correias { font-family: Barlow, Helvetica, sans-serif; }
+.correias-live-badge { display:flex; align-items:center; gap:8px; padding:6px 12px; border:1px solid #243040; background:#121822; }
+.correias-live-dot { width:9px; height:9px; border-radius:50%; background:#3fbf6f; animation: correiasLivePulse 1.6s ease-in-out infinite; }
+.correias-count-card { display:flex; flex-direction:column; gap:2px; min-width:104px; padding:10px 14px; background:#121822; border:1px solid #1e2530; border-left:3px solid var(--accent, #1e2530); }
+.correias-count-value { font-family:'Barlow Condensed',sans-serif; font-size:30px; font-weight:700; line-height:1; color:#e8ebef; }
+.correias-count-label { font-size:11px; letter-spacing:0.1em; text-transform:uppercase; color:#7b8593; }
+.correias-chip { cursor:pointer; display:flex; align-items:center; gap:8px; padding:6px 13px; font-size:12px; font-weight:600; letter-spacing:0.1em; text-transform:uppercase; border:1px solid #1e2530; background:#121822; color:#9aa3af; }
+.correias-chip:hover { border-color:#3f4a59; }
+.correias-chip.active { background:#1b2431; color:#eef1f4; }
+.correias-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(184px, 1fr)); gap:10px; }
+.correias-card { position:relative; text-align:left; cursor:pointer; background:linear-gradient(180deg, #141a24 0%, #10151d 100%); border:1px solid #1e2530; padding:9px 10px 8px; overflow:hidden; color:#e8ebef; font-family:Barlow,Helvetica,sans-serif; }
+.correias-card:hover { border-color:#4b5765; }
+.correias-belt-draw { position:relative; height:74px; margin:6px -2px 0; overflow:hidden; }
+.correias-belt-ground { position:absolute; left:0; right:0; bottom:5px; height:1px; background:repeating-linear-gradient(90deg,#232a35 0 5px,transparent 5px 10px); }
+.correias-belt-leg { position:absolute; bottom:6px; width:4px; opacity:0.5; }
+.correias-belt-truss { position:absolute; inset:0; background:repeating-linear-gradient(62deg, rgba(255,255,255,0.12) 0 2px, transparent 2px 13px); }
+.correias-belt-frame { position:absolute; inset:0; }
+.correias-belt-base { position:absolute; inset:0; background:#0a0d12; }
+.correias-belt-texture { position:absolute; inset:0; background:repeating-linear-gradient(115deg,#2f353e 0 7px,#171c23 7px 19px); animation: correiasBeltMove 1.6s linear infinite; }
+.correias-belt-ore { position:absolute; inset:0; }
+.correias-pulley { position:absolute; width:18px; height:18px; border-radius:50%; border:2px solid; background:#10151d; }
+.correias-hub { position:absolute; width:7px; height:7px; border-radius:50%; animation: correiasSpin 1.6s linear infinite; }
+.correias-glow { position:absolute; inset:0; pointer-events:none; animation: correiasCritPulse 2.2s ease-in-out infinite; }
+.correias-detail { position:sticky; top:20px; display:flex; flex-direction:column; gap:14px; }
+.correias-detail-box { display:flex; flex-direction:column; gap:13px; background:#121822; border:1px solid #1e2530; padding:16px; color:#e8ebef; }
+.correias-field { display:flex; flex-direction:column; gap:2px; padding:8px 10px; background:#0f141c; border:1px solid #1e2530; }
+.correias-field-label { font-size:10px; letter-spacing:0.1em; text-transform:uppercase; color:#6f7986; }
+.correias-action-btn { cursor:pointer; display:flex; align-items:center; gap:9px; padding:10px 12px; background:#0f141c; border:1px solid #232b36; font-size:12px; font-weight:700; letter-spacing:0.08em; text-transform:uppercase; color:#d7dce2; }
+.correias-action-btn:hover { border-color:var(--dot); }
+.correias-feed-item { display:flex; gap:10px; align-items:flex-start; padding:7px 0; border-bottom:1px solid #1a212b; }
 .login-bg-layer { position:absolute; pointer-events:none; }
 .login-scene { position:absolute; inset:0; animation: login-sceneCycle 32s ease-in-out infinite; }
 @media (max-width: 900px) {
@@ -562,12 +598,15 @@ body.book-preview-mode .book-preview-toolbar {
 #mobile-portaria-screen {
     display: none; flex-direction: column; height: 100vh; background: var(--bg-main);
 }
+#mobile-correias-screen {
+    display: none; flex-direction: column; height: 100vh; background: var(--bg-main);
+}
 .mobile-header {
     display: flex; align-items: center; justify-content: space-between;
     padding: 14px 16px; border-bottom: 1px solid var(--border-color); background: var(--bg-sidebar);
     flex: none;
 }
-#mobile-encarregado-body, #mobile-inspecao-body, #mobile-solicitante-body, #mobile-aprovador-body, #mobile-portaria-body { flex: 1; overflow-y: auto; padding: 16px; }
+#mobile-encarregado-body, #mobile-inspecao-body, #mobile-solicitante-body, #mobile-aprovador-body, #mobile-portaria-body, #mobile-correias-body { flex: 1; overflow-y: auto; padding: 16px; }
 .mobile-search {
     width: 100%; padding: 12px 14px; margin-bottom: 12px; font-size: 15px;
     background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 10px; color: var(--text-primary);
@@ -837,6 +876,18 @@ body.book-preview-mode .book-preview-toolbar {
     <div id="mobile-portaria-body"></div>
 </div>
 
+<!-- TELA MOBILE: TÉCNICO DE MANUTENÇÃO / OPERAÇÃO (Sala de Controle de Correias) -->
+<div id="mobile-correias-screen" style="display:none;">
+    <div class="mobile-header">
+        <div>
+            <div style="font-size:15px; font-weight:700; color:#fff;">Correias · <span id="mobile-correias-site-label"></span></div>
+            <div style="font-size:12px; color:var(--text-secondary);" id="mobile-correias-user-label"></div>
+        </div>
+        <button type="button" class="btn-secondary" id="btn-mobile-correias-logout">Sair</button>
+    </div>
+    <div id="mobile-correias-body"></div>
+</div>
+
 <!-- SIDEBAR ESQUERDA -->
 <aside style="display:none;">
     <div>
@@ -910,6 +961,10 @@ body.book-preview-mode .book-preview-toolbar {
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 21h18M5 21V7l7-4 7 4v14M9 9h1M9 13h1M14 9h1M14 13h1"/></svg>
                 <span class="nav-label">Liberação de Portaria</span>
                 <span class="nav-badge" id="nav-badge-portaria"></span>
+            </button>
+            <button class="nav-item" data-view="correias" title="Sala de Controle" style="display:none;">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="6" cy="12" r="3"/><circle cx="18" cy="12" r="3"/><path d="M9 12h6"/></svg>
+                <span class="nav-label">Sala de Controle</span>
             </button>
             <button class="nav-item" data-view="aprovacoes" title="Aprovações Vale" style="display:none;">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
@@ -1584,6 +1639,14 @@ body.book-preview-mode .book-preview-toolbar {
         </div>
     </div>
 
+    <!-- VIEW: SALA DE CONTROLE (Painel de Correias Transportadoras) -- todo
+         o conteúdo é montado via JS em renderCorreiasPanel(), o layout é
+         próprio demais (grade de correias desenhadas em CSS + painel de
+         detalhe) pra valer a pena manter em HTML estático. -->
+    <div class="content-container" id="view-correias">
+        <div id="correias-panel-root"></div>
+    </div>
+
     <!-- VIEW: LIBERAÇÃO DE PORTARIA (saída/retorno de equipamento pesado) -->
     <div class="content-container" id="view-portaria">
         <div>
@@ -1927,7 +1990,14 @@ const ROLE_META = {
     // loginAs(). Nenhum agenda/encerra OM, por isso canBook vazio.
     SOLICITANTE_PORTARIA: { label: 'Solicitante (Portaria · Mobile)', canBook: [], readOnly: true },
     APROVADOR_PORTARIA: { label: 'Aprovador (Portaria · Mobile)', canBook: [], readOnly: true },
-    PORTARIA: { label: 'Portaria / Guarita (Mobile)', canBook: [], readOnly: true }
+    PORTARIA: { label: 'Portaria / Guarita (Mobile)', canBook: [], readOnly: true },
+    // Sala de Controle (Painel de Correias Transportadoras) -- mobile-only,
+    // uma tela só compartilhada pelos dois (ver renderMobileCorreias() e o
+    // branch em loginAs()), dirigida pelo canBook de cada um: Manutenção
+    // libera Preventiva/Corretiva, Operação libera Limpeza. Mesmo recorte
+    // de tipo que PCM/PCO, só com tela mobile simplificada.
+    TECNICO_MANUTENCAO: { label: 'Técnico de Manutenção (Correias · Mobile)', canBook: ['Manutenção Preventiva', 'Manutenção Corretiva'], readOnly: false },
+    TECNICO_OPERACAO: { label: 'Técnico de Operação (Correias · Mobile)', canBook: ['Limpeza Sodexo', 'Limpeza Mecanizada'], readOnly: false }
 };
 const TYPE_STATUS = { 'Manutenção Preventiva': 'manutencao', 'Manutenção Corretiva': 'manutencao', 'Limpeza Sodexo': 'limpeza', 'Limpeza Mecanizada': 'limpeza' };
 // Rótulo de exibição no card da agenda -- só nos sites do Contrato de
@@ -2434,15 +2504,22 @@ function isMaterialsContractSite(siteKey) {
     const k = siteKey || state.currentSite;
     return !!(SITE_CONFIG[k] && SITE_CONFIG[k].materialsContract);
 }
+// Sala de Controle (Painel de Correias Transportadoras) -- mineração,
+// sistemática própria e sem relação com S11D/Materiais. Controla se a
+// view "correias" (nav + painel ao vivo de status) aparece nesse site.
+function isCorreiasSite(siteKey) {
+    const k = siteKey || state.currentSite;
+    return !!(SITE_CONFIG[k] && SITE_CONFIG[k].correiasPanel);
+}
 
 async function loadSites() {
-    const { data, error } = await sb.from('sites').select('key, label, client_approval_workflow, materials_contract').order('label');
+    const { data, error } = await sb.from('sites').select('key, label, client_approval_workflow, materials_contract, correias_panel').order('label');
     if (error) { toast('Erro ao carregar sites: ' + error.message, 'error'); SITES = {}; SITE_CONFIG = {}; return { error }; }
     SITES = {};
     SITE_CONFIG = {};
     (data || []).forEach(s => {
         SITES[s.key] = s.label;
-        SITE_CONFIG[s.key] = { clientApprovalWorkflow: !!s.client_approval_workflow, materialsContract: !!s.materials_contract };
+        SITE_CONFIG[s.key] = { clientApprovalWorkflow: !!s.client_approval_workflow, materialsContract: !!s.materials_contract, correiasPanel: !!s.correias_panel };
     });
     return { error: null };
 }
@@ -2533,28 +2610,34 @@ async function switchSite(newSiteKey) {
 const SITE_TYPE_OPTIONS = [
     {
         value: 'industrial', label: 'Limpeza Industrial (padrão -- ex: Mutuca)',
-        clientApprovalWorkflow: false, materialsContract: false,
+        clientApprovalWorkflow: false, materialsContract: false, correiasPanel: false,
         help: 'Sistemática padrão: tag é o equipamento de verdade, com OM normal, sem workflow de aprovação do cliente.',
     },
     {
         value: 'predial', label: 'Limpeza Predial -- Cliente aprova cada limpeza (workflow S11D)',
-        clientApprovalWorkflow: true, materialsContract: false,
+        clientApprovalWorkflow: true, materialsContract: false, correiasPanel: false,
         help: 'Sem OM -- o encarregado encerra com fotos, mas fica aguardando o cliente aprovar/reprovar/marcar pendência antes de contar na nota. Tag vira Área/Sub-área.',
     },
     {
         value: 'materiais', label: 'Contrato de Controle de Materiais (Armazém)',
-        clientApprovalWorkflow: false, materialsContract: true,
+        clientApprovalWorkflow: false, materialsContract: true, correiasPanel: false,
         help: 'Sistemática própria de armazém (ex: Fábrica Materiais, Viga Materiais) -- libera "Atividade Extra" (Área J) e "Registrar Hora Perdida" só nesse site. Tag vira Área.',
     },
+    {
+        value: 'correias', label: 'Manutenção - Transportadores (Sala de Controle)',
+        clientApprovalWorkflow: false, materialsContract: false, correiasPanel: true,
+        help: 'Painel ao vivo de correias transportadoras -- status por Preventiva/Corretiva/Limpeza/Crítico, com liberação pelo celular do Técnico de Manutenção/Operação.',
+    },
 ];
-function siteTypeFromFlags(clientApprovalWorkflow, materialsContract) {
+function siteTypeFromFlags(clientApprovalWorkflow, materialsContract, correiasPanel) {
+    if (correiasPanel) return 'correias';
     if (materialsContract) return 'materiais';
     if (clientApprovalWorkflow) return 'predial';
     return 'industrial';
 }
 function siteTypeFlags(value) {
     const opt = SITE_TYPE_OPTIONS.find(o => o.value === value) || SITE_TYPE_OPTIONS[0];
-    return { clientApprovalWorkflow: opt.clientApprovalWorkflow, materialsContract: opt.materialsContract };
+    return { clientApprovalWorkflow: opt.clientApprovalWorkflow, materialsContract: opt.materialsContract, correiasPanel: opt.correiasPanel };
 }
 function siteTypeSelectHtml(id, selectedValue) {
     return `<select id="${id}">${SITE_TYPE_OPTIONS.map(o => `<option value="${o.value}" ${o.value === selectedValue ? 'selected' : ''}>${escapeHtml(o.label)}</option>`).join('')}</select>`;
@@ -2587,19 +2670,19 @@ function openAddSiteModal() {
 }
 function confirmAddSite() {
     const flags = siteTypeFlags(document.getElementById('new-site-type').value);
-    addSite(document.getElementById('new-site-name').value, flags.clientApprovalWorkflow, flags.materialsContract);
+    addSite(document.getElementById('new-site-name').value, flags.clientApprovalWorkflow, flags.materialsContract, flags.correiasPanel);
 }
 
-async function addSite(name, clientApprovalWorkflow, materialsContract) {
+async function addSite(name, clientApprovalWorkflow, materialsContract, correiasPanel) {
     if (state.profileKey !== 'ADMIN') { showAccessDenied('Apenas o Admin Master pode criar novos sites.'); return; }
     const trimmed = name.trim();
     const key = trimmed.toUpperCase().replace(/[^A-Z0-9_]/g, '_').replace(/_+/g, '_');
     if (!trimmed || !key) { toast('Informe um nome válido para o site.', 'error'); return; }
     if (SITES[key]) { toast('Já existe um site com esse nome.', 'error'); return; }
-    const { error } = await sb.from('sites').insert({ key, label: trimmed, client_approval_workflow: !!clientApprovalWorkflow, materials_contract: !!materialsContract });
+    const { error } = await sb.from('sites').insert({ key, label: trimmed, client_approval_workflow: !!clientApprovalWorkflow, materials_contract: !!materialsContract, correias_panel: !!correiasPanel });
     if (error) { toast('Erro ao criar site: ' + error.message, 'error'); return; }
     SITES[key] = trimmed;
-    SITE_CONFIG[key] = { clientApprovalWorkflow: !!clientApprovalWorkflow, materialsContract: !!materialsContract };
+    SITE_CONFIG[key] = { clientApprovalWorkflow: !!clientApprovalWorkflow, materialsContract: !!materialsContract, correiasPanel: !!correiasPanel };
     renderSiteSelect();
     closeModal();
     toast(`Site "${trimmed}" criado. Selecione-o para cadastrar áreas e equipamentos.`);
@@ -2611,7 +2694,7 @@ function openSiteConfigModal(key) {
     if (state.profileKey !== 'ADMIN') { showAccessDenied('Apenas o Admin Master pode configurar sites.'); return; }
     const label = SITES[key];
     if (!label) return;
-    const currentType = siteTypeFromFlags(isClientApprovalSite(key), isMaterialsContractSite(key));
+    const currentType = siteTypeFromFlags(isClientApprovalSite(key), isMaterialsContractSite(key), isCorreiasSite(key));
     openModal(`
         <div class="modal-header"><h3>Configurar Site — ${escapeHtml(label)}</h3><button class="modal-close" onclick="closeModal()">&times;</button></div>
         <div class="modal-body">
@@ -2637,10 +2720,10 @@ async function saveSiteConfig(key) {
     const flags = siteTypeFlags(document.getElementById('site-config-type').value);
     // Só o rótulo (label) muda -- a key interna do site (usada em áreas,
     // equipamentos, agendamentos, etc.) nunca é tocada aqui.
-    const { error } = await sb.from('sites').update({ label: newLabel, client_approval_workflow: flags.clientApprovalWorkflow, materials_contract: flags.materialsContract }).eq('key', key);
+    const { error } = await sb.from('sites').update({ label: newLabel, client_approval_workflow: flags.clientApprovalWorkflow, materials_contract: flags.materialsContract, correias_panel: flags.correiasPanel }).eq('key', key);
     if (error) { toast('Erro ao salvar configuração do site: ' + error.message, 'error'); return; }
     SITES[key] = newLabel;
-    SITE_CONFIG[key] = { clientApprovalWorkflow: flags.clientApprovalWorkflow, materialsContract: flags.materialsContract };
+    SITE_CONFIG[key] = { clientApprovalWorkflow: flags.clientApprovalWorkflow, materialsContract: flags.materialsContract, correiasPanel: flags.correiasPanel };
     closeModal();
     toast(`Configuração de "${newLabel}" salva.`);
     renderSiteSelect();
@@ -2765,6 +2848,17 @@ function getLiveStatus(tag) {
     return { status: 'manutencao', label: 'Manut.', booking: b };
 }
 
+// Sala de Controle (Painel de Correias) precisa dos 5 status separados --
+// getLiveStatus só devolve 4 (Preventiva e Corretiva ficam juntas em
+// "manutencao"). Decora o resultado olhando booking.type quando o status
+// for 'manutencao', sem duplicar a lógica de resolução do booking ativo.
+const CORREIA_STATUS_LABELS = { livre: 'Liberada', preventiva: 'Preventiva', corretiva: 'Corretiva', limpeza: 'Limpeza', critico: 'Crítico' };
+function correiaStatus(tag) {
+    const live = getLiveStatus(tag);
+    if (live.status !== 'manutencao') return live.status; // livre / limpeza / critico
+    return live.booking.type === 'Manutenção Preventiva' ? 'preventiva' : 'corretiva';
+}
+
 /* =========================================================
    TOASTS
    ========================================================= */
@@ -2797,13 +2891,16 @@ function showAccessDenied(detail) {
     `);
 }
 
-function openBookingModal(tag, dateStr, startHour) {
+function openBookingModal(tag, dateStr, startHour, presetType, presetEmergencial) {
     const p = activeProfile();
     if (p.readOnly || p.canBook.length === 0) { showAccessDenied(`O perfil "${p.label}" possui acesso apenas de leitura ao calendário.`); return; }
     pendingBookingDate = dateStr;
     // Limpeza Sodexo é o lançamento mais comum no dia a dia -- já vem
     // pré-selecionado (quando o perfil pode agendar esse tipo) pra agilizar.
-    const options = p.canBook.map(t => `<option value="${t}" ${t === SODEXO_CLEANING_TYPE ? 'selected' : ''}>${t}</option>`).join('');
+    // presetType (ex: vindo da Sala de Controle, clicando "Preventiva" no
+    // painel de detalhe) sobrepõe esse padrão.
+    const preselected = presetType || SODEXO_CLEANING_TYPE;
+    const options = p.canBook.map(t => `<option value="${t}" ${t === preselected ? 'selected' : ''}>${t}</option>`).join('');
     const defaultStart = `${pad(startHour)}:00`;
     const defaultEnd = minutesToTime(Math.min(startHour * 60 + 60, 23 * 60 + 59));
     openModal(`
@@ -2836,6 +2933,7 @@ function openBookingModal(tag, dateStr, startHour) {
     const toggleEmergencial = () => { document.getElementById('bk-emergencial-wrap').style.display = typeSelect.value === 'Manutenção Corretiva' ? 'block' : 'none'; };
     typeSelect.addEventListener('change', toggleEmergencial);
     toggleEmergencial();
+    if (presetEmergencial && document.getElementById('bk-emergencial')) document.getElementById('bk-emergencial').checked = true;
 }
 
 async function submitBooking(tag) {
@@ -4431,6 +4529,138 @@ async function submitMobileNewBooking(tag) {
     renderMobileCloseForm(booking);
 }
 
+/* =========================================================
+   MOBILE: TÉCNICO DE MANUTENÇÃO / OPERAÇÃO (Sala de Controle de Correias)
+   -- uma tela só compartilhada pelos dois papéis, dirigida pelo canBook de
+   cada um (Preventiva/Corretiva pra Manutenção, Limpeza pra Operação).
+   Fluxo enxuto de propósito -- sem fotos obrigatórias nem fila offline
+   (diferente do Encarregado): aqui o objetivo é atualizar o status rápido
+   pro painel ao vivo, não montar evidência fotográfica de auditoria.
+   ========================================================= */
+function renderMobileCorreias() {
+    document.getElementById('mobile-correias-site-label').textContent = SITES[state.currentSite] || state.currentSite;
+    document.getElementById('mobile-correias-user-label').textContent = activeProfile().user;
+    renderMobileCorreiasEquipList();
+}
+
+let mobileCorreiasSelectedTag = null;
+function renderMobileCorreiasEquipList() {
+    mobileCorreiasSelectedTag = null;
+    const body = document.getElementById('mobile-correias-body');
+    if (!ALL_EQUIP.length) {
+        body.innerHTML = `<div class="mobile-empty">Nenhuma correia cadastrada neste site.</div>`;
+        return;
+    }
+    const cards = ALL_EQUIP.map(eq => {
+        const live = getLiveStatus(eq.tag);
+        const status = correiaStatus(eq.tag);
+        return `
+            <button type="button" class="mobile-equip-card" onclick="openMobileCorreiasEquip('${eq.tag}')">
+                <span class="status-dot st-${live.status}"></span>
+                <span class="mobile-equip-tag">${escapeHtml(eq.tag)}</span>
+                <span class="mobile-equip-area">${CORREIA_STATUS_LABELS[status]} · ${escapeHtml(AREA_LABEL[eq.area] || eq.area || '')}</span>
+            </button>`;
+    }).join('');
+    body.innerHTML = `
+        <input type="text" id="mobile-correias-search" class="mobile-search" placeholder="Buscar correia ou área...">
+        <div id="mobile-correias-equip-list" class="mobile-equip-list">${cards}</div>`;
+    document.getElementById('mobile-correias-search').addEventListener('input', (e) => {
+        const q = e.target.value.trim().toUpperCase();
+        document.querySelectorAll('#mobile-correias-equip-list .mobile-equip-card').forEach(card => {
+            card.style.display = card.textContent.toUpperCase().includes(q) ? 'flex' : 'none';
+        });
+    });
+}
+
+function openMobileCorreiasEquip(tag) {
+    mobileCorreiasSelectedTag = tag;
+    const live = getLiveStatus(tag);
+    if (live.booking) renderMobileCorreiasCloseForm(live.booking);
+    else renderMobileCorreiasNewForm(tag);
+}
+
+function renderMobileCorreiasNewForm(tag) {
+    const p = activeProfile();
+    const area = areaOf(tag);
+    const body = document.getElementById('mobile-correias-body');
+    body.innerHTML = `
+        <button type="button" class="mobile-back" onclick="renderMobileCorreiasEquipList()">&larr; Voltar</button>
+        <div class="mobile-card">
+            <div class="mobile-card-title">${escapeHtml(tag)} — ${escapeHtml(AREA_LABEL[area] || area || '')}</div>
+            <div class="mobile-card-sub">Correia liberada. Registre um bloqueio pra tirar de operação.</div>
+            <div class="m-field"><label>Tipo *</label>
+                <select id="correias-new-type">${p.canBook.map(t => `<option value="${t}">${t}</option>`).join('')}</select>
+            </div>
+            <div class="m-field"><label class="m-checkbox"><input type="checkbox" id="correias-new-emergencial" style="width:auto;"> Emergencial (crítico -- correia parada de vez)</label></div>
+            <div class="m-field"><label>Número da OM *</label><input type="text" id="correias-new-om" inputmode="numeric" maxlength="12" placeholder="Ex: 80438"></div>
+            <div class="m-field"><label>Justificativa Técnica *</label><textarea id="correias-new-just" rows="3" maxlength="200" placeholder="O que motivou o bloqueio..."></textarea></div>
+        </div>
+        <button type="button" class="btn-primary mobile-submit" id="correias-new-submit">Registrar Bloqueio</button>
+    `;
+    document.getElementById('correias-new-submit').addEventListener('click', () => submitMobileCorreiasNew(tag));
+}
+
+async function submitMobileCorreiasNew(tag) {
+    const type = document.getElementById('correias-new-type').value;
+    const emergencial = document.getElementById('correias-new-emergencial').checked;
+    const om = document.getElementById('correias-new-om').value.trim();
+    const justification = document.getElementById('correias-new-just').value.trim();
+    if (!canBookType(type)) { showAccessDenied(`O perfil ativo não pode registrar bloqueios do tipo "${type}".`); return; }
+    if (!/^\d{1,12}$/.test(om)) { toast('Informe o número da OM (somente dígitos, até 12 caracteres).', 'error'); return; }
+    if (justification.length < 5) { toast('Informe uma justificativa técnica válida (mínimo 5 caracteres).', 'error'); return; }
+    if (activeOmConflict(tag, om)) { toast('Essa OM já está em aberto para esta correia.', 'error'); return; }
+
+    const btn = document.getElementById('correias-new-submit');
+    btn.disabled = true; btn.textContent = 'Registrando...';
+    const nowMin = nowMinutes();
+    const { data, error } = await sb.from('bookings').insert({
+        site_key: state.currentSite, tag, area_code: areaOf(tag), date: todayStr(),
+        start_min: nowMin, end_min: Math.min(nowMin + 240, 23 * 60 + 59), type, emergencial, om, justification,
+        operator_id: state.currentUser.id, operator_label: `${activeProfile().user} (${state.profileKey})`
+    }).select().single();
+    if (error) { toast('Erro ao registrar bloqueio: ' + error.message, 'error'); btn.disabled = false; btn.textContent = 'Registrar Bloqueio'; return; }
+    const booking = mapBookingFromDb(data);
+    state.bookings.push(booking);
+    await addAuditEntry({
+        tag, acao: type, justificativa: justification, dataHora: booking.createdAt,
+        om, agendamentoData: booking.date, agendamentoHorario: `${minutesToTime(booking.startMin)}–${minutesToTime(booking.endMin)}`
+    });
+    toast('Correia bloqueada com sucesso.', 'success');
+    renderMobileCorreiasEquipList();
+}
+
+function renderMobileCorreiasCloseForm(booking) {
+    const body = document.getElementById('mobile-correias-body');
+    body.innerHTML = `
+        <button type="button" class="mobile-back" onclick="renderMobileCorreiasEquipList()">&larr; Voltar</button>
+        <div class="mobile-card">
+            <div class="mobile-card-title">${escapeHtml(booking.tag)} — ${escapeHtml(booking.type)}</div>
+            <div class="mobile-card-sub">OM ${escapeHtml(booking.om || '—')} · desde ${minutesToTime(booking.startMin)}</div>
+            <div class="m-field"><label>Observação de encerramento *</label><textarea id="correias-close-just" rows="3" maxlength="200" placeholder="O que foi feito..."></textarea></div>
+        </div>
+        <button type="button" class="btn-primary mobile-submit" id="correias-close-submit">Liberar Correia</button>
+    `;
+    document.getElementById('correias-close-submit').addEventListener('click', () => submitMobileCorreiasClose(booking));
+}
+
+async function submitMobileCorreiasClose(booking) {
+    const reason = document.getElementById('correias-close-just').value.trim();
+    if (reason.length < 5) { toast('Informe uma observação de encerramento (mínimo 5 caracteres).', 'error'); return; }
+    const btn = document.getElementById('correias-close-submit');
+    btn.disabled = true; btn.textContent = 'Liberando...';
+    const { error } = await sb.from('bookings').update({
+        closure_status: 'ENCERRADA', closure_reason: reason, closed_at: new Date().toISOString(), closed_by: state.currentUser.id
+    }).eq('id', booking.id);
+    if (error) { toast('Erro ao liberar correia: ' + error.message, 'error'); btn.disabled = false; btn.textContent = 'Liberar Correia'; return; }
+    booking.closureStatus = 'ENCERRADA'; booking.closureReason = reason; booking.closedAt = new Date().toISOString();
+    await addAuditEntry({
+        tag: booking.tag, acao: `${booking.type} (Liberada)`, justificativa: reason,
+        om: booking.om, agendamentoData: booking.date, agendamentoHorario: `${minutesToTime(booking.startMin)}–${minutesToTime(booking.endMin)}`
+    });
+    toast('Correia liberada com sucesso.', 'success');
+    renderMobileCorreiasEquipList();
+}
+
 // Horas Perdidas pelo celular -- mesma ideia do desktop (registro único,
 // já nasce fechado como Pendente Vale), sem depender de escolher um
 // equipamento/horário livre primeiro.
@@ -5692,6 +5922,7 @@ async function discardMobileBooking(booking) {
    LOGIN / LOGOUT
    ========================================================= */
 let refreshInterval = null;
+let correiasRefreshInterval = null;
 async function ensureAccessibleSite() {
     const accessible = accessibleSites();
     if (!accessible.includes(state.currentSite)) {
@@ -5839,6 +6070,15 @@ async function loginAs(user, options) {
         return;
     }
 
+    // Técnico de Manutenção/Operação (Sala de Controle de Correias) --
+    // mesma tela mobile pros dois, dirigida pelo canBook de cada um.
+    if (user.role === 'TECNICO_MANUTENCAO' || user.role === 'TECNICO_OPERACAO') {
+        document.getElementById('mobile-correias-screen').style.display = 'flex';
+        renderMobileCorreias();
+        if (refreshInterval) clearInterval(refreshInterval);
+        return;
+    }
+
     document.querySelector('aside').style.display = 'flex';
     document.querySelector('main').style.display = 'flex';
     renderSiteSelect();
@@ -5875,6 +6115,7 @@ async function logout() {
     document.getElementById('mobile-solicitante-screen').style.display = 'none';
     document.getElementById('mobile-aprovador-screen').style.display = 'none';
     document.getElementById('mobile-portaria-screen').style.display = 'none';
+    document.getElementById('mobile-correias-screen').style.display = 'none';
 }
 document.getElementById('btn-mobile-logout').addEventListener('click', logout);
 document.getElementById('btn-mobile-lost-hours').addEventListener('click', renderMobileLostHoursForm);
@@ -5883,6 +6124,7 @@ document.getElementById('btn-mobile-inspecao-logout').addEventListener('click', 
 document.getElementById('btn-mobile-solicitante-logout').addEventListener('click', logout);
 document.getElementById('btn-mobile-aprovador-logout').addEventListener('click', logout);
 document.getElementById('btn-mobile-portaria-logout').addEventListener('click', logout);
+document.getElementById('btn-mobile-correias-logout').addEventListener('click', logout);
 document.getElementById('btn-logout').addEventListener('click', logout);
 
 const LS_REMEMBER_EMAIL = 'terravia_remember_email';
@@ -6108,6 +6350,10 @@ function onProfileChanged() {
     document.querySelector('[data-view="aprovacoes"]').style.display = canViewValeApprovals() ? 'flex' : 'none';
     document.querySelector('[data-view="saude-ativos"]').style.display = state.profileKey === 'ADMIN' ? 'flex' : 'none';
     document.querySelector('[data-view="portaria"]').style.display = state.profileKey === 'ADMIN' ? 'flex' : 'none';
+    // Sala de Controle -- visível a todo perfil do shell desktop no site
+    // (não só Admin), é uma vitrine ao vivo pensada pra ficar aberta em
+    // várias telas.
+    document.querySelector('[data-view="correias"]').style.display = isCorreiasSite() ? 'flex' : 'none';
     // "Top 5 Equipamentos - Indisponibilidade" só faz sentido em site com
     // equipamento de verdade passando por Manutenção -- em Fábrica/Viga
     // Materiais o "equipamento" é uma área do armazém, então esse
@@ -6141,6 +6387,7 @@ const VIEW_META = {
     mapacalor: { title: 'Mapa de Calor', sub: 'Indicadores de manutenção e limpeza por equipamento' },
     'saude-ativos': { title: 'Saúde dos Ativos', sub: 'Inspeções de campo da Vale e índice de saúde por site' },
     portaria: { title: 'Liberação de Portaria', sub: 'Acompanhamento de saída/retorno de equipamento pesado' },
+    correias: { title: 'Sala de Controle', sub: 'Status ao vivo das correias transportadoras' },
     aprovacoes: { title: 'Aprovações Vale', sub: 'Avaliação das limpezas do workflow S11D' },
     usuarios: { title: 'Usuários & Acessos', sub: 'Gestão de contas e permissões (Admin Master)' },
     importacao: { title: 'Importação em Massa', sub: 'Lançamento em lote via planilha + fotos (Admin Master e Gerente)' }
@@ -6152,6 +6399,10 @@ function switchView(view) {
     if (view === 'mapacalor' && isMaterialsContractSite()) { showAccessDenied('Mapa de Calor não está disponível em sites de Contrato de Materiais.'); return; }
     if (view === 'saude-ativos' && state.profileKey !== 'ADMIN') { showAccessDenied('Apenas o Admin Master pode acessar Saúde dos Ativos.'); return; }
     if (view === 'portaria' && state.profileKey !== 'ADMIN') { showAccessDenied('Apenas o Admin Master pode acessar Liberação de Portaria.'); return; }
+    if (view === 'correias' && !isCorreiasSite()) { showAccessDenied('Sala de Controle só está disponível em sites de Manutenção - Transportadores.'); return; }
+    // O polling rápido (~15s) da Sala de Controle só deve rodar enquanto
+    // essa view está aberta -- para ao trocar pra qualquer outra.
+    if (correiasRefreshInterval) { clearInterval(correiasRefreshInterval); correiasRefreshInterval = null; }
     document.querySelectorAll('.nav-item').forEach(b => b.classList.toggle('active', b.dataset.view === view));
     document.querySelectorAll('.content-container').forEach(c => c.classList.toggle('view-active', c.id === 'view-' + view));
     document.getElementById('header-title').textContent = VIEW_META[view].title;
@@ -6164,6 +6415,10 @@ function switchView(view) {
     if (view === 'mapacalor') renderHeatmap();
     if (view === 'saude-ativos') renderAssetHealth();
     if (view === 'portaria') renderPortariaView();
+    if (view === 'correias') {
+        renderCorreiasPanel();
+        correiasRefreshInterval = setInterval(refreshCorreiasPanelData, 15000);
+    }
     if (view === 'aprovacoes') renderValeApprovals();
     if (view === 'importacao') resetImportUi();
 }
@@ -8624,6 +8879,257 @@ document.getElementById('btn-toggle-chart-aderencia').addEventListener('click', 
 });
 
 /* =========================================================
+   RENDER: SALA DE CONTROLE (Painel de Correias Transportadoras)
+   -- porta o handoff de design (Painel Correias TV.dc.html) pra template
+   strings + dados reais. Zero tabela nova: status vem de correiaStatus()/
+   getLiveStatus() olhando state.bookings, as ações dos botões abrem os
+   MESMOS modais de agendar/encerrar que o Calendário já usa (só
+   pré-preenchendo o tipo), e o feed é state.auditLog filtrado.
+   ========================================================= */
+const CORREIA_STATUS_META = {
+    livre: { label: 'Liberada', color: '#3fbf6f', run: true },
+    preventiva: { label: 'Preventiva', color: '#e0a915', run: false },
+    corretiva: { label: 'Corretiva', color: '#d13b2a', run: false },
+    limpeza: { label: 'Limpeza', color: '#38b6d4', run: false },
+    critico: { label: 'Crítico', color: '#b32f7e', run: false },
+};
+let correiasSelectedTag = null;
+let correiasFilterArea = 'all';
+let correiasFilterStatus = 'all';
+
+// Ângulo cosmético da correia (inclinação do desenho) -- determinístico a
+// partir de um hash simples da tag, sem precisar de coluna nova pra algo
+// que é só visual.
+function correiaAngle(tag) {
+    let h = 0;
+    for (let i = 0; i < tag.length; i++) h = (h * 31 + tag.charCodeAt(i)) % 1000;
+    return -(5 + (h % 13));
+}
+
+// Geometria do desenho da correia (clip-path por camada) -- portada
+// literalmente da função geometry(angle) do handoff de design.
+function correiaGeometry(angle) {
+    const H = 74, slope = Math.min(Math.abs(angle) * 2.2, 40);
+    const tR = 8, tL = tR + slope, belt = 14, frame = 5, truss = 24;
+    const poly = (t, h) => `polygon(0% ${tL + t}%, 100% ${tR + t}%, 100% ${tR + t + h}%, 0% ${tL + t + h}%)`;
+    const px = p => Math.round(p / 100 * H);
+    const leg = at => Math.max(5, H - px(tL - slope * at + belt + frame + truss) - 6) + 'px';
+    const pL = Math.max(1, px(tL + belt / 2) - 9), pR = Math.max(1, px(tR + belt / 2) - 9);
+    return {
+        beltClip: poly(0, belt), oreClip: poly(-5, 6.5), frameClip: poly(belt, frame), trussClip: poly(belt + frame, truss),
+        pulleyLeft: pL + 'px', pulleyRight: pR + 'px', hubLeft: (pL + 5) + 'px', leg1: leg(0.3), leg2: leg(0.68),
+    };
+}
+
+function correiaCardHtml(eq) {
+    const statusKey = correiaStatus(eq.tag);
+    const s = CORREIA_STATUS_META[statusKey];
+    const g = correiaGeometry(correiaAngle(eq.tag));
+    const alert = statusKey === 'corretiva' || statusKey === 'critico';
+    const live = getLiveStatus(eq.tag);
+    const meta = EQUIP_META[eq.tag];
+    const rodape = statusKey === 'livre' ? (meta && meta.beltRoute ? meta.beltRoute.split('→').pop().trim() : 'Operando') : (live.booking ? live.booking.operator : '');
+    const selected = eq.tag === correiasSelectedTag;
+    return `
+        <button type="button" class="correias-card" onclick="selectCorreiaTag('${eq.tag}')" style="border-color:${selected ? s.color : '#1e2530'}; box-shadow:${selected ? `0 0 0 1px ${s.color}, 0 8px 26px rgba(0,0,0,0.45)` : 'none'};">
+            <div style="display:flex; align-items:center; justify-content:space-between; gap:6px;">
+                <div style="font-family:'Barlow Condensed',sans-serif; font-size:21px; font-weight:700; line-height:1;">${escapeHtml(eq.tag)}</div>
+                <div style="font-family:'IBM Plex Mono',monospace; font-size:10px; color:#6f7986;">${escapeHtml(AREA_LABEL[eq.area] || eq.area || '')}</div>
+            </div>
+            <div class="correias-belt-draw">
+                <div class="correias-belt-ground"></div>
+                <div class="correias-belt-leg" style="left:30%; height:${g.leg1}; background:linear-gradient(180deg, ${s.color} 0%, #1b212a 100%);"></div>
+                <div class="correias-belt-leg" style="left:68%; height:${g.leg2}; background:linear-gradient(180deg, ${s.color} 0%, #1b212a 100%);"></div>
+                <div class="correias-belt-truss" style="clip-path:${g.trussClip};"></div>
+                <div class="correias-belt-frame" style="clip-path:${g.frameClip}; background:linear-gradient(90deg, ${s.color} 0%, rgba(255,255,255,0.05) 130%);"></div>
+                <div class="correias-belt-base" style="clip-path:${g.beltClip};"></div>
+                <div class="correias-belt-texture" style="clip-path:${g.beltClip}; animation-play-state:${s.run ? 'running' : 'paused'};"></div>
+                <div class="correias-belt-ore" style="clip-path:${g.oreClip}; background:linear-gradient(180deg, ${s.run ? '#6b5540' : '#343a42'} 0%, rgba(0,0,0,0.25) 100%);"></div>
+                <div class="correias-pulley" style="left:1px; top:${g.pulleyLeft}; border-color:${s.color};"></div>
+                <div class="correias-pulley" style="right:1px; top:${g.pulleyRight}; border-color:${s.color};"></div>
+                <div class="correias-hub" style="left:7px; top:${g.hubLeft}; background:${s.color}; animation-play-state:${s.run ? 'running' : 'paused'};"></div>
+                <div class="correias-glow" style="background:radial-gradient(160px 70px at 55% 45%, ${s.color} 0%, transparent 70%); opacity:${alert ? 0.45 : 0.1}; animation-play-state:${alert ? 'running' : 'paused'};"></div>
+            </div>
+            <div style="display:flex; align-items:center; justify-content:space-between; gap:6px; border-top:1px solid ${s.color}; padding-top:7px; margin-top:4px;">
+                <div style="display:flex; align-items:center; gap:6px; min-width:0;">
+                    <span style="width:7px; height:7px; border-radius:50%; background:${s.color}; flex:none;"></span>
+                    <span style="font-size:11px; font-weight:700; letter-spacing:0.1em; text-transform:uppercase; color:${s.color}; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${s.label}</span>
+                </div>
+                <div style="font-family:'IBM Plex Mono',monospace; font-size:10px; color:#6f7986; white-space:nowrap; max-width:90px; overflow:hidden; text-overflow:ellipsis;">${escapeHtml(rodape || '')}</div>
+            </div>
+        </button>`;
+}
+
+function selectCorreiaTag(tag) {
+    correiasSelectedTag = tag;
+    renderCorreiasPanel();
+}
+
+function correiasAreaChipsHtml(allTags) {
+    const areas = Object.keys(AREA_LABEL);
+    const items = [{ code: 'all', label: 'Todas as áreas' }].concat(areas.map(code => ({ code, label: `${code} · ${AREA_LABEL[code]}` })));
+    return items.map(a => {
+        const count = a.code === 'all' ? allTags.length : allTags.filter(t => areaOf(t) === a.code).length;
+        const active = correiasFilterArea === a.code;
+        return `<div class="correias-chip${active ? ' active' : ''}" onclick="setCorreiasAreaFilter('${a.code}')">${escapeHtml(a.label)} <span style="color:#6f7986; font-family:'IBM Plex Mono',monospace;">${count}</span></div>`;
+    }).join('');
+}
+
+function correiasStatusChipsHtml() {
+    const items = [{ k: 'all', label: 'Tudo', dot: '#6f7986' }].concat(Object.keys(CORREIA_STATUS_META).map(k => ({ k, label: CORREIA_STATUS_META[k].label, dot: CORREIA_STATUS_META[k].color })));
+    return items.map(s => {
+        const active = correiasFilterStatus === s.k;
+        return `<div class="correias-chip${active ? ' active' : ''}" onclick="setCorreiasStatusFilter('${s.k}')"><span style="width:8px; height:8px; border-radius:50%; background:${s.dot};"></span>${escapeHtml(s.label)}</div>`;
+    }).join('');
+}
+function setCorreiasAreaFilter(code) { correiasFilterArea = code; renderCorreiasPanel(); }
+function setCorreiasStatusFilter(key) { correiasFilterStatus = key; renderCorreiasPanel(); }
+
+function correiasDetailHtml(tag) {
+    if (!tag) return '<div class="correias-detail-box"><div style="color:#7b8593; font-size:13px;">Selecione uma correia na grade pra ver o detalhe.</div></div>';
+    const statusKey = correiaStatus(tag);
+    const s = CORREIA_STATUS_META[statusKey];
+    const live = getLiveStatus(tag);
+    const b = live.booking;
+    const meta = EQUIP_META[tag];
+    const om = b ? (b.om || '—') : '—';
+    const tecnico = b ? b.operator : '—';
+    const inicio = b ? minutesToTime(b.startMin) : '—';
+    const previsao = !b ? 'Em operação' : (statusKey === 'corretiva' || statusKey === 'critico') ? 'Sem previsão' : minutesToTime(b.endMin);
+    const obs = b ? b.justification : 'Sem bloqueio ativo.';
+    const canAct = canBookType('Manutenção Preventiva') || canBookType('Manutenção Corretiva') || canBookType('Limpeza Sodexo') || canBookType('Limpeza Mecanizada');
+    return `
+        <div class="correias-detail-box" style="border-top:3px solid ${s.color};">
+            <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:10px;">
+                <div style="display:flex; flex-direction:column; gap:2px;">
+                    <div style="font-family:'IBM Plex Mono',monospace; font-size:10px; letter-spacing:0.18em; text-transform:uppercase; color:#6f7986;">Ativo selecionado · ${escapeHtml(areaOf(tag) || '')}</div>
+                    <div style="font-family:'Barlow Condensed',sans-serif; font-size:34px; font-weight:700; line-height:1;">${escapeHtml(tag)}</div>
+                    <div style="font-size:13px; color:#97a0ac;">${escapeHtml((meta && meta.beltRoute) || '')}</div>
+                </div>
+                <div style="display:flex; align-items:center; gap:8px; padding:6px 10px; background:${s.color}22; border:1px solid ${s.color}; flex:none;">
+                    <span style="width:8px; height:8px; border-radius:50%; background:${s.color};"></span>
+                    <span style="font-size:11px; font-weight:700; letter-spacing:0.1em; text-transform:uppercase; color:${s.color};">${s.label}</span>
+                </div>
+            </div>
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
+                <div class="correias-field"><div class="correias-field-label">OM</div><div style="font-family:'IBM Plex Mono',monospace; font-size:13px;">${escapeHtml(om)}</div></div>
+                <div class="correias-field"><div class="correias-field-label">Técnico em campo</div><div style="font-size:13px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${escapeHtml(tecnico)}</div></div>
+                <div class="correias-field"><div class="correias-field-label">Início do bloqueio</div><div style="font-family:'IBM Plex Mono',monospace; font-size:13px;">${escapeHtml(inicio)}</div></div>
+                <div class="correias-field"><div class="correias-field-label">Previsão</div><div style="font-family:'IBM Plex Mono',monospace; font-size:13px; color:${s.color};">${escapeHtml(previsao)}</div></div>
+            </div>
+            <div class="correias-field" style="border-left:3px solid ${s.color};">
+                <div class="correias-field-label">Apontamento de campo</div>
+                <div style="font-size:13px; line-height:1.45; color:#c9d0d8;">${escapeHtml(obs || '—')}</div>
+            </div>
+            ${canAct ? `
+            <div style="display:flex; flex-direction:column; gap:7px;">
+                <div class="correias-field-label">Ação do operador em campo</div>
+                ${b ? `<div class="correias-action-btn" style="--dot:#3fbf6f;" onclick="openCloseBookingModal('${b.id}')"><span style="width:8px; height:8px; border-radius:50%; background:#3fbf6f;"></span>Equipamento liberado</div>` : ''}
+                <div style="display:grid; grid-template-columns:1fr 1fr; gap:7px;">
+                    ${canBookType('Manutenção Preventiva') ? `<div class="correias-action-btn" style="--dot:#e0a915;" onclick="openCorreiasQuickAction('${tag}','Manutenção Preventiva',false)"><span style="width:8px; height:8px; border-radius:50%; background:#e0a915;"></span>Preventiva</div>` : ''}
+                    ${canBookType('Manutenção Corretiva') ? `<div class="correias-action-btn" style="--dot:#d13b2a;" onclick="openCorreiasQuickAction('${tag}','Manutenção Corretiva',false)"><span style="width:8px; height:8px; border-radius:50%; background:#d13b2a;"></span>Corretiva</div>` : ''}
+                    ${canBookType('Limpeza Sodexo') ? `<div class="correias-action-btn" style="--dot:#38b6d4;" onclick="openCorreiasQuickAction('${tag}','Limpeza Sodexo',false)"><span style="width:8px; height:8px; border-radius:50%; background:#38b6d4;"></span>Limpeza</div>` : ''}
+                    ${canBookType('Manutenção Corretiva') ? `<div class="correias-action-btn" style="--dot:#b32f7e;" onclick="openCorreiasQuickAction('${tag}','Manutenção Corretiva',true)"><span style="width:8px; height:8px; border-radius:50%; background:#b32f7e;"></span>Crítico</div>` : ''}
+                </div>
+            </div>` : ''}
+        </div>`;
+}
+
+// Botões de ação do painel de detalhe reaproveitam o MESMO modal de novo
+// agendamento do Calendário -- só pré-preenchendo tipo/emergencial, pra
+// não duplicar validação/RLS/trilha de auditoria numa máquina de estados
+// paralela.
+function openCorreiasQuickAction(tag, type, emergencial) {
+    openBookingModal(tag, todayStr(), Math.floor(nowMinutes() / 60), type, emergencial);
+}
+
+function correiasFeedHtml() {
+    const acoesRelevantes = ['Manutenção Preventiva', 'Manutenção Corretiva', 'Limpeza Sodexo', 'Limpeza Mecanizada'];
+    const items = state.auditLog
+        .filter(a => acoesRelevantes.some(t => a.acao.startsWith(t)))
+        .slice(0, 6);
+    if (!items.length) return '<div style="font-size:12px; color:var(--text-muted);">Nenhuma ação registrada ainda.</div>';
+    return items.map(a => {
+        const statusKey = a.acao.includes('Preventiva') ? 'preventiva' : a.acao.includes('Corretiva') ? 'corretiva' : a.acao.includes('Limpeza') ? 'limpeza' : 'livre';
+        const color = CORREIA_STATUS_META[statusKey].color;
+        return `
+        <div class="correias-feed-item">
+            <div style="font-family:'IBM Plex Mono',monospace; font-size:11px; color:#6f7986; padding-top:1px; flex:none;">${new Date(a.dataHora).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</div>
+            <div style="width:7px; height:7px; border-radius:50%; background:${color}; margin-top:5px; flex:none;"></div>
+            <div style="display:flex; flex-direction:column; gap:1px; min-width:0;">
+                <div style="font-size:12.5px; color:#d7dce2;"><span style="font-family:'Barlow Condensed',sans-serif; font-weight:700; font-size:15px;">${escapeHtml(a.tag)}</span> · ${escapeHtml(a.acao)}</div>
+                <div style="font-size:11px; color:#7b8593;">${escapeHtml(a.operador || '')}</div>
+            </div>
+        </div>`;
+    }).join('');
+}
+
+function renderCorreiasPanel() {
+    const root = document.getElementById('correias-panel-root');
+    if (!root) return;
+    const allTags = ALL_EQUIP.map(e => e.tag);
+    const visible = ALL_EQUIP.filter(eq =>
+        (correiasFilterArea === 'all' || eq.area === correiasFilterArea) &&
+        (correiasFilterStatus === 'all' || correiaStatus(eq.tag) === correiasFilterStatus)
+    );
+    const counts = { livre: 0, preventiva: 0, corretiva: 0, limpeza: 0, critico: 0 };
+    allTags.forEach(t => counts[correiaStatus(t)]++);
+    const now = new Date();
+
+    root.innerHTML = `
+        <div style="display:flex; align-items:center; justify-content:space-between; gap:24px; border-bottom:1px solid #1e2530; padding-bottom:14px; color:#e8ebef;">
+            <div style="display:flex; align-items:center; gap:18px;">
+                <div style="font-family:'Barlow Condensed',sans-serif; font-size:30px; font-weight:700; line-height:1;">${escapeHtml(SITES[state.currentSite] || state.currentSite)}</div>
+                <div class="correias-live-badge"><span class="correias-live-dot"></span><span style="font-size:12px; font-weight:700; letter-spacing:0.14em; text-transform:uppercase; color:#3fbf6f;">Ao vivo</span></div>
+            </div>
+            <div style="display:flex; align-items:center; gap:10px;">
+                <div class="correias-count-card" style="--accent:#3fbf6f;"><div class="correias-count-value">${counts.livre}</div><div class="correias-count-label">Liberada</div></div>
+                <div class="correias-count-card" style="--accent:#e0a915;"><div class="correias-count-value">${counts.preventiva}</div><div class="correias-count-label">Preventiva</div></div>
+                <div class="correias-count-card" style="--accent:#d13b2a;"><div class="correias-count-value">${counts.corretiva}</div><div class="correias-count-label">Corretiva</div></div>
+                <div class="correias-count-card" style="--accent:#38b6d4;"><div class="correias-count-value">${counts.limpeza + counts.critico}</div><div class="correias-count-label">Limpeza</div></div>
+                <div class="correias-count-card" style="--accent:#1e2530; margin-left:6px;">
+                    <div style="font-family:'IBM Plex Mono',monospace; font-size:28px; font-weight:500; line-height:1;">${now.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</div>
+                    <div class="correias-count-label">${now.toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: '2-digit' })}</div>
+                </div>
+            </div>
+        </div>
+        <div style="display:flex; align-items:center; justify-content:space-between; gap:16px; padding:12px 0 14px; flex-wrap:wrap;">
+            <div style="display:flex; gap:7px; flex-wrap:wrap;">${correiasAreaChipsHtml(allTags)}</div>
+            <div style="display:flex; gap:7px; flex-wrap:wrap;">${correiasStatusChipsHtml()}</div>
+        </div>
+        <div style="display:grid; grid-template-columns:minmax(0,1fr) 380px; gap:18px; align-items:start;">
+            <div class="correias-grid">${visible.length ? visible.map(correiaCardHtml).join('') : '<div style="color:var(--text-muted); font-size:13px;">Nenhuma correia cadastrada com esse filtro.</div>'}</div>
+            <div class="correias-detail">
+                ${correiasDetailHtml(correiasSelectedTag)}
+                <div style="display:flex; flex-direction:column; gap:9px; background:#121822; border:1px solid #1e2530; padding:14px 16px 16px;">
+                    <div style="display:flex; align-items:center; justify-content:space-between;">
+                        <div style="font-size:10px; letter-spacing:0.14em; text-transform:uppercase; color:#6f7986;">Últimas ações registradas</div>
+                        <span style="width:7px; height:7px; border-radius:50%; background:#3fbf6f; animation: correiasLivePulse 1.6s ease-in-out infinite;"></span>
+                    </div>
+                    ${correiasFeedHtml()}
+                </div>
+            </div>
+        </div>`;
+}
+
+// Chamado pelo polling de ~15s enquanto a view estiver aberta -- recarrega
+// só bookings/auditoria (mesma janela já carregada) e re-renderiza.
+async function refreshCorreiasPanelData() {
+    if (document.visibilityState !== 'visible') return;
+    const activeView = document.querySelector('.content-container.view-active');
+    if (!activeView || activeView.id !== 'view-correias') return;
+    const windowStart = loadedHistoryFrom || historyWindowStart();
+    const [{ data: bookings, error: bErr }, { data: audit, error: aErr }] = await Promise.all([
+        fetchAllRows('bookings', 'date', true, q => bookingsWindowFilter(q, windowStart)),
+        fetchAllRows('audit_log', 'data_hora', false, q => q.gte('data_hora', windowStart)),
+    ]);
+    if (bErr || aErr) return;
+    state.bookings = (bookings || []).map(mapBookingFromDb);
+    state.auditLog = (audit || []).map(mapAuditFromDb);
+    renderCorreiasPanel();
+}
+
+/* =========================================================
    RENDER: LIBERAÇÃO DE PORTARIA (view desktop -- só acompanhamento,
    as ações do fluxo acontecem nas 3 telas mobile dedicadas)
    ========================================================= */
@@ -9092,13 +9598,13 @@ async function loadSiteDatabase() {
     const { data: areas, error: areasErr } = await sb.from('areas').select('code, label').eq('site_key', state.currentSite);
     if (areasErr) { toast('Erro ao carregar áreas: ' + areasErr.message, 'error'); return { error: areasErr }; }
     (areas || []).forEach(a => { DATABASE[a.code] = []; AREA_LABEL[a.code] = a.label; });
-    const { data: equip, error: equipErr } = await sb.from('equipment').select('tag, area_code, m2, valor_m2').eq('site_key', state.currentSite);
+    const { data: equip, error: equipErr } = await sb.from('equipment').select('tag, area_code, m2, valor_m2, belt_route').eq('site_key', state.currentSite);
     if (equipErr) { toast('Erro ao carregar equipamentos: ' + equipErr.message, 'error'); return { error: equipErr }; }
     (equip || []).forEach(e => {
         if (!DATABASE[e.area_code]) DATABASE[e.area_code] = [];
         DATABASE[e.area_code].push(e.tag);
         ALL_EQUIP.push({ tag: e.tag, area: e.area_code });
-        EQUIP_META[e.tag] = { m2: e.m2 == null ? null : Number(e.m2), valorM2: e.valor_m2 == null ? null : Number(e.valor_m2) };
+        EQUIP_META[e.tag] = { m2: e.m2 == null ? null : Number(e.m2), valorM2: e.valor_m2 == null ? null : Number(e.valor_m2), beltRoute: e.belt_route || null };
     });
     // Quadro de colaboradores só existe/é usado no workflow S11D -- não vale
     // a pena consultar essa tabela pros outros sites.

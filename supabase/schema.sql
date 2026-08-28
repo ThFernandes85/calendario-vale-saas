@@ -80,6 +80,9 @@ create table if not exists public.profiles (
 -- mobile-only da Liberação de Portaria (ver tabela `portaria_liberacoes`
 -- mais abaixo) -- cada um cuida de uma etapa do fluxo de saída/retorno
 -- de equipamento pesado, nenhum deles agenda/encerra OM.
+-- TECNICO_MANUTENCAO/TECNICO_OPERACAO são os 2 papéis mobile-only da Sala
+-- de Controle (Painel de Correias) -- espelham PCM/PCO (mesmos tipos de
+-- bloqueio liberados), só que com tela mobile simplificada.
 do $$
 begin
   if exists (
@@ -90,7 +93,7 @@ begin
     alter table public.profiles drop constraint profiles_role_check;
   end if;
   alter table public.profiles add constraint profiles_role_check
-    check (role in ('ADMIN','PCM','PCO','PCM_PCO','ENG_CONF','ENG_EST','ENCARREGADO','CLIENTE_VALE','TECNICO_PLANEJAMENTO','GERENTE','TECNICO_CAMPO_VALE','SOLICITANTE_PORTARIA','APROVADOR_PORTARIA','PORTARIA'));
+    check (role in ('ADMIN','PCM','PCO','PCM_PCO','ENG_CONF','ENG_EST','ENCARREGADO','CLIENTE_VALE','TECNICO_PLANEJAMENTO','GERENTE','TECNICO_CAMPO_VALE','SOLICITANTE_PORTARIA','APROVADOR_PORTARIA','PORTARIA','TECNICO_MANUTENCAO','TECNICO_OPERACAO'));
 end $$;
 
 -- WhatsApp do Encarregado (opcional -- nem todo mundo vai ter cadastrado de
@@ -156,6 +159,21 @@ update public.sites set materials_contract = true where key = 'F_BRICA';
 -- motor de faturamento.
 alter table public.equipment add column if not exists m2 numeric;
 alter table public.equipment add column if not exists valor_m2 numeric;
+
+-- ============================================================
+-- SALA DE CONTROLE — PAINEL DE CORREIAS TRANSPORTADORAS (mineração):
+-- sistemática própria, sem relação com client_approval_workflow/
+-- materials_contract -- painel ao vivo do status de cada correia
+-- (Preventiva/Corretiva/Limpeza/Crítico/Liberada), com liberação pelo
+-- celular do Técnico de Manutenção/Operação. Ver docs/index.html,
+-- isCorreiasSite() e renderCorreiasPanel().
+-- ============================================================
+alter table public.sites add column if not exists correias_panel boolean not null default false;
+
+-- "Rota" da correia (ex: "Alimentação → Britador Primário") -- só
+-- descritivo, mostrado no painel de detalhe da Sala de Controle. Opcional,
+-- sem uso em nenhuma outra tela.
+alter table public.equipment add column if not exists belt_route text;
 
 -- Decisão MAIS RECENTE do Cliente Vale sobre um bloqueio (o histórico
 -- completo de decisões/reclassificações fica registrado no audit_log, uma
@@ -578,6 +596,10 @@ create policy "bookings_insert" on public.bookings for insert
       or (public.current_role_key() = 'TECNICO_PLANEJAMENTO' and type in ('Limpeza Sodexo','Limpeza Mecanizada','Horas Perdidas','Hora Extra'))
       -- Gerente (gestor operacional de site, ex: Fábrica/Viga Materiais).
       or (public.current_role_key() = 'GERENTE' and type in ('Manutenção Preventiva','Manutenção Corretiva','Limpeza Sodexo','Limpeza Mecanizada','Horas Perdidas','Hora Extra'))
+      -- Técnico de Manutenção/Operação (Sala de Controle de Correias) --
+      -- mesmo recorte de tipo que PCM/PCO, só que com tela mobile própria.
+      or (public.current_role_key() = 'TECNICO_MANUTENCAO' and type in ('Manutenção Preventiva','Manutenção Corretiva'))
+      or (public.current_role_key() = 'TECNICO_OPERACAO' and type in ('Limpeza Sodexo','Limpeza Mecanizada'))
     )
   );
 drop policy if exists "bookings_delete" on public.bookings;
@@ -595,6 +617,8 @@ create policy "bookings_delete" on public.bookings for delete
       or (public.current_role_key() = 'PCM_PCO' and type in ('Manutenção Preventiva','Manutenção Corretiva','Limpeza Sodexo','Limpeza Mecanizada','Horas Perdidas','Hora Extra'))
       or (public.current_role_key() = 'TECNICO_PLANEJAMENTO' and type in ('Limpeza Sodexo','Limpeza Mecanizada','Horas Perdidas','Hora Extra'))
       or (public.current_role_key() = 'GERENTE' and type in ('Manutenção Preventiva','Manutenção Corretiva','Limpeza Sodexo','Limpeza Mecanizada','Horas Perdidas','Hora Extra'))
+      or (public.current_role_key() = 'TECNICO_MANUTENCAO' and type in ('Manutenção Preventiva','Manutenção Corretiva'))
+      or (public.current_role_key() = 'TECNICO_OPERACAO' and type in ('Limpeza Sodexo','Limpeza Mecanizada'))
     )
   );
 drop policy if exists "bookings_update" on public.bookings;
@@ -612,6 +636,8 @@ create policy "bookings_update" on public.bookings for update
       or (public.current_role_key() = 'CLIENTE_VALE' and type = 'Limpeza Sodexo')
       or (public.current_role_key() = 'TECNICO_PLANEJAMENTO' and type in ('Limpeza Sodexo','Limpeza Mecanizada'))
       or (public.current_role_key() = 'GERENTE' and type in ('Manutenção Preventiva','Manutenção Corretiva','Limpeza Sodexo','Limpeza Mecanizada'))
+      or (public.current_role_key() = 'TECNICO_MANUTENCAO' and type in ('Manutenção Preventiva','Manutenção Corretiva'))
+      or (public.current_role_key() = 'TECNICO_OPERACAO' and type in ('Limpeza Sodexo','Limpeza Mecanizada'))
     )
   )
   with check (
@@ -625,6 +651,8 @@ create policy "bookings_update" on public.bookings for update
       or (public.current_role_key() = 'CLIENTE_VALE' and type = 'Limpeza Sodexo')
       or (public.current_role_key() = 'TECNICO_PLANEJAMENTO' and type in ('Limpeza Sodexo','Limpeza Mecanizada'))
       or (public.current_role_key() = 'GERENTE' and type in ('Manutenção Preventiva','Manutenção Corretiva','Limpeza Sodexo','Limpeza Mecanizada'))
+      or (public.current_role_key() = 'TECNICO_MANUTENCAO' and type in ('Manutenção Preventiva','Manutenção Corretiva'))
+      or (public.current_role_key() = 'TECNICO_OPERACAO' and type in ('Limpeza Sodexo','Limpeza Mecanizada'))
     )
   );
 
