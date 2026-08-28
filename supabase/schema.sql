@@ -938,6 +938,49 @@ select 'MUTUCA', 'ITMS', unnest(array[
 on conflict (site_key, tag) do nothing;
 
 -- ============================================================
+-- DADOS INICIAIS: site "Mutuca - Sala de Controle" (Painel de Correias
+-- Transportadoras) -- mesmas 5 áreas e mesmos 93 ativos da Mutuca acima
+-- (planilha areas.xlsx da raiz do projeto), só que num site PRÓPRIO com
+-- correias_panel=true, já que Tipo de Site agora é mutuamente exclusivo
+-- e o site 'MUTUCA' já é do tipo Limpeza Industrial.
+-- ============================================================
+insert into public.sites (key, label, company_key, correias_panel) values
+  ('MUTUCA_SALA_CONTROLE', 'Mutuca - Sala de Controle', 'SODEXO', true)
+on conflict (key) do update set correias_panel = true;
+
+insert into public.areas (site_key, code, label) values
+  ('MUTUCA_SALA_CONTROLE', 'TOD', 'TOD'),
+  ('MUTUCA_SALA_CONTROLE', 'TCLD', 'TCLD'),
+  ('MUTUCA_SALA_CONTROLE', 'USINA', 'USINA'),
+  ('MUTUCA_SALA_CONTROLE', 'SBR', 'SBR'),
+  ('MUTUCA_SALA_CONTROLE', 'ITMS', 'ITM-S')
+on conflict (site_key, code) do nothing;
+
+insert into public.equipment (site_key, area_code, tag)
+select 'MUTUCA_SALA_CONTROLE', 'TOD', unnest(array[
+  '40AL02','40EM01','40MG02','40SL01','40TC02','40TC03','40TC04','40TC05','CARREGAMENTO','40MG01'
+]) union all
+select 'MUTUCA_SALA_CONTROLE', 'TCLD', unnest(array[
+  '27TC15','27TC15A','27TC16B','27TC16A','33AL03','33TC17','27MG01','27MG02','27MG03','27MG04',
+  '33TC18','33TC19','33TC20','GROTA ZERO','33SL02','27TC16'
+]) union all
+select 'MUTUCA_SALA_CONTROLE', 'USINA', unnest(array[
+  '21AL02','21AL03','21TC03','22BR02','22BR03','22BR04','22PE01','22PE02','22PE02A','22PE02B',
+  '22TC04','22TC05','22TC08','23CE01A','23CE01B','23CE01C','23PE04A','23PE04B','23PE04C',
+  '24BP01A','24BP01B','24BP01C','25BP01A','25BP01B','25BP01C','25BV01A','25BV01B','25BV01C',
+  '26EX01','27EM01','27TC06','27TC07','27TC09','27TC10','27TC11','27TC12','27TC13','27TC14',
+  'FV01A','FV01B','FV01C','FV01D','27TC08'
+]) union all
+select 'MUTUCA_SALA_CONTROLE', 'SBR', unnest(array[
+  '12AL01','12BR01','12DV01','12DV02','12PE02A','12PE02B','12TC01A','12TC02','12TC08',
+  '12TC10A','12TC10B','12TC11A','12TC11B','12TC9A','12TC9B','12TC01'
+]) union all
+select 'MUTUCA_SALA_CONTROLE', 'ITMS', unnest(array[
+  '65EM01','65TC01','65TC02','65TC03','65TC04A','65TC05','65TC06','65TC07'
+])
+on conflict (site_key, tag) do nothing;
+
+-- ============================================================
 -- DADOS INICIAIS: áreas da Fábrica Materiais (Área J + Almoxarifado
 -- inclusos -- cada área precisa de pelo menos 1 equipamento/tag pra
 -- aparecer clicável na grade semanal, por isso já nascem com uma tag
