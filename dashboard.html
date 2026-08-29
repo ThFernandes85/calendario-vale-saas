@@ -2601,43 +2601,45 @@ async function switchSite(newSiteKey) {
     toast(`Site alterado para "${SITES[newSiteKey]}".`);
 }
 
-// Tipo de Site -- um seletor explícito em vez de 2 checkboxes independentes.
+// Tipo de Site -- um seletor explícito em vez de checkboxes independentes.
 // Antes dava pra criar um site sem marcar nada (virava "Industrial" por
 // omissão, não por escolha) ou, em teoria, marcar os dois ao mesmo tempo
 // (o que não faz sentido nenhum -- um site não é predial E de materiais).
 // Cada sistemática nova que aparecer no futuro (ex: Áreas Verdes) vira só
 // mais uma entrada nesta lista, sem mexer no resto do fluxo.
+//
+// "Sala de Controle" (correiasPanel) NÃO entra nessa lista -- ao contrário de
+// Predial/Materiais (que são sistemáticas alternativas, mutuamente exclusivas
+// entre si), a Sala de Controle é um painel ADICIONAL que só mostra os MESMOS
+// equipamentos/agendamentos que o site já tem (ex: Mutuca continua Industrial
+// e ganha a Sala de Controle por cima, lendo as mesmas limpezas que o
+// Encarregado já lança) -- por isso vira um checkbox à parte, independente
+// do Tipo de Site.
 const SITE_TYPE_OPTIONS = [
     {
         value: 'industrial', label: 'Limpeza Industrial (padrão -- ex: Mutuca)',
-        clientApprovalWorkflow: false, materialsContract: false, correiasPanel: false,
+        clientApprovalWorkflow: false, materialsContract: false,
         help: 'Sistemática padrão: tag é o equipamento de verdade, com OM normal, sem workflow de aprovação do cliente.',
     },
     {
         value: 'predial', label: 'Limpeza Predial -- Cliente aprova cada limpeza (workflow S11D)',
-        clientApprovalWorkflow: true, materialsContract: false, correiasPanel: false,
+        clientApprovalWorkflow: true, materialsContract: false,
         help: 'Sem OM -- o encarregado encerra com fotos, mas fica aguardando o cliente aprovar/reprovar/marcar pendência antes de contar na nota. Tag vira Área/Sub-área.',
     },
     {
         value: 'materiais', label: 'Contrato de Controle de Materiais (Armazém)',
-        clientApprovalWorkflow: false, materialsContract: true, correiasPanel: false,
+        clientApprovalWorkflow: false, materialsContract: true,
         help: 'Sistemática própria de armazém (ex: Fábrica Materiais, Viga Materiais) -- libera "Atividade Extra" (Área J) e "Registrar Hora Perdida" só nesse site. Tag vira Área.',
     },
-    {
-        value: 'correias', label: 'Manutenção - Transportadores (Sala de Controle)',
-        clientApprovalWorkflow: false, materialsContract: false, correiasPanel: true,
-        help: 'Painel ao vivo de correias transportadoras -- status por Preventiva/Corretiva/Limpeza/Crítico, com liberação pelo celular do Técnico de Manutenção/Operação.',
-    },
 ];
-function siteTypeFromFlags(clientApprovalWorkflow, materialsContract, correiasPanel) {
-    if (correiasPanel) return 'correias';
+function siteTypeFromFlags(clientApprovalWorkflow, materialsContract) {
     if (materialsContract) return 'materiais';
     if (clientApprovalWorkflow) return 'predial';
     return 'industrial';
 }
 function siteTypeFlags(value) {
     const opt = SITE_TYPE_OPTIONS.find(o => o.value === value) || SITE_TYPE_OPTIONS[0];
-    return { clientApprovalWorkflow: opt.clientApprovalWorkflow, materialsContract: opt.materialsContract, correiasPanel: opt.correiasPanel };
+    return { clientApprovalWorkflow: opt.clientApprovalWorkflow, materialsContract: opt.materialsContract };
 }
 function siteTypeSelectHtml(id, selectedValue) {
     return `<select id="${id}">${SITE_TYPE_OPTIONS.map(o => `<option value="${o.value}" ${o.value === selectedValue ? 'selected' : ''}>${escapeHtml(o.label)}</option>`).join('')}</select>`;
@@ -2658,6 +2660,10 @@ function openAddSiteModal() {
                 ${siteTypeSelectHtml('new-site-type', 'industrial')}
             </div>
             <div id="new-site-type-help" style="font-size:11.5px; color:var(--text-secondary); margin-top:4px;">${siteTypeHelpText('industrial')}</div>
+            <div class="m-field" style="margin-top:14px;">
+                <label class="m-checkbox"><input type="checkbox" id="new-site-correias" style="width:auto;"> Habilitar Sala de Controle (Painel de Correias Transportadoras)</label>
+                <div style="font-size:11.5px; color:var(--text-secondary); margin-top:4px;">Pode combinar com qualquer Tipo de Site -- adiciona um painel ao vivo por cima dos mesmos equipamentos/agendamentos já cadastrados, sem duplicar nada.</div>
+            </div>
         </div>
         <div class="modal-footer">
             <button class="btn-secondary" onclick="closeModal()">Cancelar</button>
@@ -2670,7 +2676,8 @@ function openAddSiteModal() {
 }
 function confirmAddSite() {
     const flags = siteTypeFlags(document.getElementById('new-site-type').value);
-    addSite(document.getElementById('new-site-name').value, flags.clientApprovalWorkflow, flags.materialsContract, flags.correiasPanel);
+    const correiasPanel = document.getElementById('new-site-correias').checked;
+    addSite(document.getElementById('new-site-name').value, flags.clientApprovalWorkflow, flags.materialsContract, correiasPanel);
 }
 
 async function addSite(name, clientApprovalWorkflow, materialsContract, correiasPanel) {
@@ -2694,7 +2701,7 @@ function openSiteConfigModal(key) {
     if (state.profileKey !== 'ADMIN') { showAccessDenied('Apenas o Admin Master pode configurar sites.'); return; }
     const label = SITES[key];
     if (!label) return;
-    const currentType = siteTypeFromFlags(isClientApprovalSite(key), isMaterialsContractSite(key), isCorreiasSite(key));
+    const currentType = siteTypeFromFlags(isClientApprovalSite(key), isMaterialsContractSite(key));
     openModal(`
         <div class="modal-header"><h3>Configurar Site — ${escapeHtml(label)}</h3><button class="modal-close" onclick="closeModal()">&times;</button></div>
         <div class="modal-body">
@@ -2704,6 +2711,10 @@ function openSiteConfigModal(key) {
                 ${siteTypeSelectHtml('site-config-type', currentType)}
             </div>
             <div id="site-config-type-help" style="font-size:11.5px; color:var(--text-secondary); margin-top:4px;">${siteTypeHelpText(currentType)}</div>
+            <div class="m-field" style="margin-top:14px;">
+                <label class="m-checkbox"><input type="checkbox" id="site-config-correias" style="width:auto;" ${isCorreiasSite(key) ? 'checked' : ''}> Habilitar Sala de Controle (Painel de Correias Transportadoras)</label>
+                <div style="font-size:11.5px; color:var(--text-secondary); margin-top:4px;">Pode combinar com qualquer Tipo de Site -- adiciona um painel ao vivo por cima dos mesmos equipamentos/agendamentos já cadastrados, sem duplicar nada.</div>
+            </div>
         </div>
         <div class="modal-footer">
             <button class="btn-secondary" onclick="closeModal()">Cancelar</button>
@@ -2718,12 +2729,13 @@ async function saveSiteConfig(key) {
     const newLabel = document.getElementById('site-config-name').value.trim();
     if (!newLabel) { toast('Informe um nome válido para o site.', 'error'); return; }
     const flags = siteTypeFlags(document.getElementById('site-config-type').value);
+    const correiasPanel = document.getElementById('site-config-correias').checked;
     // Só o rótulo (label) muda -- a key interna do site (usada em áreas,
     // equipamentos, agendamentos, etc.) nunca é tocada aqui.
-    const { error } = await sb.from('sites').update({ label: newLabel, client_approval_workflow: flags.clientApprovalWorkflow, materials_contract: flags.materialsContract, correias_panel: flags.correiasPanel }).eq('key', key);
+    const { error } = await sb.from('sites').update({ label: newLabel, client_approval_workflow: flags.clientApprovalWorkflow, materials_contract: flags.materialsContract, correias_panel: correiasPanel }).eq('key', key);
     if (error) { toast('Erro ao salvar configuração do site: ' + error.message, 'error'); return; }
     SITES[key] = newLabel;
-    SITE_CONFIG[key] = { clientApprovalWorkflow: flags.clientApprovalWorkflow, materialsContract: flags.materialsContract, correiasPanel: flags.correiasPanel };
+    SITE_CONFIG[key] = { clientApprovalWorkflow: flags.clientApprovalWorkflow, materialsContract: flags.materialsContract, correiasPanel: correiasPanel };
     closeModal();
     toast(`Configuração de "${newLabel}" salva.`);
     renderSiteSelect();
@@ -4592,6 +4604,10 @@ function renderMobileCorreiasNewForm(tag) {
                 <select id="correias-new-type">${p.canBook.map(t => `<option value="${t}">${t}</option>`).join('')}</select>
             </div>
             <div class="m-field"><label class="m-checkbox"><input type="checkbox" id="correias-new-emergencial" style="width:auto;"> Emergencial (crítico -- correia parada de vez)</label></div>
+            <div style="display:flex; gap:12px;">
+                <div class="m-field" style="flex:1;"><label>Hora início *</label><input type="time" id="correias-new-start" value="${minutesToTime(nowMinutes())}"></div>
+                <div class="m-field" style="flex:1;"><label>Hora fim prevista *</label><input type="time" id="correias-new-end" value="${minutesToTime(Math.min(nowMinutes() + 240, 23 * 60 + 59))}"></div>
+            </div>
             <div class="m-field"><label>Número da OM *</label><input type="text" id="correias-new-om" inputmode="numeric" maxlength="12" placeholder="Ex: 80438"></div>
             <div class="m-field"><label>Justificativa Técnica *</label><textarea id="correias-new-just" rows="3" maxlength="200" placeholder="O que motivou o bloqueio..."></textarea></div>
         </div>
@@ -4603,19 +4619,27 @@ function renderMobileCorreiasNewForm(tag) {
 async function submitMobileCorreiasNew(tag) {
     const type = document.getElementById('correias-new-type').value;
     const emergencial = document.getElementById('correias-new-emergencial').checked;
+    const startStr = document.getElementById('correias-new-start').value;
+    const endStr = document.getElementById('correias-new-end').value;
     const om = document.getElementById('correias-new-om').value.trim();
     const justification = document.getElementById('correias-new-just').value.trim();
     if (!canBookType(type)) { showAccessDenied(`O perfil ativo não pode registrar bloqueios do tipo "${type}".`); return; }
+    if (!startStr || !endStr) { toast('Informe o horário de início e a hora fim prevista.', 'error'); return; }
+    const startMin = timeToMinutes(startStr);
+    const endMin = timeToMinutes(endStr);
+    if (endMin <= startMin) { toast('A hora fim prevista deve ser depois da hora de início.', 'error'); return; }
     if (!/^\d{1,12}$/.test(om)) { toast('Informe o número da OM (somente dígitos, até 12 caracteres).', 'error'); return; }
     if (justification.length < 5) { toast('Informe uma justificativa técnica válida (mínimo 5 caracteres).', 'error'); return; }
     if (activeOmConflict(tag, om)) { toast('Essa OM já está em aberto para esta correia.', 'error'); return; }
 
     const btn = document.getElementById('correias-new-submit');
     btn.disabled = true; btn.textContent = 'Registrando...';
-    const nowMin = nowMinutes();
+    // A hora fim aqui é só a PREVISÃO -- o ativo só volta a "Liberada" quando
+    // o Técnico (ou o desktop) encerrar de fato o bloqueio, mesmo que esse
+    // horário já tenha passado (isActiveBooking só olha closureStatus).
     const { data, error } = await sb.from('bookings').insert({
         site_key: state.currentSite, tag, area_code: areaOf(tag), date: todayStr(),
-        start_min: nowMin, end_min: Math.min(nowMin + 240, 23 * 60 + 59), type, emergencial, om, justification,
+        start_min: startMin, end_min: endMin, type, emergencial, om, justification,
         operator_id: state.currentUser.id, operator_label: `${activeProfile().user} (${state.profileKey})`
     }).select().single();
     if (error) { toast('Erro ao registrar bloqueio: ' + error.message, 'error'); btn.disabled = false; btn.textContent = 'Registrar Bloqueio'; return; }
