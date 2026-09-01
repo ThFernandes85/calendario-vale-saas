@@ -2436,10 +2436,34 @@ async function ensureHistoryLoadedFrom(dateStr) {
 // substituir state.bookings por completo aqui apagaria um lançamento local
 // ainda não sincronizado.
 let bgRefreshInProgress = false;
+// Aplica os bookings recém-buscados em cima de state.bookings SEM trocar a
+// referência dos objetos existentes. Se simplesmente sobrescrevêssemos
+// state.bookings com objetos novos (como era antes), qualquer operação em
+// andamento que segura uma referência ao booking durante um await (ex:
+// confirmCloseBooking, enquanto sobe as fotos) fica "órfã": ela termina
+// mutando um objeto que não é mais o que a tela renderiza, e a OM parece
+// não ter encerrado até o próximo ciclo de 20s. Atualizando os campos NO
+// MESMO objeto, a mutação local de uma operação em andamento continua
+// valendo mesmo que um poll termine no meio do caminho.
+function reconcileBookings(rows) {
+    const fresh = (rows || []).map(mapBookingFromDb);
+    const freshById = new Map(fresh.map(b => [b.id, b]));
+    const kept = [];
+    for (const existing of state.bookings) {
+        const updated = freshById.get(existing.id);
+        if (updated) { Object.assign(existing, updated); freshById.delete(existing.id); kept.push(existing); }
+    }
+    // O que sobrou em freshById são bookings realmente novos (criados por
+    // outro usuário/aparelho desde o último ciclo).
+    for (const b of fresh) { if (freshById.has(b.id)) kept.push(b); }
+    kept.sort((a, b) => a.date === b.date ? 0 : (a.date < b.date ? -1 : 1));
+    state.bookings = kept;
+}
+
 async function backgroundRefreshTick() {
     if (bgRefreshInProgress) return;
     if (!state.currentUser || !state.currentSite) return;
-    if (['ENCARREGADO', 'TECNICO_CAMPO_VALE', 'SOLICITANTE_PORTARIA', 'APROVADOR_PORTARIA', 'PORTARIA'].includes(state.profileKey)) return;
+    if (['ENCARREGADO', 'TECNICO_CAMPO_VALE', 'SOLICITANTE_PORTARIA', 'APROVADOR_PORTARIA', 'PORTARIA', 'TECNICO_MANUTENCAO', 'TECNICO_OPERACAO'].includes(state.profileKey)) return;
     if (document.visibilityState !== 'visible') return;
     bgRefreshInProgress = true;
     try {
@@ -2459,15 +2483,23 @@ async function backgroundRefreshTick() {
         // zera state.bookings no erro -- aceitável num carregamento inicial,
         // mas não aqui, onde a tela já tem dados válidos sendo exibidos).
         if (bErr || aErr || iErr || pErr) return;
-        state.bookings = (bookings || []).map(mapBookingFromDb);
+        reconcileBookings(bookings);
         state.auditLog = (audit || []).map(mapAuditFromDb);
         state.inspections = (inspections || []).map(mapInspectionFromDb);
         state.portariaLiberacoes = (portaria || []).map(mapPortariaFromDb);
         loadedHistoryFrom = windowStart;
 
-        renderWeekGrid(); renderAtivos(); renderDashboard(); updateUpcomingBadge();
+        // Só re-renderiza a view que a pessoa está realmente olhando -- antes
+        // recalculava o Calendário inteiro + Ativos + os 2 gráficos do
+        // Dashboard (Chart.js destrói/recria o canvas) a cada 20s, mesmo pra
+        // quem estava em Relatórios ou Mapa de Calor. Isso pesava a tela (e
+        // a bateria do celular) à toa -- agora só a tela ativa é redesenhada.
+        updateUpcomingBadge();
         const activeView = document.querySelector('.content-container.view-active');
         if (activeView) {
+            if (activeView.id === 'view-calendario') renderWeekGrid();
+            if (activeView.id === 'view-ativos') renderAtivos();
+            if (activeView.id === 'view-dashboard') renderDashboard();
             if (activeView.id === 'view-relatorios') renderCharts();
             if (activeView.id === 'view-mapacalor') renderHeatmap();
             if (activeView.id === 'view-aprovacoes') renderValeApprovals();
@@ -6436,6 +6468,7 @@ function switchView(view) {
     if (view === 'dashboard') renderDashboard();
     if (view === 'usuarios') loadProfiles().then(renderUsersView);
     if (view === 'calendario') renderWeekGrid();
+    if (view === 'ativos') renderAtivos();
     if (view === 'mapacalor') renderHeatmap();
     if (view === 'saude-ativos') renderAssetHealth();
     if (view === 'portaria') renderPortariaView();
