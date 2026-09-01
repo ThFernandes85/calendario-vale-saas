@@ -2426,11 +2426,23 @@ function bookingsWindowFilter(query, windowStart) {
 // e só pode ficar mais antiga (nunca mais recente) via ensureHistoryLoadedFrom.
 let loadedHistoryFrom = null;
 
+// Perfis que só têm a tela mobile simplificada (nunca o shell desktop) --
+// usado tanto pra pular o polling de 20s em segundo plano (backgroundRefreshTick)
+// quanto pra pular a busca de audit_log no login (loadPersisted), já que
+// nenhuma tela mobile lê state.auditLog.
+const MOBILE_ONLY_ROLES = ['ENCARREGADO', 'TECNICO_CAMPO_VALE', 'SOLICITANTE_PORTARIA', 'APROVADOR_PORTARIA', 'PORTARIA', 'TECNICO_MANUTENCAO', 'TECNICO_OPERACAO'];
+
 async function loadPersisted() {
     const windowStart = historyWindowStart();
     const [{ data: bookings, error: bErr }, { data: audit, error: aErr }, { data: inspections, error: iErr }, { data: portaria, error: pErr }] = await Promise.all([
         fetchAllRows('bookings', 'date', true, q => bookingsWindowFilter(q, windowStart)),
-        fetchAllRows('audit_log', 'data_hora', false, q => q.gte('data_hora', windowStart)),
+        // audit_log é de longe a tabela mais pesada pra paginar (uma linha por
+        // criação/encerramento/login/ação administrativa dos últimos 6 meses)
+        // -- e NENHUMA tela mobile lê state.auditLog (é usado só no Dashboard,
+        // Relatórios e na Sala de Controle do desktop). Pular essa busca nos
+        // perfis mobile corta a parte mais lenta do login exatamente pra quem
+        // mais sente: rede de celular em campo.
+        MOBILE_ONLY_ROLES.includes(state.profileKey) ? Promise.resolve({ data: [], error: null }) : fetchAllRows('audit_log', 'data_hora', false, q => q.gte('data_hora', windowStart)),
         fetchAllRows('inspections', 'created_at', false),
         fetchAllRows('portaria_liberacoes', 'created_at', false)
     ]);
@@ -2525,7 +2537,7 @@ function reconcileBookings(rows) {
 async function backgroundRefreshTick() {
     if (bgRefreshInProgress) return;
     if (!state.currentUser || !state.currentSite) return;
-    if (['ENCARREGADO', 'TECNICO_CAMPO_VALE', 'SOLICITANTE_PORTARIA', 'APROVADOR_PORTARIA', 'PORTARIA', 'TECNICO_MANUTENCAO', 'TECNICO_OPERACAO'].includes(state.profileKey)) return;
+    if (MOBILE_ONLY_ROLES.includes(state.profileKey)) return;
     if (document.visibilityState !== 'visible') return;
     bgRefreshInProgress = true;
     try {
