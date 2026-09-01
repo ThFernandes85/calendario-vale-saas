@@ -6231,8 +6231,12 @@ async function loginAs(user, options) {
     document.getElementById('login-screen').style.display = 'none';
     // Sem rede, nem tenta registrar o login (é uma chamada de rede também) --
     // fica só o que já está salvo localmente, sem travar a abertura da tela.
+    // Sem `await`: registrar esse evento não precisa segurar a tela -- ela já
+    // pode aparecer enquanto isso termina em segundo plano (é o último dos
+    // vários passos sequenciais do login, então tirá-lo da frente encurta
+    // a espera percebida em qualquer rede, principalmente a de celular).
     if (logEvent && !offline) {
-        await addAuditEntry({ tag: '—', acao: 'Login', justificativa: 'Acesso ao sistema autenticado.' });
+        addAuditEntry({ tag: '—', acao: 'Login', justificativa: 'Acesso ao sistema autenticado.' });
     }
 
     // ENCARREGADO nunca vê o shell desktop (sidebar/calendário/relatórios)
@@ -9804,10 +9808,23 @@ async function loadSiteDatabase() {
     Object.keys(EQUIP_META).forEach(k => delete EQUIP_META[k]);
     ALL_EQUIP.length = 0;
     COLLABORATORS.length = 0;
-    const { data: areas, error: areasErr } = await sb.from('areas').select('code, label').eq('site_key', state.currentSite);
+    // Quadro de colaboradores só existe/é usado no workflow S11D -- não vale
+    // a pena consultar essa tabela pros outros sites.
+    //
+    // As 3 consultas abaixo são independentes entre si -- disparar em
+    // paralelo (em vez de uma esperar a outra terminar, como era antes) corta
+    // esse trecho do login de 2-3 idas-e-voltas sequenciais pra só uma, o que
+    // pesa bastante numa rede de celular mais lenta em campo.
+    const needsCollaborators = isClientApprovalSite();
+    const [{ data: areas, error: areasErr }, { data: equip, error: equipErr }, collabResult] = await Promise.all([
+        sb.from('areas').select('code, label').eq('site_key', state.currentSite),
+        sb.from('equipment').select('tag, area_code, m2, valor_m2, belt_route').eq('site_key', state.currentSite),
+        needsCollaborators
+            ? sb.from('collaborators').select('id, name, role').eq('site_key', state.currentSite).order('name')
+            : Promise.resolve({ data: [], error: null }),
+    ]);
     if (areasErr) { toast('Erro ao carregar áreas: ' + areasErr.message, 'error'); return { error: areasErr }; }
     (areas || []).forEach(a => { DATABASE[a.code] = []; AREA_LABEL[a.code] = a.label; });
-    const { data: equip, error: equipErr } = await sb.from('equipment').select('tag, area_code, m2, valor_m2, belt_route').eq('site_key', state.currentSite);
     if (equipErr) { toast('Erro ao carregar equipamentos: ' + equipErr.message, 'error'); return { error: equipErr }; }
     (equip || []).forEach(e => {
         if (!DATABASE[e.area_code]) DATABASE[e.area_code] = [];
@@ -9815,12 +9832,9 @@ async function loadSiteDatabase() {
         ALL_EQUIP.push({ tag: e.tag, area: e.area_code });
         EQUIP_META[e.tag] = { m2: e.m2 == null ? null : Number(e.m2), valorM2: e.valor_m2 == null ? null : Number(e.valor_m2), beltRoute: e.belt_route || null };
     });
-    // Quadro de colaboradores só existe/é usado no workflow S11D -- não vale
-    // a pena consultar essa tabela pros outros sites.
-    if (isClientApprovalSite()) {
-        const { data: collaborators, error: collabErr } = await sb.from('collaborators').select('id, name, role').eq('site_key', state.currentSite).order('name');
-        if (collabErr) { toast('Erro ao carregar colaboradores: ' + collabErr.message, 'error'); return { error: collabErr }; }
-        (collaborators || []).forEach(c => COLLABORATORS.push({ id: c.id, name: c.name, role: c.role }));
+    if (needsCollaborators) {
+        if (collabResult.error) { toast('Erro ao carregar colaboradores: ' + collabResult.error.message, 'error'); return { error: collabResult.error }; }
+        (collabResult.data || []).forEach(c => COLLABORATORS.push({ id: c.id, name: c.name, role: c.role }));
     }
     return { error: null };
 }
