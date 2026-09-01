@@ -852,6 +852,9 @@ body.book-preview-mode .book-preview-toolbar {
             <div style="font-size:15px; font-weight:700; color:#fff;">Inspeção · <span id="mobile-inspecao-site-label"></span></div>
             <div style="font-size:12px; color:var(--text-secondary);" id="mobile-inspecao-user-label"></div>
         </div>
+        <button type="button" class="mobile-refresh-btn" id="btn-mobile-inspecao-refresh" title="Atualizar dados">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+        </button>
         <button type="button" class="btn-secondary" id="btn-mobile-inspecao-logout">Sair</button>
     </div>
     <div id="mobile-inspecao-body"></div>
@@ -864,6 +867,9 @@ body.book-preview-mode .book-preview-toolbar {
             <div style="font-size:15px; font-weight:700; color:#fff;">Portaria · <span id="mobile-solicitante-site-label"></span></div>
             <div style="font-size:12px; color:var(--text-secondary);" id="mobile-solicitante-user-label"></div>
         </div>
+        <button type="button" class="mobile-refresh-btn" id="btn-mobile-solicitante-refresh" title="Atualizar dados">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+        </button>
         <button type="button" class="btn-secondary" id="btn-mobile-solicitante-logout">Sair</button>
     </div>
     <div id="mobile-solicitante-body"></div>
@@ -876,6 +882,9 @@ body.book-preview-mode .book-preview-toolbar {
             <div style="font-size:15px; font-weight:700; color:#fff;">Portaria · <span id="mobile-aprovador-site-label"></span></div>
             <div style="font-size:12px; color:var(--text-secondary);" id="mobile-aprovador-user-label"></div>
         </div>
+        <button type="button" class="mobile-refresh-btn" id="btn-mobile-aprovador-refresh" title="Atualizar dados">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+        </button>
         <button type="button" class="btn-secondary" id="btn-mobile-aprovador-logout">Sair</button>
     </div>
     <div id="mobile-aprovador-body"></div>
@@ -888,6 +897,9 @@ body.book-preview-mode .book-preview-toolbar {
             <div style="font-size:15px; font-weight:700; color:#fff;">Portaria · <span id="mobile-portaria-site-label"></span></div>
             <div style="font-size:12px; color:var(--text-secondary);" id="mobile-portaria-user-label"></div>
         </div>
+        <button type="button" class="mobile-refresh-btn" id="btn-mobile-portaria-refresh" title="Atualizar dados">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+        </button>
         <button type="button" class="btn-secondary" id="btn-mobile-portaria-logout">Sair</button>
     </div>
     <div id="mobile-portaria-body"></div>
@@ -900,6 +912,9 @@ body.book-preview-mode .book-preview-toolbar {
             <div style="font-size:15px; font-weight:700; color:#fff;">Correias · <span id="mobile-correias-site-label"></span></div>
             <div style="font-size:12px; color:var(--text-secondary);" id="mobile-correias-user-label"></div>
         </div>
+        <button type="button" class="mobile-refresh-btn" id="btn-mobile-correias-refresh" title="Atualizar dados">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+        </button>
         <button type="button" class="btn-secondary" id="btn-mobile-correias-logout">Sair</button>
     </div>
     <div id="mobile-correias-body"></div>
@@ -4438,32 +4453,46 @@ function renderMobileEquipList() {
     });
 }
 
-// Botão de atualizar do Encarregado -- o Mobile NÃO tem o polling de 20s do
-// desktop (ver backgroundRefreshTick, que exclui perfis mobile de propósito
-// pra não gastar bateria/dados à toa), então sem isso a única forma de ver
-// uma importação em massa nova era fechar e reabrir o app. Dois gatilhos:
-// o botão manual, e voltar o app pro primeiro plano (trocar de app pra
-// tirar foto e voltar, por exemplo) -- ambos silenciosos se ele estiver no
-// meio de um formulário: os dados são atualizados por trás, mas a tela só
-// é redesenhada se for exatamente a lista (nunca troca a tela embaixo dele
-// e derruba o que já tinha preenchido).
-let mobileEncarregadoRefreshing = false;
-async function refreshMobileEncarregadoData(silent) {
-    if (mobileEncarregadoRefreshing || !state.currentUser || state.profileKey !== 'ENCARREGADO') return;
-    mobileEncarregadoRefreshing = true;
-    const btn = document.getElementById('btn-mobile-refresh');
+// Botão de atualizar dos perfis mobile -- nenhum deles tem o polling de 20s
+// do desktop (ver backgroundRefreshTick, que exclui perfis mobile de
+// propósito pra não gastar bateria/dados à toa), então sem isso a única
+// forma de ver uma importação em massa (ou qualquer mudança feita por
+// outra pessoa) era fechar e reabrir o app. Dois gatilhos: o botão manual
+// no cabeçalho, e voltar o app pro primeiro plano (trocar de app pra tirar
+// foto e voltar, por exemplo) -- ambos silenciosos se a pessoa estiver no
+// meio de um formulário: os dados são atualizados por trás (loadPersisted,
+// o mesmo usado no login), mas a tela só é redesenhada quando `safe()`
+// confirma que é a lista/tela inicial (nunca troca a tela embaixo de quem
+// já começou a preencher algo). Aprovador/Portaria usam modal (openModal,
+// fora do body mobile) pras próprias ações, então redesenhar o body deles
+// nunca derruba nada em andamento -- por isso `safe` sempre `true` ali.
+const MOBILE_REFRESH_ROLES = {
+    ENCARREGADO: { btnId: 'btn-mobile-refresh', safe: () => !!document.getElementById('mobile-equip-list'), redraw: renderMobileEquipList, countFn: () => mobilePendingBookings().length },
+    TECNICO_CAMPO_VALE: { btnId: 'btn-mobile-inspecao-refresh', safe: () => !!document.getElementById('mobile-inspecao-equip-list'), redraw: renderMobileInspecaoEquipList },
+    SOLICITANTE_PORTARIA: { btnId: 'btn-mobile-solicitante-refresh', safe: () => !!document.getElementById('btn-nova-solicitacao-portaria'), redraw: renderMobileSolicitanteHome },
+    APROVADOR_PORTARIA: { btnId: 'btn-mobile-aprovador-refresh', safe: () => true, redraw: renderMobileAprovadorList },
+    PORTARIA: { btnId: 'btn-mobile-portaria-refresh', safe: () => true, redraw: renderMobilePortariaList },
+    TECNICO_MANUTENCAO: { btnId: 'btn-mobile-correias-refresh', safe: () => !!document.getElementById('mobile-correias-equip-list'), redraw: renderMobileCorreiasEquipList },
+    TECNICO_OPERACAO: { btnId: 'btn-mobile-correias-refresh', safe: () => !!document.getElementById('mobile-correias-equip-list'), redraw: renderMobileCorreiasEquipList },
+};
+let mobileRoleRefreshing = false;
+async function refreshMobileRoleData(silent) {
+    const cfg = MOBILE_REFRESH_ROLES[state.profileKey];
+    if (!cfg || mobileRoleRefreshing || !state.currentUser) return;
+    mobileRoleRefreshing = true;
+    const btn = document.getElementById(cfg.btnId);
     if (btn) { btn.classList.add('spinning'); btn.classList.remove('just-updated'); }
     try {
-        const pendentesAntes = mobilePendingBookings().length;
+        const antes = cfg.countFn ? cfg.countFn() : null;
         await loadPersisted();
-        const pendentesDepois = mobilePendingBookings().length;
-        if (document.getElementById('mobile-equip-list')) renderMobileEquipList();
+        const depois = cfg.countFn ? cfg.countFn() : null;
+        if (cfg.safe()) cfg.redraw();
         if (!silent) {
-            const novas = pendentesDepois - pendentesAntes;
+            const novas = (antes != null && depois != null) ? depois - antes : 0;
             toast(novas > 0 ? `Atualizado -- ${novas} nova(s) OM(s) chegaram.` : 'Dados atualizados.', 'success');
         }
     } finally {
-        mobileEncarregadoRefreshing = false;
+        mobileRoleRefreshing = false;
         if (btn) {
             btn.classList.remove('spinning');
             btn.classList.add('just-updated');
@@ -4471,9 +4500,15 @@ async function refreshMobileEncarregadoData(silent) {
         }
     }
 }
-document.getElementById('btn-mobile-refresh').addEventListener('click', () => refreshMobileEncarregadoData(false));
+Object.values(MOBILE_REFRESH_ROLES).forEach(cfg => {
+    const btn = document.getElementById(cfg.btnId);
+    if (btn && !btn.dataset.refreshWired) {
+        btn.dataset.refreshWired = '1';
+        btn.addEventListener('click', () => refreshMobileRoleData(false));
+    }
+});
 document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible') refreshMobileEncarregadoData(true);
+    if (document.visibilityState === 'visible') refreshMobileRoleData(true);
 });
 
 function openMobileEquip(tag) {
