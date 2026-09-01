@@ -2434,8 +2434,18 @@ async function loadPersisted() {
         fetchAllRows('inspections', 'created_at', false),
         fetchAllRows('portaria_liberacoes', 'created_at', false)
     ]);
-    if (bErr) { toast('Erro ao carregar agendamentos: ' + bErr.message, 'error'); state.bookings = []; }
-    else state.bookings = (bookings || []).map(mapBookingFromDb);
+    // Usa reconcileBookings (merge no MESMO objeto) em vez de trocar a
+    // referência do array -- loadPersisted não é mais chamada só no login
+    // (onde não existe nada em andamento pra quebrar): agora o botão de
+    // atualizar do mobile e o refresh-ao-voltar-pro-app (ver
+    // MOBILE_REFRESH_ROLES) também chamam ela, inclusive enquanto o
+    // Encarregado pode estar no meio de um encerramento com foto (photo
+    // upload demora, e tirar foto pela câmera do celular já dispara
+    // visibilitychange sozinho). Sem o merge, confirmCloseBooking ficava
+    // com uma referência órfã e nunca voltava pra lista -- o mesmo bug que
+    // já corrigimos no polling do desktop (ver backgroundRefreshTick).
+    if (bErr) { toast('Erro ao carregar agendamentos: ' + bErr.message, 'error'); }
+    else reconcileBookings(bookings);
     if (aErr) { toast('Erro ao carregar histórico: ' + aErr.message, 'error'); state.auditLog = []; }
     else state.auditLog = (audit || []).map(mapAuditFromDb);
     if (iErr) { toast('Erro ao carregar inspeções: ' + iErr.message, 'error'); state.inspections = []; }
@@ -4476,9 +4486,18 @@ const MOBILE_REFRESH_ROLES = {
     TECNICO_OPERACAO: { btnId: 'btn-mobile-correias-refresh', safe: () => !!document.getElementById('mobile-correias-equip-list'), redraw: renderMobileCorreiasEquipList },
 };
 let mobileRoleRefreshing = false;
+let lastMobileRefreshAt = 0;
+// Tirar UMA foto pela câmera já dispara visibilitychange sozinho (o app
+// some e volta) -- um encerramento com foto de antes/depois passa por isso
+// pelo menos 2x. Sem um intervalo mínimo, o refresh silencioso (que já é
+// seguro, ver reconcileBookings) dispararia várias vezes seguidas à toa
+// durante um único encerramento, gastando dado/bateria por nada. O botão
+// manual ignora esse intervalo -- é uma ação explícita da pessoa.
+const MOBILE_REFRESH_COOLDOWN_MS = 8000;
 async function refreshMobileRoleData(silent) {
     const cfg = MOBILE_REFRESH_ROLES[state.profileKey];
     if (!cfg || mobileRoleRefreshing || !state.currentUser) return;
+    if (silent && Date.now() - lastMobileRefreshAt < MOBILE_REFRESH_COOLDOWN_MS) return;
     mobileRoleRefreshing = true;
     const btn = document.getElementById(cfg.btnId);
     if (btn) { btn.classList.add('spinning'); btn.classList.remove('just-updated'); }
@@ -4493,6 +4512,7 @@ async function refreshMobileRoleData(silent) {
         }
     } finally {
         mobileRoleRefreshing = false;
+        lastMobileRefreshAt = Date.now();
         if (btn) {
             btn.classList.remove('spinning');
             btn.classList.add('just-updated');
