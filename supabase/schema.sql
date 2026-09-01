@@ -253,6 +253,12 @@ alter table public.bookings drop column if exists collaborator_name;
 alter table public.bookings drop column if exists collaborator_role;
 alter table public.bookings add column if not exists collaborators jsonb not null default '[]'::jsonb;
 
+-- Geolocalização do encerramento (Mobile) -- SEMPRE opt-in do Encarregado
+-- (checkbox no app, ver renderMobileCloseForm em docs/index.html); fica
+-- null quando ele não aprova ou o GPS falha, nunca é obrigatório.
+alter table public.bookings add column if not exists closure_lat double precision;
+alter table public.bookings add column if not exists closure_lng double precision;
+
 -- ---------- WHATSAPP ALERTS (fila) ----------
 -- Fase de "encanamento": monta a fila de alertas certinha (quem recebe,
 -- quando, com qual texto) mas ainda NÃO manda mensagem nenhuma de verdade --

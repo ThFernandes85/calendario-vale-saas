@@ -1,0 +1,28 @@
+# Deploy estático puro -- mesmo conteúdo que já é publicado no GitHub Pages
+# a partir de docs/, sem nenhum passo de build (é um único HTML com <script>
+# inline, sem framework/bundler).
+[build]
+  publish = "docs"
+  command = ""
+
+# index.html e sw.js SEMPRE precisam ser revalidados com o servidor antes de
+# usar uma cópia em cache -- são justamente os dois arquivos que controlam
+# "qual versão do app roda" e "o que o Service Worker considera atualizado".
+# Sem isso, o CDN do Netlify poderia segurar uma versão antiga por mais
+# tempo do que o próprio Service Worker do app já demora pra perceber a
+# atualização (ver docs/sw.js), piorando o problema de "não atualizou no
+# celular" em vez de ajudar.
+[[headers]]
+  for = "/index.html"
+  [headers.values]
+    Cache-Control = "no-cache"
+
+[[headers]]
+  for = "/sw.js"
+  [headers.values]
+    Cache-Control = "no-cache"
+
+[[headers]]
+  for = "/manifest.json"
+  [headers.values]
+    Cache-Control = "no-cache"

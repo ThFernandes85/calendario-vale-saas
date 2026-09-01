@@ -2040,6 +2040,24 @@ const OVERTIME_TYPE = 'Hora Extra';
 // validateNewBookingForm).
 const EXTRA_AREA_CODE = 'J';
 function isActiveBooking(b) { return !b.closureStatus; }
+
+// Geolocalização no encerramento (Mobile) -- SEMPRE opt-in: o Encarregado
+// precisa marcar o checkbox pra sequer disparar o pedido de permissão do
+// GPS (ver renderMobileCloseForm). Best-effort -- se ele não aprovar, o
+// aparelho negar a permissão, ou o GPS demorar/falhar, o encerramento
+// continua normalmente sem coordenada, nunca trava o trabalho de campo.
+let mobileCloseGeo = null;
+function captureMobileCloseGeo(statusElId) {
+    const statusEl = document.getElementById(statusElId);
+    if (!navigator.geolocation) { mobileCloseGeo = null; if (statusEl) statusEl.textContent = 'Este aparelho/navegador não suporta localização.'; return; }
+    if (statusEl) statusEl.textContent = 'Obtendo localização...';
+    navigator.geolocation.getCurrentPosition(
+        pos => { mobileCloseGeo = { lat: pos.coords.latitude, lng: pos.coords.longitude }; if (statusEl) statusEl.textContent = 'Localização capturada com sucesso ✓'; },
+        () => { mobileCloseGeo = null; if (statusEl) statusEl.textContent = 'Não foi possível obter a localização agora (verifique a permissão de GPS do app).'; },
+        { enableHighAccuracy: true, timeout: 8000, maximumAge: 0 }
+    );
+}
+function googleMapsLink(lat, lng) { return `https://www.google.com/maps?q=${lat},${lng}`; }
 function pendingClosureStatusFor(type) { return type === SODEXO_CLEANING_TYPE ? 'PENDENTE_SODEXO' : 'PENDENTE_VALE'; }
 
 // Bloqueio "atrasado" -- ainda aberto 3 dias ou mais depois da própria data
@@ -2275,6 +2293,8 @@ function mapBookingFromDb(row) {
         closurePhotoBefore: row.closure_photo_before, closurePhotoAfter: row.closure_photo_after,
         closurePhotosExtra: row.closure_photos_extra || [],
         valeDecisionReason: row.vale_decision_reason, valeDecidedAt: row.vale_decided_at,
+        closureLat: row.closure_lat == null ? null : Number(row.closure_lat),
+        closureLng: row.closure_lng == null ? null : Number(row.closure_lng),
         collaborators: row.collaborators || [],
         isExtra: !!row.is_extra, lostHours: row.lost_hours == null ? null : Number(row.lost_hours),
         receiverName: row.receiver_name, receiverRegistration: row.receiver_registration,
@@ -3115,6 +3135,7 @@ function openDetailModal(booking) {
             <div class="m-info-row"><span>Horário</span><b>${minutesToTime(booking.startMin)} — ${minutesToTime(booking.endMin)}</b></div>
             <div class="m-info-row"><span>Operador Responsável</span><b>${escapeHtml(booking.operator)}</b></div>
             ${booking.receiverName || booking.receiverRegistration ? `<div class="m-info-row"><span>Recebido por</span><b>${escapeHtml(booking.receiverName || '—')}${booking.receiverRegistration ? ' (Mat. ' + escapeHtml(booking.receiverRegistration) + ')' : ''}</b></div>` : ''}
+            ${(booking.closureLat != null && booking.closureLng != null) ? `<div class="m-info-row"><span>Localização do Encerramento</span><b><a href="${googleMapsLink(booking.closureLat, booking.closureLng)}" target="_blank" rel="noopener">📍 Ver no mapa</a></b></div>` : ''}
             <div class="m-field" style="margin-top:6px;"><label>Justificativa Técnica</label><div style="font-size:13px; color: var(--text-primary); line-height:1.5;">${escapeHtml(booking.justification)}</div></div>
         </div>
         <div class="modal-footer">
@@ -3640,7 +3661,15 @@ function validateClosureForm(booking) {
     const receiverName = receiverNameEl ? receiverNameEl.value.trim() : null;
     const receiverReg = receiverRegEl ? receiverRegEl.value.trim() : null;
 
-    return { ok: true, outcome, reason, dateStr, photos, collaborators, receiverName, receiverReg };
+    // Localização só existe no formulário mobile (close-geo-approve) e só
+    // vale quando o Encarregado marcou o checkbox E a captura teve sucesso
+    // -- no desktop o elemento nem existe, então geoLat/geoLng ficam null.
+    const geoApproveEl = document.getElementById('close-geo-approve');
+    const geoApproved = !!(geoApproveEl && geoApproveEl.checked && mobileCloseGeo);
+    const geoLat = geoApproved ? mobileCloseGeo.lat : null;
+    const geoLng = geoApproved ? mobileCloseGeo.lng : null;
+
+    return { ok: true, outcome, reason, dateStr, photos, collaborators, receiverName, receiverReg, geoLat, geoLng };
 }
 
 async function confirmCloseBooking(id) {
@@ -3653,7 +3682,7 @@ async function confirmCloseBooking(id) {
         toast(v.message, 'error');
         return v.duplicateOm ? 'duplicate_om' : undefined;
     }
-    const { outcome, reason, dateStr, photos, collaborators, receiverName, receiverReg } = v;
+    const { outcome, reason, dateStr, photos, collaborators, receiverName, receiverReg, geoLat, geoLng } = v;
 
     const confirmBtn = document.querySelector('#modal-box .modal-footer .btn-primary') || document.getElementById('mobile-close-submit');
     if (confirmBtn) { confirmBtn.disabled = true; confirmBtn.textContent = 'Enviando...'; }
@@ -3672,6 +3701,7 @@ async function confirmCloseBooking(id) {
         closure_photo_before: photoBeforeUrl, closure_photo_after: photoAfterUrl, closure_photos_extra: photosExtra,
         collaborators: collaborators,
         receiver_name: receiverName || null, receiver_registration: receiverReg || null,
+        closure_lat: geoLat ?? null, closure_lng: geoLng ?? null,
         closed_by: (state.currentUser && state.profileKey !== 'VISITANTE') ? state.currentUser.id : null
     }).eq('id', id).select();
     if (error) {
@@ -3690,6 +3720,7 @@ async function confirmCloseBooking(id) {
     booking.closurePhotoBefore = photoBeforeUrl; booking.closurePhotoAfter = photoAfterUrl; booking.closurePhotosExtra = photosExtra;
     booking.collaborators = collaborators;
     booking.receiverName = receiverName || null; booking.receiverRegistration = receiverReg || null;
+    booking.closureLat = geoLat ?? null; booking.closureLng = geoLng ?? null;
     booking.pendingOfflineSync = false;
 
     const outcomeLabel = closureOutcomesFor(booking).find(o => o.value === outcome).label;
@@ -3938,10 +3969,10 @@ async function queueClosureOffline(booking) {
         toast(v.message, 'error');
         return;
     }
-    const { outcome, reason, dateStr, photos, collaborators, receiverName, receiverReg } = v;
+    const { outcome, reason, dateStr, photos, collaborators, receiverName, receiverReg, geoLat, geoLng } = v;
     const record = {
         id: 'offline_' + booking.id + '_' + Date.now(), kind: 'close',
-        bookingId: booking.id, outcome, reason, dateStr, photos, collaborators, receiverName, receiverReg,
+        bookingId: booking.id, outcome, reason, dateStr, photos, collaborators, receiverName, receiverReg, geoLat, geoLng,
         createdAt: Date.now(),
     };
     await offlineQueueAdd(record);
@@ -4046,6 +4077,7 @@ async function trySyncOfflineQueue() {
                 closure_photo_before: photoBeforeUrl, closure_photo_after: photoAfterUrl, closure_photos_extra: photosExtra,
                 collaborators: record.collaborators || [],
                 receiver_name: record.receiverName || null, receiver_registration: record.receiverReg || null,
+                closure_lat: record.geoLat ?? null, closure_lng: record.geoLng ?? null,
                 closed_by: (state.currentUser && state.profileKey !== 'VISITANTE') ? state.currentUser.id : null
             }).eq('id', booking.id).select();
             if (error || !data || data.length === 0) break;
@@ -4055,6 +4087,7 @@ async function trySyncOfflineQueue() {
             booking.closurePhotoBefore = photoBeforeUrl; booking.closurePhotoAfter = photoAfterUrl; booking.closurePhotosExtra = photosExtra;
             booking.collaborators = record.collaborators || [];
             booking.receiverName = record.receiverName || null; booking.receiverRegistration = record.receiverReg || null;
+            booking.closureLat = record.geoLat ?? null; booking.closureLng = record.geoLng ?? null;
             booking.pendingOfflineSync = false;
 
             const outcomeLabel = closureOutcomesFor(booking).find(o => o.value === record.outcome).label;
@@ -5727,6 +5760,7 @@ async function confirmConferirRetornoPortaria(id) {
 
 function renderMobileCloseForm(booking) {
     const outcomes = closureOutcomesFor(booking);
+    mobileCloseGeo = null;
     const body = document.getElementById('mobile-encarregado-body');
     body.innerHTML = `
         <button type="button" class="mobile-back" onclick="renderMobileEquipList()">&larr; Voltar</button>
@@ -5737,6 +5771,10 @@ function renderMobileCloseForm(booking) {
                 <label>Data do Serviço *</label>
                 <input type="date" id="close-date" value="${booking.date}" max="${todayStr()}">
                 <div style="font-size:11px; color:var(--text-secondary); margin-top:4px;">Errou a data ao lançar? Corrija aqui antes de encerrar.</div>
+            </div>
+            <div class="m-field">
+                <label class="m-checkbox"><input type="checkbox" id="close-geo-approve" style="width:auto;"> Compartilhar minha localização atual com este encerramento (opcional)</label>
+                <div id="close-geo-status" style="font-size:11px; color:var(--text-secondary); margin-top:4px;">Localização não compartilhada</div>
             </div>
             ${isClientApprovalSite() ? `
             <div class="m-field">
@@ -5791,6 +5829,10 @@ function renderMobileCloseForm(booking) {
         <button type="button" class="btn-primary mobile-submit" id="mobile-close-submit">Confirmar</button>
         ${canDiscardOwnBooking(booking) ? `<button type="button" class="btn-secondary mobile-submit" id="mobile-close-discard-btn" style="margin-top:8px;">Descartar Este Lançamento (data/OM errada)</button>` : ''}
     `;
+    document.getElementById('close-geo-approve').addEventListener('change', (e) => {
+        if (e.target.checked) captureMobileCloseGeo('close-geo-status');
+        else { mobileCloseGeo = null; document.getElementById('close-geo-status').textContent = 'Localização não compartilhada'; }
+    });
     // Painel de colaboradores começa minimizado -- com 30+ cadastrados, a
     // lista inteira aberta por padrão atravancaria a tela do Encarregado.
     // A busca ignora acento (stripAccents) pra achar "joao" digitando sem
@@ -7674,7 +7716,7 @@ function buildAderenciaBookHtml() {
                 <div style="font-size:10.5px; font-weight:700; padding:3px 8px; border-radius:10px; background:${badge.bg}; color:${badge.fg};">${escapeHtml(badge.label)}</div>
             </div>
             <div style="font-size:12px; color:#444; margin-bottom:10px;">
-                ${formatDateBR(b.date)} · ${minutesToTime(b.startMin)}–${minutesToTime(b.endMin)} · OM ${escapeHtml(b.om || '—')} · Responsável: ${escapeHtml(b.operator)}${valeCollaboratorLine(b)}
+                ${formatDateBR(b.date)} · ${minutesToTime(b.startMin)}–${minutesToTime(b.endMin)} · OM ${escapeHtml(b.om || '—')} · Responsável: ${escapeHtml(b.operator)}${valeCollaboratorLine(b)}${(b.closureLat != null && b.closureLng != null) ? ` · <a href="${googleMapsLink(b.closureLat, b.closureLng)}" target="_blank" rel="noopener">📍 Localização</a>` : ''}
             </div>
             ${b.activityDescription ? `<div style="font-size:12px; margin-bottom:10px;"><b>Atividade:</b> ${escapeHtml(b.activityDescription)}</div>` : ''}
             <div style="font-size:12px; margin-bottom:10px;"><b>Observação do Encarregado:</b> ${escapeHtml(b.closureReason || '—')}</div>
