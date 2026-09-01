@@ -3714,6 +3714,11 @@ function validateClosureForm(booking) {
     return { ok: true, outcome, reason, dateStr, photos, collaborators, receiverName, receiverReg, geoLat, geoLng };
 }
 
+// Contador de "escritas em andamento" -- o botão de atualizar do mobile
+// (MOBILE_REFRESH_ROLES) nunca aplica um refresh enquanto isso for > 0,
+// pra uma busca que começou ANTES de um encerramento terminar não chegar
+// DEPOIS e sobrescrever o fechamento com o estado antigo (ainda aberto).
+let mobileWriteInFlight = 0;
 async function confirmCloseBooking(id) {
     const idx = state.bookings.findIndex(b => b.id === id);
     if (idx === -1) return;
@@ -3728,56 +3733,60 @@ async function confirmCloseBooking(id) {
 
     const confirmBtn = document.querySelector('#modal-box .modal-footer .btn-primary') || document.getElementById('mobile-close-submit');
     if (confirmBtn) { confirmBtn.disabled = true; confirmBtn.textContent = 'Enviando...'; }
+    mobileWriteInFlight++;
+    try {
+        const uploaded = await uploadClosurePhotos(booking, photos, booking);
+        if (uploaded.failed) { if (confirmBtn) { confirmBtn.disabled = false; confirmBtn.textContent = 'Confirmar'; } return; }
+        const photoBeforeUrl = uploaded.before, photoAfterUrl = uploaded.after, photosExtra = uploaded.extra;
 
-    const uploaded = await uploadClosurePhotos(booking, photos, booking);
-    if (uploaded.failed) { if (confirmBtn) { confirmBtn.disabled = false; confirmBtn.textContent = 'Confirmar'; } return; }
-    const photoBeforeUrl = uploaded.before, photoAfterUrl = uploaded.after, photosExtra = uploaded.extra;
+        const closureStatus = outcome === 'PENDENTE' ? pendingClosureStatusFor(booking.type) : outcome;
+        const closedAt = new Date().toISOString();
+        // `.select()` depois do update confirma que a linha foi realmente
+        // alterada -- se a política de segurança (RLS) bloquear silenciosamente
+        // a atualização, o Supabase não retorna "error", só devolve 0 linhas.
+        const { data, error } = await sb.from('bookings').update({
+            date: dateStr, closure_status: closureStatus, closure_reason: reason, closed_at: closedAt,
+            closure_photo_before: photoBeforeUrl, closure_photo_after: photoAfterUrl, closure_photos_extra: photosExtra,
+            collaborators: collaborators,
+            receiver_name: receiverName || null, receiver_registration: receiverReg || null,
+            closure_lat: geoLat ?? null, closure_lng: geoLng ?? null,
+            closed_by: (state.currentUser && state.profileKey !== 'VISITANTE') ? state.currentUser.id : null
+        }).eq('id', id).select();
+        if (error) {
+            toast('Erro ao encerrar agendamento: ' + error.message, 'error');
+            if (confirmBtn) { confirmBtn.disabled = false; confirmBtn.textContent = 'Confirmar'; }
+            return;
+        }
+        if (!data || data.length === 0) {
+            toast('Não foi possível encerrar: nenhum registro foi afetado no banco (verifique suas permissões).', 'error');
+            if (confirmBtn) { confirmBtn.disabled = false; confirmBtn.textContent = 'Confirmar'; }
+            return;
+        }
 
-    const closureStatus = outcome === 'PENDENTE' ? pendingClosureStatusFor(booking.type) : outcome;
-    const closedAt = new Date().toISOString();
-    // `.select()` depois do update confirma que a linha foi realmente
-    // alterada -- se a política de segurança (RLS) bloquear silenciosamente
-    // a atualização, o Supabase não retorna "error", só devolve 0 linhas.
-    const { data, error } = await sb.from('bookings').update({
-        date: dateStr, closure_status: closureStatus, closure_reason: reason, closed_at: closedAt,
-        closure_photo_before: photoBeforeUrl, closure_photo_after: photoAfterUrl, closure_photos_extra: photosExtra,
-        collaborators: collaborators,
-        receiver_name: receiverName || null, receiver_registration: receiverReg || null,
-        closure_lat: geoLat ?? null, closure_lng: geoLng ?? null,
-        closed_by: (state.currentUser && state.profileKey !== 'VISITANTE') ? state.currentUser.id : null
-    }).eq('id', id).select();
-    if (error) {
-        toast('Erro ao encerrar agendamento: ' + error.message, 'error');
-        if (confirmBtn) { confirmBtn.disabled = false; confirmBtn.textContent = 'Confirmar'; }
-        return;
+        booking.date = dateStr;
+        booking.closureStatus = closureStatus; booking.closureReason = reason; booking.closedAt = closedAt;
+        booking.closurePhotoBefore = photoBeforeUrl; booking.closurePhotoAfter = photoAfterUrl; booking.closurePhotosExtra = photosExtra;
+        booking.collaborators = collaborators;
+        booking.receiverName = receiverName || null; booking.receiverRegistration = receiverReg || null;
+        booking.closureLat = geoLat ?? null; booking.closureLng = geoLng ?? null;
+        booking.pendingOfflineSync = false;
+
+        const outcomeLabel = closureOutcomesFor(booking).find(o => o.value === outcome).label;
+        await addAuditEntry({
+            tag: booking.tag, acao: `${booking.type} (${outcomeLabel})`, justificativa: reason,
+            om: booking.om, agendamentoData: booking.date, agendamentoHorario: `${minutesToTime(booking.startMin)}–${minutesToTime(booking.endMin)}`
+        });
+        closeModal();
+        if (outcome === 'ENCERRADA') {
+            toast('OM encerrada com sucesso — Atividade realizada.', 'success');
+        } else {
+            toast(`Bloqueio marcado como "${outcomeLabel}" — equipamento liberado na agenda.`, 'warn');
+        }
+        renderWeekGrid(); renderAtivos(); renderDashboard(); renderCharts(); updateUpcomingBadge();
+        await offlineQueueRemoveByBookingId(booking.id);
+    } finally {
+        mobileWriteInFlight--;
     }
-    if (!data || data.length === 0) {
-        toast('Não foi possível encerrar: nenhum registro foi afetado no banco (verifique suas permissões).', 'error');
-        if (confirmBtn) { confirmBtn.disabled = false; confirmBtn.textContent = 'Confirmar'; }
-        return;
-    }
-
-    booking.date = dateStr;
-    booking.closureStatus = closureStatus; booking.closureReason = reason; booking.closedAt = closedAt;
-    booking.closurePhotoBefore = photoBeforeUrl; booking.closurePhotoAfter = photoAfterUrl; booking.closurePhotosExtra = photosExtra;
-    booking.collaborators = collaborators;
-    booking.receiverName = receiverName || null; booking.receiverRegistration = receiverReg || null;
-    booking.closureLat = geoLat ?? null; booking.closureLng = geoLng ?? null;
-    booking.pendingOfflineSync = false;
-
-    const outcomeLabel = closureOutcomesFor(booking).find(o => o.value === outcome).label;
-    await addAuditEntry({
-        tag: booking.tag, acao: `${booking.type} (${outcomeLabel})`, justificativa: reason,
-        om: booking.om, agendamentoData: booking.date, agendamentoHorario: `${minutesToTime(booking.startMin)}–${minutesToTime(booking.endMin)}`
-    });
-    closeModal();
-    if (outcome === 'ENCERRADA') {
-        toast('OM encerrada com sucesso — Atividade realizada.', 'success');
-    } else {
-        toast(`Bloqueio marcado como "${outcomeLabel}" — equipamento liberado na agenda.`, 'warn');
-    }
-    renderWeekGrid(); renderAtivos(); renderDashboard(); renderCharts(); updateUpcomingBadge();
-    await offlineQueueRemoveByBookingId(booking.id);
 }
 
 /* =========================================================
@@ -4467,15 +4476,30 @@ function renderMobileEquipList() {
 // do desktop (ver backgroundRefreshTick, que exclui perfis mobile de
 // propósito pra não gastar bateria/dados à toa), então sem isso a única
 // forma de ver uma importação em massa (ou qualquer mudança feita por
-// outra pessoa) era fechar e reabrir o app. Dois gatilhos: o botão manual
-// no cabeçalho, e voltar o app pro primeiro plano (trocar de app pra tirar
-// foto e voltar, por exemplo) -- ambos silenciosos se a pessoa estiver no
-// meio de um formulário: os dados são atualizados por trás (loadPersisted,
-// o mesmo usado no login), mas a tela só é redesenhada quando `safe()`
-// confirma que é a lista/tela inicial (nunca troca a tela embaixo de quem
-// já começou a preencher algo). Aprovador/Portaria usam modal (openModal,
-// fora do body mobile) pras próprias ações, então redesenhar o body deles
-// nunca derruba nada em andamento -- por isso `safe` sempre `true` ali.
+// outra pessoa) era fechar e reabrir o app.
+//
+// SÓ o botão manual dispara isso -- a 1ª versão também atualizava sozinha
+// quando o app voltava pro primeiro plano (visibilitychange), mas quase
+// todo fluxo mobile usa câmera em algum ponto, e tirar uma foto JÁ dispara
+// esse evento sozinho (a câmera abre e fecha por cima do app). Se essa
+// busca automática começasse ANTES de um encerramento terminar e só
+// resolvesse DEPOIS, ela sobrescrevia o fechamento recém-feito com o
+// estado antigo (ainda aberto) -- a OM "voltava" a pendente na tela,
+// gerando confusão. Tirando o gatilho automático, só sobra o botão, que a
+// pessoa aciona quando ELA decide, nunca no meio de um envio em andamento.
+//
+// Fica ainda uma segunda trava, pro botão manual não correr o mesmo risco
+// se for tocado bem na hora de um envio: `mobileWriteInFlight` (ver
+// confirmCloseBooking) impede qualquer refresh (mesmo manual) enquanto
+// alguma escrita estiver em andamento.
+//
+// Silencioso quando a pessoa estiver no meio de um formulário: os dados
+// são atualizados por trás (loadPersisted, o mesmo usado no login), mas a
+// tela só é redesenhada quando `safe()` confirma que é a lista/tela
+// inicial (nunca troca a tela embaixo de quem já começou a preencher
+// algo). Aprovador/Portaria usam modal (openModal, fora do body mobile)
+// pras próprias ações, então redesenhar o body deles nunca derruba nada
+// em andamento -- por isso `safe` sempre `true` ali.
 const MOBILE_REFRESH_ROLES = {
     ENCARREGADO: { btnId: 'btn-mobile-refresh', safe: () => !!document.getElementById('mobile-equip-list'), redraw: renderMobileEquipList, countFn: () => mobilePendingBookings().length },
     TECNICO_CAMPO_VALE: { btnId: 'btn-mobile-inspecao-refresh', safe: () => !!document.getElementById('mobile-inspecao-equip-list'), redraw: renderMobileInspecaoEquipList },
@@ -4486,18 +4510,10 @@ const MOBILE_REFRESH_ROLES = {
     TECNICO_OPERACAO: { btnId: 'btn-mobile-correias-refresh', safe: () => !!document.getElementById('mobile-correias-equip-list'), redraw: renderMobileCorreiasEquipList },
 };
 let mobileRoleRefreshing = false;
-let lastMobileRefreshAt = 0;
-// Tirar UMA foto pela câmera já dispara visibilitychange sozinho (o app
-// some e volta) -- um encerramento com foto de antes/depois passa por isso
-// pelo menos 2x. Sem um intervalo mínimo, o refresh silencioso (que já é
-// seguro, ver reconcileBookings) dispararia várias vezes seguidas à toa
-// durante um único encerramento, gastando dado/bateria por nada. O botão
-// manual ignora esse intervalo -- é uma ação explícita da pessoa.
-const MOBILE_REFRESH_COOLDOWN_MS = 8000;
-async function refreshMobileRoleData(silent) {
+async function refreshMobileRoleData() {
     const cfg = MOBILE_REFRESH_ROLES[state.profileKey];
     if (!cfg || mobileRoleRefreshing || !state.currentUser) return;
-    if (silent && Date.now() - lastMobileRefreshAt < MOBILE_REFRESH_COOLDOWN_MS) return;
+    if (mobileWriteInFlight > 0) { toast('Aguarde o envio em andamento terminar antes de atualizar.', 'warn'); return; }
     mobileRoleRefreshing = true;
     const btn = document.getElementById(cfg.btnId);
     if (btn) { btn.classList.add('spinning'); btn.classList.remove('just-updated'); }
@@ -4506,13 +4522,10 @@ async function refreshMobileRoleData(silent) {
         await loadPersisted();
         const depois = cfg.countFn ? cfg.countFn() : null;
         if (cfg.safe()) cfg.redraw();
-        if (!silent) {
-            const novas = (antes != null && depois != null) ? depois - antes : 0;
-            toast(novas > 0 ? `Atualizado -- ${novas} nova(s) OM(s) chegaram.` : 'Dados atualizados.', 'success');
-        }
+        const novas = (antes != null && depois != null) ? depois - antes : 0;
+        toast(novas > 0 ? `Atualizado -- ${novas} nova(s) OM(s) chegaram.` : 'Dados atualizados.', 'success');
     } finally {
         mobileRoleRefreshing = false;
-        lastMobileRefreshAt = Date.now();
         if (btn) {
             btn.classList.remove('spinning');
             btn.classList.add('just-updated');
@@ -4524,11 +4537,8 @@ Object.values(MOBILE_REFRESH_ROLES).forEach(cfg => {
     const btn = document.getElementById(cfg.btnId);
     if (btn && !btn.dataset.refreshWired) {
         btn.dataset.refreshWired = '1';
-        btn.addEventListener('click', () => refreshMobileRoleData(false));
+        btn.addEventListener('click', () => refreshMobileRoleData());
     }
-});
-document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible') refreshMobileRoleData(true);
 });
 
 function openMobileEquip(tag) {
