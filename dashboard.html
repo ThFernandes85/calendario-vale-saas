@@ -6646,7 +6646,7 @@ function switchView(view) {
     document.getElementById('header-title').textContent = VIEW_META[view].title;
     document.getElementById('header-subtitle').textContent = VIEW_META[view].sub;
     applySidebarCollapse(view === 'calendario');
-    if (view === 'relatorios') { renderReportUserFilter(); renderCharts(); }
+    if (view === 'relatorios') { applyDefaultReportPeriod(); renderReportUserFilter(); renderCharts(); }
     if (view === 'dashboard') renderDashboard();
     if (view === 'usuarios') loadProfiles().then(renderUsersView);
     if (view === 'calendario') renderWeekGrid();
@@ -6978,12 +6978,31 @@ function renderReportUserFilter() {
     const wrap = document.getElementById('report-user-wrap');
     const isAdmin = state.profileKey === 'ADMIN';
     wrap.style.display = isAdmin ? 'flex' : 'none';
+    // "Imprimir Relatório Completo" e o Log de Auditoria de Ativos (com o
+    // Exportar Excel) ficam visíveis só pro Admin Master -- mesmo padrão do
+    // filtro de Usuário acima, que já era admin-only.
+    document.getElementById('btn-print-full-report').closest('div').style.display = isAdmin ? '' : 'none';
+    document.getElementById('audit-section').style.display = isAdmin ? '' : 'none';
     if (!isAdmin) return;
     const sel = document.getElementById('report-user');
     const current = sel.value;
     sel.innerHTML = '<option value="">Todos os Usuários</option>' +
         state.users.map(u => `<option value="${escapeHtml(u.username)}">${escapeHtml(u.name)} (${ROLE_META[u.role].label})</option>`).join('');
     sel.value = current;
+}
+// Sem filtro de período aplicado, o Relatórios já calcula tudo por trás com
+// base no período de medição atual (ver comentário perto de
+// sodexoCleaningBreakdown) -- isso só deixa isso explícito também nos
+// campos "Período -- De/Até", pra quem abre a tela ver de cara qual período
+// está sendo exibido, em vez de campos em branco. Só age se a pessoa ainda
+// não tiver aplicado nenhum filtro de data manualmente.
+function applyDefaultReportPeriod() {
+    if (state.reportFilter.from || state.reportFilter.to) return;
+    const def = periodoMedicaoAtual();
+    document.getElementById('report-from').value = def.from;
+    document.getElementById('report-to').value = def.to;
+    state.reportFilter.from = def.from;
+    state.reportFilter.to = def.to;
 }
 document.getElementById('btn-apply-filter').addEventListener('click', async () => {
     state.reportFilter.from = document.getElementById('report-from').value || null;
