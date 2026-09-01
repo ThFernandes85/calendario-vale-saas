@@ -6162,8 +6162,12 @@ async function ensureAccessibleSite() {
     }
     let siteErr = null;
     if (state.currentSite) {
-        const dbResult = await loadSiteDatabase();
-        const persistResult = await loadPersisted();
+        // loadSiteDatabase (áreas/equipamentos) e loadPersisted (agendamentos/
+        // histórico) mexem em partes totalmente separadas do estado -- uma não
+        // precisa esperar a outra terminar. Rodar em paralelo (em vez de uma
+        // depois da outra) sobrepõe o tempo das duas, cortando esse trecho do
+        // login praticamente pela metade.
+        const [dbResult, persistResult] = await Promise.all([loadSiteDatabase(), loadPersisted()]);
         siteErr = (dbResult && dbResult.error) || (persistResult && persistResult.error) || null;
     } else {
         // usuário sem nenhum site liberado: não deixa dados de outro site visíveis
