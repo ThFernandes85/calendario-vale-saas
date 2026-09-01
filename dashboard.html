@@ -91,6 +91,20 @@ aside.collapsed .sidebar-topbar { justify-content: center; }
 .profile-toggle-btn { background: none; border: none; color: var(--text-secondary); cursor: pointer; padding: 2px; display: flex; align-items: center; }
 .profile-toggle-btn:hover { color: var(--text-primary); }
 .profile-toggle-btn svg { transition: transform 0.2s; }
+
+/* Botão de atualizar do Mobile do Encarregado -- fica no cabeçalho, sempre
+   visível independente da tela (lista ou formulário), pra ele conseguir
+   puxar dados novos (importação em massa, etc.) sem fechar/reabrir o app. */
+.mobile-refresh-btn {
+    width: 34px; height: 34px; border-radius: 50%; flex-shrink: 0; margin-right: 8px;
+    border: 1px solid rgba(255,255,255,0.18); background: rgba(255,255,255,0.06); color: #fff;
+    display: flex; align-items: center; justify-content: center; cursor: pointer;
+    transition: background 0.15s, transform 0.1s;
+}
+.mobile-refresh-btn:hover { background: rgba(255,255,255,0.16); }
+.mobile-refresh-btn:active { transform: scale(0.88); }
+.mobile-refresh-btn.spinning svg { animation: correiasSpin 0.7s linear infinite; }
+.mobile-refresh-btn.just-updated { background: rgba(16,185,129,0.35); border-color: rgba(16,185,129,0.6); }
 #user-profile-box.perms-collapsed .profile-toggle-btn svg { transform: rotate(-90deg); }
 #user-profile-box.perms-collapsed .profile-perms { display: none; }
 
@@ -821,6 +835,9 @@ body.book-preview-mode .book-preview-toolbar {
             <div style="font-size:15px; font-weight:700; color:#fff;"><span id="mobile-title-prefix">Limpeza · </span><span id="mobile-site-label"></span></div>
             <div style="font-size:12px; color:var(--text-secondary);" id="mobile-user-label"></div>
         </div>
+        <button type="button" class="mobile-refresh-btn" id="btn-mobile-refresh" title="Atualizar dados">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+        </button>
         <button type="button" class="btn-secondary" id="btn-mobile-lost-hours" style="display:none; margin-right:8px;">📦 Hora Perdida</button>
         <button type="button" class="btn-secondary" id="btn-mobile-overtime" style="display:none; margin-right:8px;">⏱️ Hora Extra</button>
         <button type="button" class="btn-secondary" id="btn-mobile-logout">Sair</button>
@@ -4420,6 +4437,44 @@ function renderMobileEquipList() {
         });
     });
 }
+
+// Botão de atualizar do Encarregado -- o Mobile NÃO tem o polling de 20s do
+// desktop (ver backgroundRefreshTick, que exclui perfis mobile de propósito
+// pra não gastar bateria/dados à toa), então sem isso a única forma de ver
+// uma importação em massa nova era fechar e reabrir o app. Dois gatilhos:
+// o botão manual, e voltar o app pro primeiro plano (trocar de app pra
+// tirar foto e voltar, por exemplo) -- ambos silenciosos se ele estiver no
+// meio de um formulário: os dados são atualizados por trás, mas a tela só
+// é redesenhada se for exatamente a lista (nunca troca a tela embaixo dele
+// e derruba o que já tinha preenchido).
+let mobileEncarregadoRefreshing = false;
+async function refreshMobileEncarregadoData(silent) {
+    if (mobileEncarregadoRefreshing || !state.currentUser || state.profileKey !== 'ENCARREGADO') return;
+    mobileEncarregadoRefreshing = true;
+    const btn = document.getElementById('btn-mobile-refresh');
+    if (btn) { btn.classList.add('spinning'); btn.classList.remove('just-updated'); }
+    try {
+        const pendentesAntes = mobilePendingBookings().length;
+        await loadPersisted();
+        const pendentesDepois = mobilePendingBookings().length;
+        if (document.getElementById('mobile-equip-list')) renderMobileEquipList();
+        if (!silent) {
+            const novas = pendentesDepois - pendentesAntes;
+            toast(novas > 0 ? `Atualizado -- ${novas} nova(s) OM(s) chegaram.` : 'Dados atualizados.', 'success');
+        }
+    } finally {
+        mobileEncarregadoRefreshing = false;
+        if (btn) {
+            btn.classList.remove('spinning');
+            btn.classList.add('just-updated');
+            setTimeout(() => btn.classList.remove('just-updated'), 900);
+        }
+    }
+}
+document.getElementById('btn-mobile-refresh').addEventListener('click', () => refreshMobileEncarregadoData(false));
+document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') refreshMobileEncarregadoData(true);
+});
 
 function openMobileEquip(tag) {
     mobileSelectedTag = tag;
