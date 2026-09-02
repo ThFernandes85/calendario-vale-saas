@@ -2217,9 +2217,14 @@ function applyEquipTerminology() {
     // mesmo tempo gerava confusão real (usuário procurando excluir a
     // área-mãe achava o campo errado) -- por isso o nível do ativo usa
     // "Sub-área" no S11D, reservando "Área" pra operação no grupo inteiro.
-    const tSub = isClientApprovalSite() ? 'Sub-área' : 'Equipamento';
+    // Contrato de Materiais também cadastra "sub-áreas" do armazém por trás
+    // do card de Equipamento (mesma ideia do S11D) -- Mover/Renomear/Excluir/
+    // Adicionar precisam chamar isso de Sub-área ali também, senão ficava a
+    // única inconsistência: o card dizia "Áreas" no título mas os botões
+    // ainda diziam "Equipamento".
+    const tSub = (isClientApprovalSite() || isMaterialsContractSite()) ? 'Sub-área' : 'Equipamento';
     setText('ativos-page-title', (isClientApprovalSite() || isMaterialsContractSite()) ? 'Gerenciamento de Áreas' : 'Gerenciamento de Equipamentos Industriais');
-    setText('lbl-new-equip-tag', isClientApprovalSite() ? 'Tag da Sub-área' : 'Tag do Equipamento');
+    setText('lbl-new-equip-tag', (isClientApprovalSite() || isMaterialsContractSite()) ? 'Tag da Sub-área' : 'Tag do Equipamento');
     setText('lbl-move-equip-tag', `${tSub} a Mover`);
     setText('lbl-rename-equip-tag', `${tSub} a Renomear`);
     setText('lbl-del-equip-tag', `${tSub} a Excluir`);
@@ -5897,7 +5902,7 @@ function renderMobileCloseForm(booking) {
     body.innerHTML = `
         <button type="button" class="mobile-back" onclick="renderMobileEquipList()">&larr; Voltar</button>
         <div class="mobile-card">
-            <div class="mobile-card-title">${escapeHtml(booking.tag)} — ${escapeHtml(booking.type)}</div>
+            <div class="mobile-card-title">${escapeHtml(booking.tag)}${isMaterialsContractSite() ? '' : ' — ' + escapeHtml(booking.type)}</div>
             <div class="mobile-card-sub">OM ${escapeHtml(booking.om || '—')} · ${minutesToTime(booking.startMin)}–${minutesToTime(booking.endMin)}</div>
             <div class="m-field" style="margin-top:10px;">
                 <label>Data do Serviço *</label>
