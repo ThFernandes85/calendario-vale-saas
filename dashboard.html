@@ -314,6 +314,9 @@ header {
 .btn-secondary:hover { border-color: #fff; }
 .btn-danger { background-color: rgba(239,68,68,0.15); color: #ff8080; border: 1px solid rgba(239,68,68,0.45); padding: 9px 16px; border-radius: 7px; font-weight: 700; font-size: 12.5px; cursor: pointer; }
 .btn-danger:hover { background-color: rgba(239,68,68,0.28); }
+/* Ações compactas da lista de Usuários & Acessos -- ícone só, numa linha,
+   em vez de botão de texto empilhando 2 linhas por usuário. */
+.user-icon-btn { padding: 5px 8px !important; font-size: 13px !important; line-height: 1; }
 
 .audit-table-wrap { overflow-x: auto; border: 1px solid var(--border-color); border-radius: 10px; }
 table.audit-table { width: 100%; border-collapse: collapse; font-size: 12.5px; min-width: 1200px; }
@@ -1861,16 +1864,7 @@ body.book-preview-mode .book-preview-toolbar {
                     <select id="users-site-filter"><option value="ALL">Todos os Sites</option></select>
                 </div>
                 <div style="height:16px;"></div>
-                <div class="audit-table-wrap">
-                    <table class="audit-table">
-                        <thead>
-                            <tr>
-                                <th>Nome</th><th>Usuário</th><th>Perfil</th><th>Sites com Acesso</th><th>Exporta Relatórios</th><th>Status</th><th>Ações</th>
-                            </tr>
-                        </thead>
-                        <tbody id="users-tbody"></tbody>
-                    </table>
-                </div>
+                <div id="users-groups"></div>
             </div>
         </div>
     </div>
@@ -9616,14 +9610,22 @@ function renderUsersSiteFilter() {
 }
 document.getElementById('users-site-filter').addEventListener('change', renderUsersView);
 
-function renderUsersView() {
-    if (state.profileKey !== 'ADMIN') return;
-    renderUsersSiteFilter();
-    const siteFilter = document.getElementById('users-site-filter').value || 'ALL';
-    const filteredUsers = siteFilter === 'ALL' ? state.users
-        : state.users.filter(u => u.role === 'ADMIN' || (u.sites || []).includes(siteFilter));
-    const tbody = document.getElementById('users-tbody');
-    tbody.innerHTML = filteredUsers.map(u => `
+// Ações compactas (ícone + tooltip, numa linha só) em vez dos 4 botões de
+// texto empilhados de antes -- reduz bastante a altura de cada linha. Não
+// usei um menu "⋮" flutuante de propósito: a tabela tem overflow-x:auto
+// (audit-table-wrap), e um menu posicionado sobre uma linha do meio corria
+// risco real de ficar cortado pelo scroll horizontal.
+function userRowActionsHtml(u) {
+    return `
+        <div style="display:flex; gap:4px;">
+            <button class="btn-secondary user-icon-btn" title="Editar" onclick="openUserModal('${u.id}')">✏️</button>
+            <button class="btn-secondary user-icon-btn" title="Redefinir Senha" onclick="openResetPasswordModal('${u.id}')">🔑</button>
+            <button class="btn-danger user-icon-btn" title="${u.active ? 'Desativar' : 'Reativar'}" onclick="toggleUserActive('${u.id}')">${u.active ? '⏻' : '▶'}</button>
+            <button class="btn-danger user-icon-btn" title="Excluir" onclick="openDeleteUserModal('${u.id}')">🗑️</button>
+        </div>`;
+}
+function userRowHtml(u) {
+    return `
         <tr>
             <td>${escapeHtml(u.name)}</td>
             <td>${escapeHtml(u.username)}</td>
@@ -9631,14 +9633,70 @@ function renderUsersView() {
             <td>${u.role === 'ADMIN' ? '<span class="perm-tag perm-yes">Todos</span>' : ((u.sites || []).length ? (u.sites || []).map(k => `<span class="perm-tag perm-yes">${escapeHtml(SITES[k] || k)}</span>`).join('') : '<span class="perm-tag perm-no">Nenhum</span>')}</td>
             <td>${u.role === 'ADMIN' ? '<span class="perm-tag perm-yes">Sempre</span>' : `<span class="perm-tag ${u.canExport ? 'perm-yes' : 'perm-no'}">${u.canExport ? 'Sim' : 'Não'}</span>`}</td>
             <td>${u.active ? '<span class="perm-tag perm-yes">Ativo</span>' : '<span class="perm-tag perm-no">Inativo</span>'}</td>
-            <td style="display:flex; gap:6px; white-space:nowrap; flex-wrap:wrap;">
-                <button class="btn-secondary" style="padding:6px 10px; font-size:11.5px;" onclick="openUserModal('${u.id}')">Editar</button>
-                <button class="btn-secondary" style="padding:6px 10px; font-size:11.5px;" onclick="openResetPasswordModal('${u.id}')">Redefinir Senha</button>
-                <button class="btn-danger" style="padding:6px 10px; font-size:11.5px;" onclick="toggleUserActive('${u.id}')">${u.active ? 'Desativar' : 'Reativar'}</button>
-                <button class="btn-danger" style="padding:6px 10px; font-size:11.5px;" onclick="openDeleteUserModal('${u.id}')">Excluir</button>
-            </td>
-        </tr>
-    `).join('') || `<tr><td colspan="7" style="text-align:center; color:var(--text-muted);">Nenhum usuário com acesso a este site.</td></tr>`;
+            <td>${userRowActionsHtml(u)}</td>
+        </tr>`;
+}
+const USERS_TABLE_HEAD = `<thead><tr><th>Nome</th><th>Usuário</th><th>Perfil</th><th>Sites com Acesso</th><th>Exporta Relatórios</th><th>Status</th><th>Ações</th></tr></thead>`;
+
+const LS_USERS_GROUP_COLLAPSED_PREFIX = 'vale_saas_users_group_collapsed_';
+function isUsersGroupCollapsed(key) {
+    return localStorage.getItem(LS_USERS_GROUP_COLLAPSED_PREFIX + key) === '1';
+}
+function toggleUsersGroup(key) {
+    const collapsed = !isUsersGroupCollapsed(key);
+    localStorage.setItem(LS_USERS_GROUP_COLLAPSED_PREFIX + key, collapsed ? '1' : '0');
+    renderUsersView();
+}
+function usersGroupHtml(key, label, users, forceOpen) {
+    const collapsed = forceOpen ? false : isUsersGroupCollapsed(key);
+    return `
+        <div class="users-group" style="margin-bottom:12px; border:1px solid var(--border-color); border-radius:10px; overflow:hidden;">
+            <button type="button" onclick="toggleUsersGroup('${key}')" style="width:100%; display:flex; align-items:center; justify-content:space-between; padding:10px 14px; background:var(--bg-hover); border:none; cursor:pointer; color:var(--text-primary); font-weight:600; font-size:13px;">
+                <span>${escapeHtml(label)} <span style="color:var(--text-secondary); font-weight:400;">(${users.length})</span></span>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="transition:transform 0.2s; transform:${collapsed ? 'rotate(-90deg)' : ''};"><polyline points="6 9 12 15 18 9"/></svg>
+            </button>
+            ${collapsed ? '' : `<div class="audit-table-wrap" style="border:none; border-radius:0; border-top:1px solid var(--border-color);">
+                <table class="audit-table">
+                    ${USERS_TABLE_HEAD}
+                    <tbody>${users.map(userRowHtml).join('')}</tbody>
+                </table>
+            </div>`}
+        </div>`;
+}
+// Dentro de cada site, gestão (Gerente/PCM/PCO/...) aparece antes dos
+// perfis mobile de campo (Encarregado e afins) -- são as contas que o Admin
+// mais mexe, e ficavam perdidas no meio de uma dezena de Encarregados.
+function sortUsersManagementFirst(users) {
+    return [...users].sort((a, b) => MOBILE_ONLY_ROLES.includes(a.role) - MOBILE_ONLY_ROLES.includes(b.role));
+}
+function renderUsersView() {
+    if (state.profileKey !== 'ADMIN') return;
+    renderUsersSiteFilter();
+    const siteFilter = document.getElementById('users-site-filter').value || 'ALL';
+    const filteredUsers = siteFilter === 'ALL' ? state.users
+        : state.users.filter(u => u.role === 'ADMIN' || (u.sites || []).includes(siteFilter));
+
+    const admins = filteredUsers.filter(u => u.role === 'ADMIN');
+    const bySite = {};
+    filteredUsers.filter(u => u.role !== 'ADMIN').forEach(u => {
+        const sites = (u.sites || []);
+        if (!sites.length) { (bySite['__SEM_SITE__'] = bySite['__SEM_SITE__'] || []).push(u); return; }
+        sites.forEach(k => { (bySite[k] = bySite[k] || []).push(u); });
+    });
+    // Um filtro de site específico já reduziu a lista a esse site (+ Admins,
+    // sempre visíveis) -- nesse caso abre o grupo direto, sem precisar
+    // clicar, e não mexe na preferência de recolhido/expandido salva.
+    const forcingSingleSite = siteFilter !== 'ALL';
+    const siteKeys = Object.keys(bySite).filter(k => k !== '__SEM_SITE__').sort((a, b) => (SITES[a] || a).localeCompare(SITES[b] || b));
+
+    let html = '';
+    if (admins.length) html += usersGroupHtml('__ADMIN__', 'Acesso Total (Admin Master)', admins, true);
+    siteKeys.forEach(k => {
+        html += usersGroupHtml(k, SITES[k] || k, sortUsersManagementFirst(bySite[k]), forcingSingleSite);
+    });
+    if (bySite['__SEM_SITE__']) html += usersGroupHtml('__SEM_SITE__', 'Sem site vinculado', sortUsersManagementFirst(bySite['__SEM_SITE__']), forcingSingleSite);
+
+    document.getElementById('users-groups').innerHTML = html || `<div style="text-align:center; color:var(--text-muted); padding:20px;">Nenhum usuário com acesso a este site.</div>`;
 }
 document.getElementById('btn-new-user').addEventListener('click', () => openUserModal(null));
 
