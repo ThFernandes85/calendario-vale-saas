@@ -384,6 +384,25 @@ table.heatmap-table tr:hover td { filter: brightness(1.15); }
     background: linear-gradient(180deg, oklch(0.13 0.02 255) 0%, oklch(0.16 0.025 250) 55%, oklch(0.19 0.03 240) 100%);
     font-family: 'Public Sans', 'Inter', 'Segoe UI', system-ui, sans-serif;
 }
+/* Tela de escolha de site do Visitante -- mesmo fundo do login, mas sem a
+   animação/formulário: só uma grade de cards, um por site cadastrado. */
+#visitante-picker-screen {
+    display: none; position: fixed; inset: 0; z-index: 2900; overflow-y: auto;
+    padding: 40px 24px;
+    background: linear-gradient(180deg, oklch(0.13 0.02 255) 0%, oklch(0.16 0.025 250) 55%, oklch(0.19 0.03 240) 100%);
+    font-family: 'Public Sans', 'Inter', 'Segoe UI', system-ui, sans-serif;
+}
+.visitante-picker-card { max-width: 720px; margin: 0 auto; text-align: center; }
+.visitante-picker-title { font-size: 26px; font-weight: 800; color: #fff; margin-bottom: 6px; }
+.visitante-picker-sub { font-size: 14px; color: rgba(255,255,255,0.6); margin-bottom: 28px; }
+.visitante-picker-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 14px; text-align: left; }
+.visitante-picker-site-card {
+    background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.14); border-radius: 12px;
+    padding: 16px 18px; cursor: pointer; transition: background 0.15s, border-color 0.15s;
+}
+.visitante-picker-site-card:hover { background: rgba(255,255,255,0.12); border-color: rgba(255,255,255,0.35); }
+.visitante-picker-site-name { font-size: 15px; font-weight: 700; color: #fff; margin-bottom: 4px; }
+.visitante-picker-site-type { font-size: 11.5px; color: rgba(255,255,255,0.55); }
 @keyframes login-twinkle { 0%,100% { opacity:.15; } 50% { opacity:1; } }
 @keyframes login-smokeRise { 0% { transform:translateY(0) scale(.7); opacity:.45; } 100% { transform:translateY(-70px) scale(1.6); opacity:0; } }
 @keyframes login-trainMove { from { transform:translateX(115vw); } to { transform:translateX(-55vw); } }
@@ -831,6 +850,9 @@ body.book-preview-mode .book-preview-toolbar {
     </div>
 </div>
 
+<!-- TELA DE ESCOLHA DE SITE (só perfil Visitante) -->
+<div id="visitante-picker-screen"></div>
+
 <!-- TELA MOBILE: ENCARREGADO (fluxo simplificado, só Limpeza -- sem o shell desktop) -->
 <div id="mobile-encarregado-screen" style="display:none;">
     <div class="mobile-header">
@@ -950,6 +972,7 @@ body.book-preview-mode .book-preview-toolbar {
                 <div class="site-dropdown-divider" id="site-dropdown-divider" style="display:none;"></div>
                 <button type="button" class="btn-secondary" id="btn-open-add-site" style="display:none; width:100%; padding:8px; font-size:11.5px;">+ Criar Novo Site</button>
             </div>
+            <button type="button" class="btn-secondary" id="btn-visitante-change-site" style="display:none; width:100%; margin-top:8px; padding:8px; font-size:11.5px;">Ver Todos os Sites</button>
         </div>
 
         <div class="profile-box" id="user-profile-box">
@@ -6234,6 +6257,66 @@ async function loginAs(user, options) {
     if (user.role === 'ENCARREGADO' && sitesResult && sitesResult.error && isNetworkError(sitesResult.error)) {
         offline = await applyEncarregadoOfflineSnapshot(user);
     }
+    // Visitante nunca teve um site de origem (sites: [] -- ele enxerga todos,
+    // ver accessibleSites) -- com vários sites cadastrados, cair direto
+    // dentro de um qualquer ficava confuso ("por que estou vendo a Mutuca?").
+    // Mostra uma tela de escolha primeiro; o login só termina de verdade
+    // (finishLoginIntoSite) depois que ele escolher um card.
+    if (!offline && user.role === 'VISITANTE') {
+        document.getElementById('login-screen').style.display = 'none';
+        renderVisitanteSitePicker();
+        return;
+    }
+    await finishLoginIntoSite(user, logEvent, offline);
+}
+// Rótulo curto do Tipo de Site pro card do Visitante -- reaproveita
+// SITE_TYPE_OPTIONS (mesmos rótulos do seletor de Admin), só encurtando
+// (o label completo ali é pensado pra um <select>, longo demais pra um
+// card). "+ Sala de Controle" é sempre à parte, porque é um complemento
+// independente do Tipo de Site (ver isCorreiasSite).
+function siteTypeBadgeLabel(key) {
+    const cfg = SITE_CONFIG[key] || {};
+    const base = siteTypeFromFlags(cfg.clientApprovalWorkflow, cfg.materialsContract);
+    const opt = SITE_TYPE_OPTIONS.find(o => o.value === base) || SITE_TYPE_OPTIONS[0];
+    const shortLabel = opt.label.split(/\s+--\s+|\s+\(/)[0].trim();
+    return cfg.correiasPanel ? `${shortLabel} + Sala de Controle` : shortLabel;
+}
+function renderVisitanteSitePicker() {
+    const keys = Object.keys(SITES).sort((a, b) => (SITES[a] || a).localeCompare(SITES[b] || b));
+    const screen = document.getElementById('visitante-picker-screen');
+    screen.innerHTML = `
+        <div class="visitante-picker-card">
+            <div class="visitante-picker-title">TerraVia Ops</div>
+            <div class="visitante-picker-sub">Selecione o site que deseja visualizar (modo somente leitura)</div>
+            <div class="visitante-picker-grid">
+                ${keys.map(k => `
+                    <button type="button" class="visitante-picker-site-card" onclick="enterVisitanteSite('${k}')">
+                        <div class="visitante-picker-site-name">${escapeHtml(SITES[k] || k)}</div>
+                        <div class="visitante-picker-site-type">${escapeHtml(siteTypeBadgeLabel(k))}</div>
+                    </button>
+                `).join('') || '<div style="color:rgba(255,255,255,0.6);">Nenhum site cadastrado ainda.</div>'}
+            </div>
+            <button type="button" class="btn-secondary" id="btn-visitante-picker-logout" style="margin-top:24px;">Sair</button>
+        </div>`;
+    screen.style.display = 'flex';
+    document.getElementById('btn-visitante-picker-logout').addEventListener('click', logout);
+}
+async function enterVisitanteSite(key) {
+    state.currentSite = key;
+    document.getElementById('visitante-picker-screen').style.display = 'none';
+    await finishLoginIntoSite(state.currentUser, true, false);
+}
+// Chamado pelo botão "Ver Todos os Sites" na sidebar (só Visitante) -- volta
+// pra tela de escolha sem deslogar de verdade (a sessão continua ativa).
+function showVisitanteSitePicker() {
+    if (refreshInterval) { clearInterval(refreshInterval); refreshInterval = null; }
+    document.querySelector('aside').style.display = 'none';
+    document.querySelector('main').style.display = 'none';
+    renderVisitanteSitePicker();
+}
+document.getElementById('btn-visitante-change-site').addEventListener('click', showVisitanteSitePicker);
+async function finishLoginIntoSite(user, logEvent, offlineAlready) {
+    let offline = !!offlineAlready;
     if (!offline) {
         state.currentSite = localStorage.getItem(LS_ACTIVE_SITE) || 'MUTUCA';
         if (!SITES[state.currentSite]) state.currentSite = Object.keys(SITES)[0] || 'MUTUCA';
@@ -6345,6 +6428,7 @@ async function logout() {
     document.getElementById('login-card').style.display = 'block';
     applyRememberedEmail();
     document.getElementById('login-screen').style.display = 'flex';
+    document.getElementById('visitante-picker-screen').style.display = 'none';
     document.querySelector('aside').style.display = 'none';
     document.querySelector('main').style.display = 'none';
     document.getElementById('mobile-encarregado-screen').style.display = 'none';
@@ -6582,6 +6666,7 @@ function onProfileChanged() {
         <div>${bookTags}</div>
         <div style="margin-top:6px;"><span class="perm-tag ${p.canExport ? 'perm-yes' : 'perm-no'}">${p.canExport ? 'Exporta Relatórios' : 'Sem Exportação'}</span></div>
     `;
+    document.getElementById('btn-visitante-change-site').style.display = state.profileKey === 'VISITANTE' ? 'block' : 'none';
     document.querySelector('[data-view="usuarios"]').style.display = state.profileKey === 'ADMIN' ? 'flex' : 'none';
     document.querySelector('[data-view="importacao"]').style.display = (state.profileKey === 'ADMIN' || state.profileKey === 'GERENTE') ? 'flex' : 'none';
     document.querySelector('[data-view="aprovacoes"]').style.display = canViewValeApprovals() ? 'flex' : 'none';
