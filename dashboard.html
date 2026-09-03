@@ -1975,6 +1975,65 @@ const SUPABASE_URL = 'https://ybgszlflvzxepywbjkyo.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InliZ3N6bGZsdnp4ZXB5d2Jqa3lvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM3MDU1MDQsImV4cCI6MjA5OTI4MTUwNH0.uvjTUKXT7nxtCw1gfmYEWATOKcVvzlklCa_1dyjGUz8';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
+// Mostra o valor de cada barra/ponto/fatia em TODO gráfico do app (barra,
+// linha, rosca/pizza) -- registrado globalmente no Chart.js (Chart.register),
+// não em cada gráfico individual, então qualquer gráfico novo que a gente
+// criar no futuro já ganha isso de graça, sem precisar lembrar de ligar.
+// Sem biblioteca externa nova -- só a API de plugin que o próprio Chart.js
+// já expõe.
+const chartValueLabelsPlugin = {
+    id: 'chartValueLabels',
+    afterDatasetsDraw(chart) {
+        const type = chart.config.type;
+        if (!['bar', 'line', 'doughnut', 'pie'].includes(type)) return;
+        const { ctx } = chart;
+        const horizontal = chart.options.indexAxis === 'y';
+        chart.data.datasets.forEach((dataset, datasetIndex) => {
+            const meta = chart.getDatasetMeta(datasetIndex);
+            if (meta.hidden) return;
+            meta.data.forEach((el, index) => {
+                const raw = dataset.data[index];
+                if (raw == null || raw === 0) return;
+                const value = Number.isInteger(raw) ? raw : Math.round(raw * 10) / 10;
+                ctx.save();
+                ctx.font = '700 11px Inter, system-ui, sans-serif';
+                if (type === 'bar') {
+                    ctx.fillStyle = '#e5e9f0';
+                    if (horizontal) {
+                        ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+                        ctx.fillText(String(value), el.x + 6, el.y);
+                    } else {
+                        ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
+                        ctx.fillText(String(value), el.x, el.y - 4);
+                    }
+                } else if (type === 'line') {
+                    // Cor da própria linha do dataset -- se o gráfico tiver
+                    // mais de uma linha, cada valor casa com a cor certa.
+                    ctx.fillStyle = dataset.borderColor || '#e5e9f0';
+                    ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
+                    ctx.fillText(String(value), el.x, el.y - 8);
+                } else {
+                    // Doughnut/pizza -- cada fatia tem uma cor de fundo
+                    // diferente, então usa um "halo" escuro atrás do texto
+                    // branco pra garantir leitura em cima de qualquer cor.
+                    const pos = el.tooltipPosition ? el.tooltipPosition() : el.getCenterPoint();
+                    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+                    ctx.lineWidth = 3;
+                    ctx.strokeStyle = 'rgba(12,16,23,0.85)';
+                    ctx.strokeText(String(value), pos.x, pos.y);
+                    ctx.fillStyle = '#ffffff';
+                    ctx.fillText(String(value), pos.x, pos.y);
+                }
+                ctx.restore();
+            });
+        });
+    },
+};
+Chart.register(chartValueLabelsPlugin);
+// Folga extra no topo pro número da barra mais alta não ficar cortado --
+// default global (Chart.defaults), em vez de repetir em cada gráfico.
+Chart.defaults.layout.padding = { ...(Chart.defaults.layout.padding || {}), top: 20 };
+
 /* =========================================================
    BASE DE DADOS DE EQUIPAMENTOS — POR SITE
    (áreas e equipamentos vivem nas tabelas Supabase `areas`/`equipment`,
