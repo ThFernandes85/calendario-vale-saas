@@ -413,32 +413,43 @@ $$;
 -- enxerga site de outra). Essa checagem sozinha já isola quase todo o
 -- resto do app, porque quase toda política de segurança abaixo passa por
 -- esta função (áreas, ativos, agendamentos, colaboradores, auditoria).
+-- CORRIGIDO: antes o caminho do Visitante (login anônimo) ficava preso
+-- atrás do pré-requisito "exists (... company_key = my_company())" -- só
+-- que my_company() é sempre null pra sessão anônima (sem linha em
+-- `profiles`), então aquele exists nunca era verdadeiro e o "OU" do
+-- Visitante logo abaixo nunca era sequer avaliado. Na prática, o Visitante
+-- nunca enxergava NENHUM site, desde que essa função foi escrita -- só não
+-- tinha aparecido porque a tela antiga não expunha isso diretamente. Agora
+-- o caminho do Visitante é um "OU" de primeiro nível, independente do
+-- pré-requisito de empresa via perfil.
 create or replace function public.has_site_access(p_site_key text)
 returns boolean language sql stable security definer as $$
   select
-    exists (
-      select 1 from public.sites s
-      where s.key = p_site_key and s.company_key = public.my_company()
-    )
-    and (
-      public.is_admin()
-      or (
-        -- Visitante (login anônimo) não tem linha em `profiles`, então
-        -- my_company() acima dá null pra ele -- a empresa dele vem do
-        -- token de login em vez disso (ver app: signInAnonymously com
-        -- company_key nos metadados). Sem esse dado no token, não vê nada
-        -- -- comportamento seguro por padrão, não um "vê tudo" acidental.
-        coalesce((auth.jwt() ->> 'is_anonymous')::boolean, false)
-        and exists (
-          select 1 from public.sites s
-          where s.key = p_site_key
-          and s.company_key = (auth.jwt() -> 'user_metadata' ->> 'company_key')
+    (
+      exists (
+        select 1 from public.sites s
+        where s.key = p_site_key and s.company_key = public.my_company()
+      )
+      and (
+        public.is_admin()
+        or exists (
+          select 1 from public.profile_sites ps
+          join public.profiles p on p.id = ps.profile_id
+          where ps.profile_id = auth.uid() and ps.site_key = p_site_key and p.active = true
         )
       )
-      or exists (
-        select 1 from public.profile_sites ps
-        join public.profiles p on p.id = ps.profile_id
-        where ps.profile_id = auth.uid() and ps.site_key = p_site_key and p.active = true
+    )
+    or (
+      -- Visitante (login anônimo) não tem linha em `profiles`, então
+      -- my_company() acima dá null pra ele -- a empresa dele vem do
+      -- token de login em vez disso (ver app: signInAnonymously com
+      -- company_key nos metadados). Sem esse dado no token, não vê nada
+      -- -- comportamento seguro por padrão, não um "vê tudo" acidental.
+      coalesce((auth.jwt() ->> 'is_anonymous')::boolean, false)
+      and exists (
+        select 1 from public.sites s
+        where s.key = p_site_key
+        and s.company_key = (auth.jwt() -> 'user_metadata' ->> 'company_key')
       )
     );
 $$;
