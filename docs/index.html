@@ -2788,8 +2788,11 @@ async function switchSite(newSiteKey) {
     if (!accessibleSites().includes(newSiteKey)) { showAccessDenied('Você não tem acesso a este site.'); return; }
     state.currentSite = newSiteKey;
     localStorage.setItem(LS_ACTIVE_SITE, newSiteKey);
-    await loadSiteDatabase();
-    await loadPersisted();
+    // Mesma correção do login (ver ensureAccessibleSite) -- essas duas
+    // buscas mexem em partes totalmente separadas do estado, uma não
+    // precisa esperar a outra terminar. Essa função tinha ficado de fora
+    // daquele ajuste por ser um caminho de código diferente.
+    await Promise.all([loadSiteDatabase(), loadPersisted()]);
     state.currentArea = 'ALL';
     state.agendaTag = ALL_EQUIP.length ? ALL_EQUIP_TAG : null;
     state.reportFilter = { from: null, to: null, username: null, isExtra: false, onlyLostHours: false };
