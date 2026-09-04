@@ -2305,7 +2305,7 @@ function applyEquipTerminology() {
     setText('lbl-rename-equip-tag', `${tSub} a Renomear`);
     setText('lbl-del-equip-tag', `${tSub} a Excluir`);
     setText('lbl-agenda-equip', t);
-    setText('chart-top5-manut-title', `Top 5 ${tp} - Maior Taxa de Indisponibilidade (Manutenção)`);
+    setText('chart-top5-manut-title', isCorreiasSite() ? `Top 5 ${tp} - Preventiva x Corretiva` : `Top 5 ${tp} - Maior Taxa de Indisponibilidade (Manutenção)`);
     setText('chart-top5-limpeza-title', isMaterialsContractSite() ? 'Top 5 Áreas - Maior Volume de Atendimento' : `Top 5 ${tp} - Maior Volume de Limpeza`);
     setText('lbl-heatmap-equip', t);
     setText('lbl-heatmap-kpi-manut', `${t} com Mais Manutenções`);
@@ -7677,11 +7677,35 @@ function renderCharts() {
     const ctx1 = document.getElementById('chart-top5');
     if (chartTop5) { chartTop5.destroy(); chartTop5 = null; }
     if (ctx1 && canSeeAvailabilityChart() && !isMaterialsContractSite()) {
-        chartTop5 = new Chart(ctx1, {
-            type: 'bar',
-            data: { labels: top5Manut.map(t => t[0]), datasets: [{ label: 'Intervenções de Manutenção', data: top5Manut.map(t => t[1]), backgroundColor: '#f59e0b', borderRadius: 5, maxBarThickness: 60 }] },
-            options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { ticks: { color: '#8a99ad' }, grid: { color: '#2b394e' } }, y: { ticks: { color: '#8a99ad', stepSize: 1 }, grid: { color: '#2b394e' }, beginAtZero: true } } }
-        });
+        // Sala de Controle (Correias) quer ver Preventiva x Corretiva
+        // separadas -- os demais tipos de site (Industrial, Materiais)
+        // continuam com a barra única de "Manutenção" combinada, como
+        // sempre foi.
+        if (isCorreiasSite()) {
+            const tags = top5Manut.map(t => t[0]);
+            const perTagPrev = {}, perTagCorr = {};
+            manutBookings.forEach(b => {
+                const bucket = b.type === 'Manutenção Preventiva' ? perTagPrev : perTagCorr;
+                bucket[b.tag] = (bucket[b.tag] || 0) + 1;
+            });
+            chartTop5 = new Chart(ctx1, {
+                type: 'bar',
+                data: {
+                    labels: tags,
+                    datasets: [
+                        { label: 'Preventiva', data: tags.map(t => perTagPrev[t] || 0), backgroundColor: '#3b82f6', borderRadius: 5, maxBarThickness: 40 },
+                        { label: 'Corretiva', data: tags.map(t => perTagCorr[t] || 0), backgroundColor: '#ef4444', borderRadius: 5, maxBarThickness: 40 },
+                    ],
+                },
+                options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: true, labels: { color: '#8a99ad' } } }, scales: { x: { ticks: { color: '#8a99ad' }, grid: { color: '#2b394e' } }, y: { ticks: { color: '#8a99ad', stepSize: 1 }, grid: { color: '#2b394e' }, beginAtZero: true } } }
+            });
+        } else {
+            chartTop5 = new Chart(ctx1, {
+                type: 'bar',
+                data: { labels: top5Manut.map(t => t[0]), datasets: [{ label: 'Intervenções de Manutenção', data: top5Manut.map(t => t[1]), backgroundColor: '#f59e0b', borderRadius: 5, maxBarThickness: 60 }] },
+                options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { ticks: { color: '#8a99ad' }, grid: { color: '#2b394e' } }, y: { ticks: { color: '#8a99ad', stepSize: 1 }, grid: { color: '#2b394e' }, beginAtZero: true } } }
+            });
+        }
     }
 
     // Espelho do gráfico acima, mas para Limpeza (Sodexo + Mecanizada) --
@@ -7742,6 +7766,7 @@ function renderAudit() {
             <div class="filter-title" style="margin-bottom:0;">Log de Auditoria de Ativos</div>
             <div style="display:flex; gap:10px; align-items:center;">
                 <button class="btn-primary" id="btn-export-audit">Exportar Excel (.xlsx)</button>
+                ${isCorreiasSite() ? `<button class="btn-secondary" id="btn-export-audit-csv">Exportar CSV</button>` : ''}
                 <button type="button" id="btn-toggle-audit" class="profile-toggle-btn" title="Minimizar/Expandir">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
                 </button>
@@ -7773,6 +7798,8 @@ function renderAudit() {
     `).join('') || `<tr><td colspan="${isAdmin ? 9 : 8}" style="text-align:center; color:var(--text-muted);">Nenhum registro de auditoria no período selecionado.</td></tr>`;
 
     document.getElementById('btn-export-audit').addEventListener('click', exportAuditExcel);
+    const csvBtn = document.getElementById('btn-export-audit-csv');
+    if (csvBtn) csvBtn.addEventListener('click', exportAuditCsv);
     document.getElementById('btn-toggle-audit').addEventListener('click', () => {
         applyAuditCollapse(!section.classList.contains('audit-collapsed'));
     });
@@ -7833,6 +7860,27 @@ function auditRowToSheetRow(a) {
         'Justificativa': a.justificativa,
         'Operador Responsavel': a.operador
     };
+}
+// CSV -- só pros sites com Sala de Controle (correiasPanel), a pedido do
+// usuário; os demais tipos de site (Industrial, Materiais, Predial)
+// continuam só com Excel/PDF, como sempre foi. Reaproveita a MESMA
+// montagem de planilha do Excel (json_to_sheet), só troca a serialização
+// final pra CSV em vez de .xlsx -- sem duplicar a lógica de linhas/filtro.
+function exportAuditCsv() {
+    if (!canExportReports()) { showAccessDenied('Perfil sem privilégios para extrair relatórios de auditoria.'); return; }
+    const filtered = getFilteredAuditLog();
+    if (!filtered.length) { toast('Nenhum registro para exportar no período selecionado.', 'warn'); return; }
+    const ws = XLSX.utils.json_to_sheet(filtered.map(auditRowToSheetRow));
+    const csv = XLSX.utils.sheet_to_csv(ws);
+    // Prefixo BOM (﻿) -- sem isso o Excel abre acento/ç errado num CSV
+    // UTF-8, um problema clássico e chato de diagnosticar depois.
+    const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = `auditoria_vale_${todayStr()}.csv`;
+    document.body.appendChild(a); a.click(); a.remove();
+    URL.revokeObjectURL(url);
+    toast('Relatório exportado em CSV com sucesso.');
 }
 function exportAuditExcel() {
     if (!canExportReports()) { showAccessDenied('Perfil sem privilégios para extrair relatórios de auditoria.'); return; }
