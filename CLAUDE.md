@@ -1,3 +1,7 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
 # TerraVia Ops — guia para sessões futuras
 
 Este arquivo é lido automaticamente no início de qualquer sessão do Claude
@@ -37,7 +41,19 @@ equipamento pesado, Técnico de Manutenção/Operação da Sala de Controle).
   código só aparece pra quem já tinha o app aberto depois de **dois reloads
   seguidos** (ou fechar/reabrir duas vezes) — é normal, não é bug.
 - **Sem build step nenhum** — editar o HTML já é o deploy (depois do commit/
-  push).
+  push). Não existe suíte de testes nem linter; a verificação é o fluxo
+  abaixo (`node --check` + preview com mock).
+- **`sw.js` também tem cópia na raiz** (idêntica a `docs/sw.js`, como o
+  `dashboard.html`) — se mexer num, copiar pro outro e dar `diff`.
+- **Edge Functions** em `supabase/functions/` (`admin-manage-user`,
+  `whatsapp-alerts-worker`): o usuário publica colando o código no painel do
+  Supabase, igual ao SQL. O worker de WhatsApp ainda não tem provedor
+  configurado — só marca a fila como `failed`, nunca finge que enviou.
+- **Legado, ignorar**: `app.py`, `database.py`, `style.py`, `.streamlit/`,
+  `requirements.txt`, `data/` e o `README.md` são o MVP original em Streamlit
+  (SQLite local, calendário PCM/PCO). Não é o produto atual — o app de
+  verdade é o `docs/index.html`. A config `calendario-app` do
+  `.claude/launch.json` sobe esse legado; usar sempre `dashboard-static`.
 
 ## Fluxo de trabalho obrigatório pra qualquer mudança de código
 
@@ -62,8 +78,9 @@ equipamento pesado, Técnico de Manutenção/Operação da Sala de Controle).
    vale mesmo que o usuário pareça claramente querer — ele prefere confirmar
    cada vez.
 6. Commit com heredoc, mensagem explicando o *porquê* (não o *o quê* —
-   isso já dá pra ver no diff), terminando com
-   `Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>`.
+   isso já dá pra ver no diff), terminando com a linha
+   `Co-Authored-By:` que o harness da sessão indicar (o modelo muda; não
+   fixar um nome aqui).
 7. Um aviso de `error: failed to delete '.git/worktrees/...': Permission
    denied` aparece em praticamente todo commit — é inofensivo (artefato de
    worktrees de sessões antigas do Claude Code), o commit/push funciona
@@ -106,6 +123,38 @@ equipamento pesado, Técnico de Manutenção/Operação da Sala de Controle).
 - Terminologia (Equipamento/Sub-área/Área, Limpeza/Atividade) muda por tipo
   de site — sempre em `applyEquipTerminology()` e funções irmãs
   (`bookingTypeDisplayLabel`, etc.), nunca hardcoded na tela.
+
+## Rotina semanal: planilhas de importação em massa (Sodexo)
+
+Toda semana o usuário joga `Programação_Sodexo_Semana_NN.xlsx` na raiz e pede
+"importação em massa de segunda a sexta". O resultado esperado são **N
+arquivos `.xlsx` (um por dia útil, `Importacao_<Dia>_SemanaNN.xlsx`)** na raiz,
+no formato da tela Importação em Massa com "Só programar" marcado (ver
+`validateScheduleOnlyRow` em `docs/index.html`): uma única aba, colunas
+`TAG, OM, DATA (dd/mm/aaaa), HORAS, DESCRICAO`. O importador lê só a primeira
+aba, por isso um arquivo por dia — nunca um arquivo único com abas.
+
+- Pipeline: Python + `openpyxl` (`data_only=True`) lendo as abas
+  Segunda…Sexta; data do dia em `A2`; colunas A–G apenas (LOCAL, OM,
+  DESCRIÇÃO, PRIORIDADE, HT, HH, MO) — a Quinta costuma ter uma tabela lateral
+  a partir da coluna I que **não** faz parte da programação. HORAS = coluna
+  **HH** (não HT).
+- Extração da TAG a partir de `LOCAL` (hierárquico, separado por `-`): se
+  algum segmento começa com `MBR_`, a tag é esse segmento sem o prefixo
+  (mesmo que haja sufixo depois, ex. `…MBR_27TC16A-17ER` → `27TC16A`); senão,
+  o último segmento. Exceção confirmada: `…BALAN-BALAN_APIA` → `BALAN_APIA`.
+- Exclui: linhas sem OM numérica (cabeçalhos de área, avisos tipo "PARADA
+  BOMBA 40BA01S", OM `NA`/`N/A`, "FERIADO") e `LOCAL` sem hífen. Sempre listar
+  as excluídas ao usuário, em especial as que têm OM real mas tag ilegível
+  (ex.: OM escrita como "REPETIR OM 2026…" ou `LOCAL=USINA_UMD` com OM
+  numérica) — perguntar em vez de adivinhar.
+- Dia sem OMs (feriado) → não gerar arquivo vazio, só avisar.
+- Tags sem underscore (`65TC01`, `12TC09A`, `40MG02`…) são normais. Já
+  `PREDIO`, `ED_FOSSO`, `PY_DRENA`, `ED_PRINC`, `03ER` nunca foram
+  confirmadas como tags existentes no site — sinalizar, não omitir.
+- Limite do sistema: 50 lançamentos por dia; HORAS em branco é aceito.
+- Não subir nada no sistema: só gerar/entregar os arquivos (`SendUserFile`).
+  Os `Importacao_*.xlsx` e a planilha-fonte ficam sem commit (untracked).
 
 ## Como o usuário gosta de trabalhar
 
