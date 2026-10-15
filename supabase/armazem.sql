@@ -99,6 +99,24 @@ returns boolean language sql stable security definer set search_path = public, p
      and coalesce(public.current_role_key() in ('ARM_OPERADOR','ARM_SUPERVISOR'), false);
 $$;
 
+-- Quem trabalha neste armazém (pra montar equipes). A política padrão de
+-- `profiles` só deixa cada um ver o PRÓPRIO perfil (ou o Admin ver todos), então
+-- o supervisor não conseguiria listar os operadores. Em vez de abrir `profiles`
+-- pra todo mundo, esta função devolve SÓ nome e papel de operadores/supervisores
+-- ativos que têm acesso ao armazém -- e só pra quem enxerga tudo do site.
+create or replace function public.wh_site_people(p_site text)
+returns table (id uuid, name text, role text)
+language sql stable security definer set search_path = public, pg_temp as $$
+  select p.id, p.name, p.role
+  from public.profiles p
+  join public.profile_sites ps on ps.profile_id = p.id and ps.site_key = p_site
+  where public.wh_site_viewer_all(p_site)
+    and p.active
+    and p.role in ('ARM_OPERADOR', 'ARM_SUPERVISOR')
+    and p.company_key = public.my_company()
+  order by p.name;
+$$;
+
 -- ============================================================
 -- 3. TRIGGERS GENÉRICOS (imutabilidade, auditoria, cadeia de hashes)
 -- ============================================================

@@ -178,6 +178,20 @@ test('3. equipes, campanha e atribuição; ativação exige atribuição', async
   assert.equal((await as(OP2, `select 1 from wh_campaign_assignments`)).rows.length, 0);
 });
 
+test('3b. lista de pessoas do armazém (para montar equipes) só para supervisor/gestor/admin', async () => {
+  const names = r => r.rows.map(x => x.name).sort();
+  const sup = await as(SUP, `select * from wh_site_people($1)`, [SITE]);
+  assert.deepEqual(names(sup), ['Operador Dois', 'Operador Tres', 'Operador Um', 'Supervisora']);
+  assert.ok(sup.rows.every(x => !('email' in x)), 'não vaza e-mail');
+  assert.equal((await as(GESTOR, `select * from wh_site_people($1)`, [SITE])).rows.length, 4);
+  assert.equal((await as(OP1, `select * from wh_site_people($1)`, [SITE])).rows.length, 0, 'operador não lista colegas');
+  assert.equal((await as(OUTRO, `select * from wh_site_people($1)`, [SITE])).rows.length, 0, 'outra empresa não vê');
+  // inativo some da lista
+  await su(`update public.profiles set active = false where id = $1`, [OP3]);
+  assert.equal((await as(SUP, `select * from wh_site_people($1)`, [SITE])).rows.length, 3);
+  await su(`update public.profiles set active = true where id = $1`, [OP3]);
+});
+
 const ev = (id, loc, item, qty, round = 1, extra = '') =>
   [`insert into wh_count_events (id, site_key, campaign_id, location_id, item_id, qty, round, source ${extra ? ',' + extra.split('=')[0] : ''})
     values ($1,$2,$3,$4,$5,$6,$7,'LEITOR' ${extra ? ',' + extra.split('=')[1] : ''}) on conflict (id) do nothing`,

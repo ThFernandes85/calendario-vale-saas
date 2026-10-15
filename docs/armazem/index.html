@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0c1017">
+<title>TerraVia Armazém</title>
+<link rel="manifest" href="manifest.json">
+<link rel="icon" type="image/svg+xml" href="../assets/terravia-favicon.svg">
+<link rel="apple-touch-icon" href="../assets/terravia-icon-180.png">
+<link rel="stylesheet" href="comum.css">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+</head>
+<body>
+<div class="login-wrap">
+    <div class="login-card">
+        <div class="brand">
+            <img src="../assets/terravia-icon-192.png" alt="TerraVia">
+            <div><h1>Armazém</h1><div class="muted">TerraVia Ops · Inventário e estoque</div></div>
+        </div>
+
+        <div id="msg" class="notice hidden"></div>
+
+        <form id="login-form" autocomplete="on">
+            <div class="field"><label class="f" for="email">E-mail</label>
+                <input id="email" type="email" autocomplete="username" required inputmode="email" autocapitalize="none"></div>
+            <div class="field"><label class="f" for="senha">Senha</label>
+                <input id="senha" type="password" autocomplete="current-password" required></div>
+            <button class="btn btn-primary btn-lg" id="btn-entrar" type="submit">Entrar</button>
+            <p class="muted" style="margin-top:12px;font-size:12px;">Use o mesmo e-mail e senha do TerraVia Ops.</p>
+        </form>
+
+        <div id="sem-acesso" class="hidden">
+            <p style="margin-bottom:12px;">Seu perfil não tem acesso ao módulo Armazém.</p>
+            <a class="btn" href="../index.html">Ir para o TerraVia Ops</a>
+            <button class="btn btn-ghost" id="btn-sair" type="button">Sair</button>
+        </div>
+    </div>
+</div>
+
+<script src="comum.js"></script>
+<script>
+(function () {
+    const sb = TV.sb;
+    const $ = id => document.getElementById(id);
+    const MSGS = {
+        perfil: 'Seu usuário não tem perfil cadastrado. Fale com o administrador.',
+        inativo: 'Sua conta está inativa. Fale com o administrador.',
+        papel: 'Seu perfil não tem acesso a esta tela.'
+    };
+
+    function showMsg(text, kind) {
+        const el = $('msg');
+        el.textContent = text; el.className = 'notice ' + (kind || '');
+    }
+
+    // Cada papel tem a sua tela: operador vai direto pro campo; gestor Vale pra
+    // gestão; supervisor escolhe pelo tamanho da tela (celular = campo,
+    // notebook = gestão); Admin sempre na gestão (não registra contagem).
+    async function route() {
+        const { data: s } = await sb.auth.getSession();
+        if (!s || !s.session) return false;
+        const { data: p, error } = await sb.from('profiles').select('id, role, active').eq('id', s.session.user.id).maybeSingle();
+        if (error || !p) { showMsg(MSGS.perfil, 'err'); await sb.auth.signOut(); return false; }
+        if (!p.active) { showMsg(MSGS.inativo, 'err'); await sb.auth.signOut(); return false; }
+
+        const quer = new URLSearchParams(location.search).get('ir');
+        let destino = null;
+        if (p.role === 'ARM_OPERADOR') destino = 'campo.html';
+        else if (p.role === 'ARM_GESTOR_VALE' || p.role === 'ADMIN') destino = 'gestao.html';
+        else if (p.role === 'ARM_SUPERVISOR') destino = quer === 'gestao' ? 'gestao.html' : (quer === 'campo' || window.innerWidth < 820) ? 'campo.html' : 'gestao.html';
+
+        if (!destino) {
+            $('login-form').classList.add('hidden');
+            $('sem-acesso').classList.remove('hidden');
+            return true;
+        }
+        location.replace(destino);
+        return true;
+    }
+
+    $('login-form').addEventListener('submit', async e => {
+        e.preventDefault();
+        const btn = $('btn-entrar');
+        btn.disabled = true; btn.textContent = 'Entrando...';
+        const { error } = await sb.auth.signInWithPassword({ email: $('email').value.trim(), password: $('senha').value });
+        if (error) {
+            showMsg(/invalid/i.test(error.message) ? 'E-mail ou senha incorretos.' : 'Não foi possível entrar: ' + error.message, 'err');
+            btn.disabled = false; btn.textContent = 'Entrar';
+            return;
+        }
+        await route();
+        btn.disabled = false; btn.textContent = 'Entrar';
+    });
+    $('btn-sair').addEventListener('click', () => TV.signOut());
+
+    const erro = new URLSearchParams(location.search).get('erro');
+    if (erro && MSGS[erro]) showMsg(MSGS[erro], 'warn');
+    else route();
+
+    TV.registerSW();
+})();
+</script>
+</body>
+</html>

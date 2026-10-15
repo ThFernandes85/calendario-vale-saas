@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0c1017">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<title>Armazém · Campo</title>
+<link rel="manifest" href="manifest.json">
+<link rel="icon" type="image/svg+xml" href="../assets/terravia-favicon.svg">
+<link rel="apple-touch-icon" href="../assets/terravia-icon-180.png">
+<link rel="stylesheet" href="comum.css">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+</head>
+<body>
+<div class="m-screen" id="app"><div class="spinner" style="margin-top:40vh"></div></div>
+
+<script src="comum.js"></script>
+<script src="campo.js"></script>
+<script>
+TV.requireAuth(TV.CAMPO_ROLES).then(ctx => { if (ctx) Campo.init(ctx); });
+TV.registerSW();
+</script>
+</body>
+</html>
