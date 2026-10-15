@@ -1,0 +1,12 @@
+{
+  "name": "terravia-testes-sql",
+  "private": true,
+  "type": "module",
+  "description": "Testes do SQL do módulo Armazém num Postgres local (PGlite). Ferramenta de desenvolvimento, não faz parte do app.",
+  "scripts": {
+    "test": "node --test armazem.test.mjs"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "0.2.17"
+  }
+}

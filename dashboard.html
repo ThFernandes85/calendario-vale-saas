@@ -2105,8 +2105,18 @@ const ROLE_META = {
     // libera Preventiva/Corretiva, Operação libera Limpeza. Mesmo recorte
     // de tipo que PCM/PCO, só com tela mobile simplificada.
     TECNICO_MANUTENCAO: { label: 'Técnico de Manutenção (Correias · Mobile)', canBook: ['Manutenção Preventiva', 'Manutenção Corretiva'], readOnly: false },
-    TECNICO_OPERACAO: { label: 'Técnico de Operação (Correias · Mobile)', canBook: ['Limpeza Sodexo', 'Limpeza Mecanizada'], readOnly: false }
+    TECNICO_OPERACAO: { label: 'Técnico de Operação (Correias · Mobile)', canBook: ['Limpeza Sodexo', 'Limpeza Mecanizada'], readOnly: false },
+    // Módulo Armazém (inventário/estoque) -- app PRÓPRIO em docs/armazem/,
+    // fora deste arquivo. Estes 3 papéis nunca veem o shell desktop daqui:
+    // loginAs() redireciona direto pra lá (ver WAREHOUSE_ROLES). As entradas
+    // existem só pra tela de Usuários listar/criar/editar esses perfis (sem
+    // elas, ROLE_META[u.role].label quebraria a lista). Permissões reais
+    // vivem na RLS do banco (supabase/armazem.sql), não aqui.
+    ARM_OPERADOR: { label: 'Armazém · Operador (Sodexo)', canBook: [], readOnly: true },
+    ARM_SUPERVISOR: { label: 'Armazém · Supervisor (Sodexo)', canBook: [], readOnly: true },
+    ARM_GESTOR_VALE: { label: 'Armazém · Gestor (Vale · Somente leitura)', canBook: [], readOnly: true }
 };
+const WAREHOUSE_ROLES = ['ARM_OPERADOR', 'ARM_SUPERVISOR', 'ARM_GESTOR_VALE'];
 const TYPE_STATUS = { 'Manutenção Preventiva': 'manutencao', 'Manutenção Corretiva': 'manutencao', 'Limpeza Sodexo': 'limpeza', 'Limpeza Mecanizada': 'limpeza' };
 // Rótulo de exibição no card da agenda -- só nos sites do Contrato de
 // Controle de Materiais (Fábrica/Viga Materiais) o texto mostrado no
@@ -6323,6 +6333,13 @@ async function loadClientBadge() {
     }
 }
 async function loginAs(user, options) {
+    // Perfis do módulo Armazém têm app próprio (docs/armazem/). A sessão do
+    // Supabase fica no localStorage da mesma origem, então a pessoa já chega
+    // lá logada -- sem carregar nada deste app antes.
+    if (WAREHOUSE_ROLES.includes(user.role)) {
+        window.location.replace('armazem/');
+        return;
+    }
     const logEvent = !options || options.logEvent !== false;
     state.currentUser = user;
     state.profileKey = user.role;

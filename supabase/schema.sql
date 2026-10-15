@@ -93,7 +93,10 @@ begin
     alter table public.profiles drop constraint profiles_role_check;
   end if;
   alter table public.profiles add constraint profiles_role_check
-    check (role in ('ADMIN','PCM','PCO','PCM_PCO','ENG_CONF','ENG_EST','ENCARREGADO','CLIENTE_VALE','TECNICO_PLANEJAMENTO','GERENTE','TECNICO_CAMPO_VALE','SOLICITANTE_PORTARIA','APROVADOR_PORTARIA','PORTARIA','TECNICO_MANUTENCAO','TECNICO_OPERACAO'));
+    check (role in ('ADMIN','PCM','PCO','PCM_PCO','ENG_CONF','ENG_EST','ENCARREGADO','CLIENTE_VALE','TECNICO_PLANEJAMENTO','GERENTE','TECNICO_CAMPO_VALE','SOLICITANTE_PORTARIA','APROVADOR_PORTARIA','PORTARIA','TECNICO_MANUTENCAO','TECNICO_OPERACAO','ARM_OPERADOR','ARM_SUPERVISOR','ARM_GESTOR_VALE'));
+  -- ARM_OPERADOR/ARM_SUPERVISOR/ARM_GESTOR_VALE são os papéis do módulo
+  -- Armazém (ver supabase/armazem.sql). Esta lista existe TAMBÉM lá: se
+  -- mexer aqui, mexa lá também, senão rodar um dos dois quebra o outro.
 end $$;
 
 -- WhatsApp do Encarregado (opcional -- nem todo mundo vai ter cadastrado de
