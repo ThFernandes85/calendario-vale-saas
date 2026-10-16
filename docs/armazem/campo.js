@@ -190,7 +190,9 @@
                 sb.from('wh_campaign_assignments').select('location_id, team_id, round').eq('campaign_id', C.camp),
                 sb.from('wh_recount_tasks').select('id, location_id, round, reason').eq('campaign_id', C.camp).eq('status', 'ABERTA'),
                 sb.from('wh_count_closures').select('location_id, round').eq('campaign_id', C.camp),
-                fetchAll((f, t) => sb.from('wh_items').select('id, code, vale_material_code, description, uom, criticality, active').eq('site_key', C.site).eq('active', true).order('code').range(f, t)),
+                // photo_path só existe depois do SQL das fotos; sem ele o app segue sem fotos
+                (cols => fetchAll((f, t) => sb.from('wh_items').select(cols + ', photo_path').eq('site_key', C.site).eq('active', true).order('code').range(f, t))
+                    .catch(() => fetchAll((f, t) => sb.from('wh_items').select(cols).eq('site_key', C.site).eq('active', true).order('code').range(f, t))))('id, code, vale_material_code, description, uom, criticality, active'),
                 fetchAll((f, t) => sb.from('wh_item_barcodes').select('item_id, barcode').eq('site_key', C.site).range(f, t))
             ]);
             for (const r of [asg, tasks, cls]) if (r.error) throw r.error;
@@ -489,7 +491,7 @@
                     ${scanSupported()
                         ? '<button class="m-scanbtn" data-act="scanitem" aria-label="Ler código pela câmera">Ler<br>código</button>'
                         : '<button disabled title="Leitura por câmera: Chrome do Android" aria-label="Ler código (indisponível neste aparelho)" style="width:60px;height:60px;border:1px dashed var(--border-color);border-radius:12px;background:transparent;color:var(--text-muted);font-size:11px;font-weight:700;line-height:1.1;cursor:not-allowed;flex:none">Ler<br>código</button>'}</div>
-                ${sug.map(i => `<button class="m-sug" data-act="pickitem" data-id="${i.id}"><b>${esc(i.description)}</b><span class="mt"><span class="id">${esc(i.code)}</span><span>${esc(i.uom)}</span>${i.criticality !== 'NORMAL' ? `<span style="color:var(--red-text);font-weight:700">◆ ${i.criticality === 'CRITICO' ? 'crítico' : 'alto valor'}</span>` : ''}</span></button>`).join('')}
+                ${sug.map(i => `<button class="m-sug ${i.photo_path ? 'has-ph' : ''}" data-act="pickitem" data-id="${i.id}">${i.photo_path ? `<img class="m-ph-s" data-photo="${esc(i.photo_path)}" alt="">` : ''}<span class="m-sug-t"><b>${esc(i.description)}</b><span class="mt"><span class="id">${esc(i.code)}</span><span>${esc(i.uom)}</span>${i.criticality !== 'NORMAL' ? `<span style="color:var(--red-text);font-weight:700">◆ ${i.criticality === 'CRITICO' ? 'crítico' : 'alto valor'}</span>` : ''}</span></span></button>`).join('')}
                 ${C.search && !sug.length ? `<div class="m-empty" style="text-align:left;color:var(--text-body-2)">Nada encontrado para “${esc(C.search)}”. Use <b>Item sem cadastro</b> abaixo.</div>` : ''}
             </div>
             <div class="m-twin"><button data-act="emptyaddr" ${lines.length ? 'disabled style="opacity:.4"' : ''}>○ Endereço vazio</button><button data-act="unid">+ Item sem cadastro / sem etiqueta</button></div>
@@ -499,7 +501,7 @@
                 ${!real.length ? `<div class="m-empty">${lines.length ? 'Endereço marcado como vazio.' : 'Nenhum item lançado ainda. Busque o primeiro item acima.'}</div>` : ''}
             </div>`
             : `
-            <div class="m-itemcard"><div style="display:flex;justify-content:space-between;gap:8px"><span class="mono" style="font-size:14px;color:var(--blue-text)">${esc(sel.code)}</span><button class="btn-link" style="font-size:15px;font-weight:700" data-act="cancelsel">Trocar</button></div>
+            <div class="m-itemcard">${sel.photo_path ? `<img class="m-ph-l" data-photo="${esc(sel.photo_path)}" alt="Foto do item" style="display:none">` : '<div class="muted" style="font-size:13px">Item sem foto cadastrada.</div>'}<div style="display:flex;justify-content:space-between;gap:8px"><span class="mono" style="font-size:14px;color:var(--blue-text)">${esc(sel.code)}</span><button class="btn-link" style="font-size:15px;font-weight:700" data-act="cancelsel">Trocar</button></div>
                 <span style="font-size:20px;font-weight:700;line-height:1.25">${esc(sel.description)}</span>
                 <span style="display:flex;gap:8px;flex-wrap:wrap;align-items:center"><span class="st" style="font-size:14px">Unidade: ${esc(sel.uom)}</span>${sel.criticality !== 'NORMAL' ? '<span class="st st-seal" style="font-size:13px">◆ Dupla conferência</span>' : ''}</span></div>
             ${sel.criticality !== 'NORMAL' ? '<div class="notice warn" style="margin:0">Item de alto valor/crítico: outra pessoa também vai contar este endereço.</div>' : ''}
@@ -535,11 +537,21 @@
             unid: openUnidSheet,
             finish: () => screenFinish()
         }, cta(primary));
+        hydratePhotos();
         const inp = document.getElementById('it-in');
         if (inp) {
             inp.addEventListener('input', () => { C.search = inp.value; const p = inp.selectionStart; screenEntry(); const n = document.getElementById('it-in'); n.focus(); n.setSelectionRange(p, p); });
             inp.addEventListener('keydown', e => { if (e.key === 'Enter') { const s = suggestions(C.search); if (s.length === 1) handlers.pickitem({ id: s[0].id }); } });
         }
+    }
+    // fotos do catálogo: baixam sozinhas depois que a tela aparece (e ficam guardadas no aparelho)
+    const photoUrls = new Map();
+    function hydratePhotos() {
+        document.querySelectorAll('img[data-photo]').forEach(img => {
+            const path = img.dataset.photo, show = url => { if (url && img.isConnected) { img.src = url; img.style.display = ''; } };
+            if (photoUrls.has(path)) return show(photoUrls.get(path));
+            TV.itemPhotoUrl(path).then(url => { if (url) photoUrls.set(path, url); show(url); });
+        });
     }
     function refreshQty() {
         const t = document.getElementById('qty-txt'); if (t) t.textContent = qtyTxt();

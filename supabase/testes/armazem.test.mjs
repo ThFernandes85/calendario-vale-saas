@@ -509,3 +509,20 @@ test('15. remover o site de teste de vez (v_remover_site) sem afetar usuários n
   await db.exec(read('../teste_criar_site.sql'));
   assert.equal((await su(`select count(*)::int n from public.sites where key = $1`, [T])).rows[0].n, 1);
 });
+
+test('16. foto do item (catálogo): supervisor/admin enviam, operador lê, gestor e outro site não', async () => {
+  const put = (who, name) => as(who, `insert into storage.objects (bucket_id, name) values ('warehouse-photos', $1)`, [name]);
+  const seen = who => as(who, `select name from storage.objects where name like '%/catalogo/%'`).then(r => r.rows.length);
+  await put(SUP, `${SITE}/catalogo/item1-1.jpg`);
+  await put(ADMIN, `${SITE}/catalogo/item2-1.jpg`);
+  await assert.rejects(put(OP1, `${SITE}/catalogo/item3-1.jpg`), RLS, 'OP1');      // operador não envia foto de catálogo
+  await assert.rejects(put(GESTOR, `${SITE}/catalogo/item3-1.jpg`), RLS, 'GESTOR');   // gestor Vale não escreve
+  await assert.rejects(put(OUTRO, `${SITE}/catalogo/item3-1.jpg`), RLS, 'OUTRO');    // outro site
+  assert.equal(await seen(OP1), 2);                                         // operador enxerga todas do catálogo
+  assert.equal(await seen(OP2), 2);
+  assert.equal(await seen(GESTOR), 2);
+  assert.equal(await seen(OUTRO), 0);
+  // a coluna existe e o operador a lê junto com o catálogo
+  await su(`update wh_items set photo_path = '${SITE}/catalogo/item1-1.jpg' where id = (select id from wh_items where site_key = '${SITE}' limit 1)`);
+  assert.ok((await as(OP1, `select photo_path from wh_items where photo_path is not null`)).rows.length >= 1);
+});

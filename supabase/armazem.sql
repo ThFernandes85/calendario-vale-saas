@@ -336,6 +336,9 @@ create table if not exists public.wh_items (
   unique (site_key, code)
 );
 create index if not exists wh_items_vale_code on public.wh_items (site_key, vale_material_code);
+-- Foto do item (caminho no bucket warehouse-photos, pasta <site>/catalogo/). O operador
+-- vê a foto no celular depois de ler o código, para ter certeza de que é aquele item.
+alter table public.wh_items add column if not exists photo_path text;
 
 -- Custo unitário FICA EM TABELA SEPARADA, de propósito: o operador precisa
 -- ler o catálogo (descrição, código) pra bipar, mas NÃO deve saber quanto
@@ -1436,7 +1439,8 @@ on conflict (id) do update set public = false;
 
 drop policy if exists "wh_photos_insert" on storage.objects;
 create policy "wh_photos_insert" on storage.objects for insert
-  with check (bucket_id = 'warehouse-photos' and public.wh_site_counter((storage.foldername(name))[1]));
+  with check (bucket_id = 'warehouse-photos' and public.wh_site_counter((storage.foldername(name))[1])
+              and (storage.foldername(name))[2] is distinct from 'catalogo');   -- catálogo tem política própria (abaixo)
 
 drop policy if exists "wh_photos_select" on storage.objects;
 create policy "wh_photos_select" on storage.objects for select
@@ -1447,6 +1451,19 @@ create policy "wh_photos_select" on storage.objects for select
       or (public.wh_site_reader((storage.foldername(name))[1]) and owner = auth.uid())
     )
   );
+
+-- Fotos do CATÁLOGO (pasta <site>/catalogo/): quem cadastra item (Supervisor/Admin) envia,
+-- e todo mundo do armazém (inclusive o operador) lê. Não é evidência de contagem, então
+-- esta pasta tem regras próprias; as políticas acima continuam valendo para o resto.
+drop policy if exists "wh_photos_catalog_insert" on storage.objects;
+create policy "wh_photos_catalog_insert" on storage.objects for insert
+  with check (bucket_id = 'warehouse-photos' and (storage.foldername(name))[2] = 'catalogo'
+              and public.wh_site_supervisor((storage.foldername(name))[1]));
+
+drop policy if exists "wh_photos_catalog_select" on storage.objects;
+create policy "wh_photos_catalog_select" on storage.objects for select
+  using (bucket_id = 'warehouse-photos' and (storage.foldername(name))[2] = 'catalogo'
+         and public.wh_site_reader((storage.foldername(name))[1]));
 
 -- ============================================================
 -- PRÓXIMOS PASSOS (manuais, uma vez):

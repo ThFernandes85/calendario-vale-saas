@@ -90,8 +90,11 @@
         if (!S.etq.ruas.size && S.ruas.length) S.etq.ruas.add(S.ruas[0].id);
     }
     async function loadItems() {
+        // photo_path só existe depois do SQL das fotos; sem ele a tela continua funcionando (sem fotos)
+        const itemCols = 'id, code, vale_material_code, description, uom, criticality, criticality_source, abc_class, active';
+        const readItems = cols => fetchAll((f, t) => sb.from('wh_items').select(cols).eq('site_key', S.site).order('code').range(f, t));
         const [items, where] = await Promise.all([
-            fetchAll((f, t) => sb.from('wh_items').select('id, code, vale_material_code, description, uom, criticality, criticality_source, abc_class, active').eq('site_key', S.site).order('code').range(f, t)),
+            readItems(itemCols + ', photo_path').catch(() => readItems(itemCols)),
             fetchAll((f, t) => sb.from('v_wh_item_whereabouts').select('item_id, location_id, location_code, final_qty').eq('site_key', S.site).range(f, t)).catch(() => [])
         ]);
         S.items = items; S.itemById = new Map(items.map(i => [i.id, i]));
@@ -615,7 +618,7 @@
         <section class="panel">
             <div class="toolbar"><input id="it-q" placeholder="Buscar por código, material Vale ou descrição" value="${esc(S.itemQ)}" aria-label="Buscar itens"><div class="chips">${chips.map(([k, l]) => `<button class="chip ${S.crit === k ? 'on' : ''}" data-act="crit" data-k="${k}" aria-pressed="${S.crit === k}">${l}</button>`).join('')}</div></div>
             <div class="tbl-wrap"><table class="tb"><thead><tr><th>Código</th><th>Material Vale</th><th>Descrição</th><th>Un.</th><th>ABC</th><th>Criticidade</th>${S.costs.size ? '<th class="num">Custo</th>' : ''}<th class="num">Endereços</th><th></th></tr></thead><tbody>
-            ${shown.map(i => { const n = (S.whereByItem.get(i.id) || []).length; return `<tr style="${i.active ? '' : 'opacity:.5'}"><td class="code">${esc(i.code)}</td><td class="mono muted" style="font-size:13px">${esc(i.vale_material_code || '—')}</td><td>${esc(i.description)}</td><td class="muted">${esc(i.uom)}</td><td><span class="abc">${esc(i.abc_class || '—')}</span></td><td><span style="display:flex;gap:6px;flex-wrap:wrap">${critBadge(i.criticality)}${i.criticality !== 'NORMAL' ? seal : ''}</span></td>${S.costs.size ? `<td class="num">${S.costs.has(i.id) ? fmt.money(S.costs.get(i.id)) : '—'}</td>` : ''}<td class="num muted">${n ? n + (n > 1 ? ' endereços' : ' endereço') : '—'}</td><td class="right">${w ? `<button class="btn btn-sm" data-act="edititem" data-id="${i.id}">Editar</button>` : ''}</td></tr>`; }).join('')}
+            ${shown.map(i => { const n = (S.whereByItem.get(i.id) || []).length; return `<tr style="${i.active ? '' : 'opacity:.5'}"><td class="code">${esc(i.code)}</td><td class="mono muted" style="font-size:13px">${esc(i.vale_material_code || '—')}</td><td>${esc(i.description)}${i.photo_path ? ' <span title="Tem foto" aria-label="Tem foto">📷</span>' : ''}</td><td class="muted">${esc(i.uom)}</td><td><span class="abc">${esc(i.abc_class || '—')}</span></td><td><span style="display:flex;gap:6px;flex-wrap:wrap">${critBadge(i.criticality)}${i.criticality !== 'NORMAL' ? seal : ''}</span></td>${S.costs.size ? `<td class="num">${S.costs.has(i.id) ? fmt.money(S.costs.get(i.id)) : '—'}</td>` : ''}<td class="num muted">${n ? n + (n > 1 ? ' endereços' : ' endereço') : '—'}</td><td class="right">${w ? `<button class="btn btn-sm" data-act="edititem" data-id="${i.id}">Editar</button>` : ''}</td></tr>`; }).join('')}
             </tbody></table></div>
             ${list.length ? '' : '<div style="padding:40px 16px;text-align:center" class="muted">Nenhum item corresponde à busca. <button class="btn-link" data-act="clear">Limpar filtros</button></div>'}
             <div class="panel-foot">Mostrando ${fmt.int(shown.length)} de ${fmt.int(S.items.length)} itens</div>
@@ -637,10 +640,18 @@
             <div class="row" style="margin-bottom:14px"><div class="field"><label class="f">Unidade</label><input id="i-uom" value="${esc(it ? it.uom : 'UN')}"></div><div class="field"><label class="f">Custo unitário (R$)</label><input id="i-cost" type="number" step="0.01" min="0" value="${it && S.costs.has(id) ? S.costs.get(id) : ''}"></div>
                 <div class="field"><label class="f">Criticidade</label><select id="i-crit"><option value="AUTO" ${critVal === 'AUTO' ? 'selected' : ''}>Automática (pelo custo)</option><option value="NORMAL" ${critVal === 'NORMAL' ? 'selected' : ''}>Normal</option><option value="ALTO_VALOR" ${critVal === 'ALTO_VALOR' ? 'selected' : ''}>Alto valor</option><option value="CRITICO" ${critVal === 'CRITICO' ? 'selected' : ''}>Crítico</option></select></div></div>
             <div class="field"><label class="f">Código de barras / QR da etiqueta ${barcodes.length ? `(já cadastrados: ${esc(barcodes.join(', '))})` : ''}</label><input id="i-bar" placeholder="opcional — adiciona mais um código a este item"></div>
+            <div class="field"><label class="f">Foto do item (aparece no celular para o operador conferir)</label>
+                <div style="display:flex;gap:12px;align-items:center">
+                    <div id="i-photo-box" style="width:96px;height:96px;flex:none;border:1px dashed var(--border-color);border-radius:10px;display:flex;align-items:center;justify-content:center;overflow:hidden;color:var(--text-muted);font-size:12px;text-align:center">${it && it.photo_path ? 'carregando…' : 'sem foto'}</div>
+                    <div style="display:flex;flex-direction:column;gap:6px;min-width:0"><input id="i-photo" type="file" accept="image/*"><span class="muted" style="font-size:12px" id="i-photo-note">JPG ou PNG. A foto é reduzida automaticamente.</span>${it && it.photo_path ? '<label class="checkline" style="font-size:13px"><input type="checkbox" id="i-photo-rm"> Remover a foto atual</label>' : ''}</div>
+                </div></div>
             <label class="checkline"><input type="checkbox" id="i-active" ${!it || it.active ? 'checked' : ''}> Item ativo</label>
             <p class="muted" style="margin-top:12px;font-size:12px">Itens de <b>alto valor</b> ou <b>críticos</b> exigem dupla conferência (duas pessoas diferentes contando).</p>`,
             `<button class="btn" id="i-cancel">Cancelar</button><button class="btn btn-primary" id="i-go">Salvar</button>`, { width: '640px' });
         $('i-cancel').addEventListener('click', closeModal);
+        const showPhoto = url => { const b = $('i-photo-box'); if (b) b.innerHTML = url ? `<img src="${url}" alt="Foto do item" style="width:100%;height:100%;object-fit:cover">` : 'sem foto'; };
+        if (it && it.photo_path) TV.itemPhotoUrl(it.photo_path).then(u => { const b = $('i-photo-box'); if (b && !u) b.textContent = 'não carregou'; else showPhoto(u); });
+        $('i-photo').addEventListener('change', () => { const f = $('i-photo').files[0]; if (f) showPhoto(URL.createObjectURL(f)); });
         $('i-go').addEventListener('click', () => guarded(async () => {
             const code = $('i-code').value.trim(), desc = $('i-desc').value.trim();
             if (!code || !desc) throw new Error('Código e descrição são obrigatórios.');
@@ -654,6 +665,21 @@
             if (cost !== '') { const { error } = await sb.from('wh_item_costs').upsert({ item_id: itemId, site_key: S.site, unit_cost: Number(cost), cost_source: 'MANUAL', cost_updated_at: new Date().toISOString(), updated_by: S.ctx.user.id }, { onConflict: 'item_id' }); if (error) throw error; }
             const bar = $('i-bar').value.trim();
             if (bar) { const { error } = await sb.from('wh_item_barcodes').insert({ site_key: S.site, item_id: itemId, barcode: bar }); if (error) throw new Error('Código de barras: ' + error.message); }
+            // foto: sobe por último; se falhar, o item já foi salvo e a mensagem diz o que fazer
+            const photoFile = $('i-photo').files[0], photoRm = $('i-photo-rm') && $('i-photo-rm').checked;
+            if (photoFile) {
+                try {
+                    const blob = await TV.shrinkImage(photoFile, 800, 0.78);
+                    const path = `${S.site}/catalogo/${itemId}-${Date.now()}.jpg`;
+                    const up = await sb.storage.from('warehouse-photos').upload(path, blob, { contentType: 'image/jpeg', upsert: false });
+                    if (up.error) throw up.error;
+                    const { error } = await sb.from('wh_items').update({ photo_path: path }).eq('id', itemId);
+                    if (error) throw error;
+                } catch (e) { await loadItems(); closeModal(); viewItens(); throw new Error('O item foi salvo, mas a foto não: ' + (e.message || e) + ' (o SQL das fotos já foi rodado no Supabase?)'); }
+            } else if (photoRm) {
+                const { error } = await sb.from('wh_items').update({ photo_path: null }).eq('id', itemId);
+                if (error) throw error;
+            }
             await loadItems(); closeModal(); toast('Item salvo.'); viewItens();
         }));
     }

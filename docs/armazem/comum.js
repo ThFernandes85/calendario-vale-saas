@@ -179,6 +179,31 @@
     // Texto digitado -> sem acento/minúsculo (busca tolerante).
     function norm(s) { return String(s == null ? '' : s).normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim(); }
 
-    window.TV = { sb, isNetErr, qrPayload, qrMatrix, qrGrid, RUA_COLORS, ruaColor, esc, uuid, store, fmt, toast, openModal, closeModal, fetchAll, requireAuth, signOut, registerSW, beep, norm,
+    // Foto do item (catálogo): reduz no próprio aparelho antes de subir (≈ 800 px, poucos KB).
+    async function shrinkImage(file, max, quality) {
+        const img = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = () => rej(new Error('Não foi possível ler essa imagem.')); i.src = URL.createObjectURL(file); });
+        const k = Math.min(1, (max || 800) / Math.max(img.width, img.height));
+        const cv = document.createElement('canvas'); cv.width = Math.round(img.width * k); cv.height = Math.round(img.height * k);
+        cv.getContext('2d').drawImage(img, 0, 0, cv.width, cv.height);
+        URL.revokeObjectURL(img.src);
+        return await new Promise(res => cv.toBlob(res, 'image/jpeg', quality || 0.78));
+    }
+    // Devolve uma URL local (blob:) da foto do item. O bucket é privado, então baixa
+    // com a sessão do usuário e guarda uma cópia no aparelho (o nome do arquivo muda a
+    // cada foto nova, então a cópia nunca fica velha). Sem sinal, usa a cópia se houver.
+    const PHOTO_CACHE = 'tv-arm-fotos';
+    async function itemPhotoUrl(path) {
+        if (!path) return null;
+        const key = new Request(location.origin + '/__arm_foto/' + path);
+        try { if (window.caches) { const hit = await (await caches.open(PHOTO_CACHE)).match(key); if (hit) return URL.createObjectURL(await hit.blob()); } } catch (e) { /* sem cache */ }
+        try {
+            const { data, error } = await sb.storage.from('warehouse-photos').download(path);
+            if (error || !data) return null;
+            try { if (window.caches) await (await caches.open(PHOTO_CACHE)).put(key, new Response(data, { headers: { 'Content-Type': 'image/jpeg' } })); } catch (e) { /* segue sem cache */ }
+            return URL.createObjectURL(data);
+        } catch (e) { return null; }
+    }
+
+    window.TV = { sb, isNetErr, qrPayload, qrMatrix, qrGrid, RUA_COLORS, ruaColor, esc, uuid, store, fmt, toast, openModal, closeModal, fetchAll, requireAuth, signOut, registerSW, beep, norm, shrinkImage, itemPhotoUrl,
         ROLE_LABEL, GESTAO_ROLES, CAMPO_ROLES, WRITE_ROLES };
 })();
