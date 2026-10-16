@@ -497,7 +497,7 @@
             <div class="m-twin"><button data-act="emptyaddr" ${lines.length ? 'disabled style="opacity:.4"' : ''}>○ Endereço vazio</button><button data-act="unid">+ Item sem cadastro / sem etiqueta</button></div>
             <div style="display:flex;flex-direction:column;gap:8px">
                 <div style="display:flex;justify-content:space-between;align-items:center"><span class="m-lg">Lançados aqui (${real.length})</span>${real.length ? '<button class="btn btn-ghost" style="color:var(--blue-text);font-weight:700;height:44px" data-act="undo">↶ Desfazer último</button>' : ''}</div>
-                ${real.map(e => { const it = e.item_id ? C.itemById.get(e.item_id) : null; return `<div class="m-line"><span class="d"><b>${it ? esc(it.description) : 'Sem cadastro · ' + esc(C.unidDesc.get(e.unidentified_id) || '')}</b><small>${it ? esc(it.code) : 'para análise'}</small></span><span class="q">${esc(fmt.num(e.qty))}${it ? ' ' + esc(it.uom) : ''}</span>${e.unidentified_id ? '' : `<button class="ed" data-act="fix" data-id="${e.id}" aria-label="Editar">Editar</button>`}</div>`; }).join('')}
+                ${real.map(e => { const it = e.item_id ? C.itemById.get(e.item_id) : null; return `<div class="m-line">${it && it.photo_path ? `<img class="m-ph-s" data-photo="${esc(it.photo_path)}" alt="">` : ''}<span class="d"><b>${it ? esc(it.description) : 'Sem cadastro · ' + esc(C.unidDesc.get(e.unidentified_id) || '')}</b><small>${it ? esc(it.code) : 'para análise'}</small></span><span class="q">${esc(fmt.num(e.qty))}${it ? ' ' + esc(it.uom) : ''}</span>${e.unidentified_id ? '' : `<button class="ed" data-act="fix" data-id="${e.id}" aria-label="Editar">Editar</button>`}</div>`; }).join('')}
                 ${!real.length ? `<div class="m-empty">${lines.length ? 'Endereço marcado como vazio.' : 'Nenhum item lançado ainda. Busque o primeiro item acima.'}</div>` : ''}
             </div>`
             : `
@@ -580,9 +580,10 @@
     function openFixSheet(id) {
         const e = C.raw.get(id), it = C.itemById.get(e.item_id);
         let q = String(e.qty);
-        sheet(`<h3>Corrigir quantidade</h3><div><b>${esc(it ? it.code : '')}</b> <span class="muted">${esc(it ? it.description : '')}</span></div>
+        sheet(`<h3>Corrigir quantidade</h3>${it && it.photo_path ? `<img class="m-ph-l" data-photo="${esc(it.photo_path)}" alt="Foto do item" style="display:none">` : ''}<div><b>${esc(it ? it.code : '')}</b> <span class="muted">${esc(it ? it.description : '')}</span></div>
             <div class="m-qty"><button id="f-dec">−</button><div class="v"><span id="f-txt">${esc(q.replace('.', ','))}</span><small>${esc(it ? it.uom : '')}</small></div><button id="f-inc">+</button></div>
             <button class="btn btn-primary btn-lg" id="f-save">Salvar</button><button class="btn btn-lg" style="height:56px;font-size:17px;color:var(--red-text)" id="f-del">Remover este item do endereço</button>`, () => {
+            hydratePhotos();
             const upd = () => { document.getElementById('f-txt').textContent = q.replace('.', ','); };
             document.getElementById('f-dec').addEventListener('click', () => { q = String(Math.max(0, Number(q) - 1)); upd(); });
             document.getElementById('f-inc').addEventListener('click', () => { q = String(Number(q) + 1); upd(); });
