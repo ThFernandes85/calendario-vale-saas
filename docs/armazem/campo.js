@@ -118,12 +118,62 @@
     }
 
     // ============================================================
+    // LEITURA POR CÂMERA (Android/Chrome: leitor nativo BarcodeDetector)
+    // Só funciona em HTTPS e com a permissão da câmera. Em navegador sem o leitor
+    // (ex.: iPhone/Safari) o botão avisa e o operador continua digitando.
+    // ============================================================
+    const SCAN_FORMATS = ['qr_code', 'code_128', 'ean_13', 'ean_8', 'code_39', 'itf', 'upc_a', 'upc_e'];
+    const scanSupported = () => 'BarcodeDetector' in window && !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
+    async function openScanner(title, hint, onCode) {
+        if (!scanSupported()) { notify('A leitura por câmera funciona no Chrome do Android. Neste aparelho, digite o código.', 'err'); return; }
+        const old = document.getElementById('scan-bg'); if (old && old._stop) old._stop();
+        let formats = [];
+        try { const sup = await window.BarcodeDetector.getSupportedFormats(); formats = SCAN_FORMATS.filter(f => sup.includes(f)); } catch (e) { /* tratado abaixo */ }
+        if (!formats.length) { notify('Este aparelho não consegue ler códigos pela câmera. Digite o código.', 'err'); return; }
+        const bg = document.createElement('div');
+        bg.className = 'm-scan'; bg.id = 'scan-bg';
+        bg.innerHTML = `<video id="scan-v" playsinline muted autoplay></video>
+            <div class="top"><b>${esc(title)}</b><button class="m-back" id="scan-x" aria-label="Fechar">✕</button></div>
+            <div class="frame"></div>
+            <div class="bottom"><div class="hint">${esc(hint)}</div><button class="btn btn-lg" id="scan-type" style="height:56px;font-size:17px">Digitar o código</button></div>`;
+        document.body.appendChild(bg);
+        let stream = null, stopped = false;
+        const stop = () => { stopped = true; if (stream) stream.getTracks().forEach(t => t.stop()); bg.remove(); };
+        bg._stop = stop;
+        document.getElementById('scan-x').addEventListener('click', stop);
+        document.getElementById('scan-type').addEventListener('click', stop);
+        try {
+            stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false });
+        } catch (e) {
+            stop();
+            notify(e && e.name === 'NotAllowedError' ? 'Permita o uso da câmera para ler códigos (toque no cadeado, ao lado do endereço do site).' : 'Não foi possível abrir a câmera.', 'err');
+            return;
+        }
+        if (stopped) { stream.getTracks().forEach(t => t.stop()); return; }
+        const v = document.getElementById('scan-v');
+        v.srcObject = stream;
+        try { await v.play(); } catch (e) { /* alguns aparelhos já iniciam sozinhos */ }
+        const det = new window.BarcodeDetector({ formats });
+        const loop = async () => {
+            if (stopped) return;
+            try {
+                if (v.readyState >= 2) {
+                    const r = await det.detect(v);
+                    if (r && r.length && r[0].rawValue) { const code = String(r[0].rawValue); stop(); TV.beep(true); onCode(code); return; }
+                }
+            } catch (e) { /* quadro ruim: tenta o próximo */ }
+            setTimeout(loop, 120);
+        };
+        loop();
+    }
+
+    // ============================================================
     // DADOS (com cópia no aparelho pra abrir sem sinal)
     // ============================================================
     const packKey = () => `tv_arm_pack_${C.site}_${C.camp}`;
     async function loadLocs() {
         try {
-            const locs = await fetchAll((f, t) => sb.from('wh_locations').select('id, parent_id, kind, code, full_code, path, is_countable, active').eq('site_key', C.site).order('full_code').range(f, t));
+            const locs = await fetchAll((f, t) => sb.from('wh_locations').select('id, parent_id, kind, code, full_code, qr_token, path, is_countable, active').eq('site_key', C.site).order('full_code').range(f, t));
             store.set('tv_arm_locs_' + C.site, locs); return locs;
         } catch (e) { if (!isNetErr(e)) throw e; const c = store.get('tv_arm_locs_' + C.site, null); if (!c) throw new Error('Sem sinal e sem endereços guardados neste aparelho. Abra uma vez com internet.'); return c; }
     }
@@ -323,17 +373,19 @@
                 <div class="${cols === 4 ? 'm-g4' : 'm-g5'}">${lv.kids.map(k => { const leaf = C.allowedIds.has(k.id); const fin = leaf ? doneLeaf(k) : pendingUnder(k.id) === 0; const on = lv.sel === k.id; const left = leaf ? '' : pendingUnder(k.id);
                     return `<button class="${leaf ? 'm-pb m-nb' : 'm-pb'} ${fin ? 'done' : ''} ${on ? 'on' : ''}" data-act="${leaf ? 'open' : 'down'}" data-id="${k.id}" data-lvl="${i}" aria-label="${esc(k.full_code)}${fin ? ', contado' : ''}">${esc(k.code)}<small>${fin ? '✓' : (left ? left + ' faltam' : '')}</small></button>`; }).join('')}</div></div>`; }).join('')}
             <label class="m-sec"><span class="tl">ou digite o código</span><input id="addr-in" class="m-input code" placeholder="VGR-A-03-2" autocapitalize="characters" autocomplete="off"></label>` : ''}
+            ${total && scanSupported() ? '<button class="btn btn-lg m-scanbig" data-act="scanaddr">Ler QR do endereço</button>' : ''}
         </div>`, {
             backcamp: () => { C.skipAuto = true; screenCampaigns(); },
             rua: d => { C.selPath = [d.id]; let node = C.byId.get(d.id); while (node) { const kids = visKids(node.id); if (!kids.length || kids.every(k => C.allowedIds.has(k.id))) break; node = kids.find(k => pendingUnder(k.id) > 0) || kids[0]; C.selPath.push(node.id); } screenAddress(); },
             down: d => { C.selPath = C.selPath.slice(0, Number(d.lvl) + 1); C.selPath.push(d.id); let node = C.byId.get(d.id); while (node) { const kids = visKids(node.id); if (!kids.length || kids.every(k => C.allowedIds.has(k.id))) break; node = kids.find(k => pendingUnder(k.id) > 0) || kids[0]; C.selPath.push(node.id); } screenAddress(); },
             open: d => openAddress(d.id, 1),
             task: d => openAddress(d.loc, Number(d.round)),
+            scanaddr: () => openScanner('Ler QR do endereço', 'Aponte para a etiqueta colada na prateleira.', onScanAddress),
             goto: () => {
                 const t = document.getElementById('addr-in').value.trim().toUpperCase().replace(/\s+/g, '');
                 if (!t) return;
                 const hits = C.allowed.filter(l => l.full_code === t || l.full_code.endsWith('-' + t));
-                if (hits.length === 1) return openAddress(hits[0].id, 1);
+                if (hits.length === 1) return openByLoc(hits[0]);
                 notify(hits.length ? 'Mais de um endereço combina. Digite mais completo.' : 'Endereço não encontrado entre os seus.', 'err');
             }
         });
@@ -344,6 +396,42 @@
     // ============================================================
     // B4 · LANÇAR OS ITENS
     // ============================================================
+    // qual rodada abrir para um endereço: a 1ª se ainda não finalizou; senão a recontagem pedida
+    function openByLoc(loc) {
+        if (!C.closed.has(loc.id + ':1')) return openAddress(loc.id, 1);
+        const t = C.tasks.find(x => x.location_id === loc.id && !C.closed.has(x.location_id + ':' + x.round));
+        if (t) return openAddress(loc.id, t.round);
+        notify('Você já finalizou este endereço.', 'err');
+    }
+    // lido pela câmera na tela de endereços: etiqueta TVA1|L|<código>, ou o próprio código do endereço
+    function onScanAddress(text) {
+        const t = String(text).trim();
+        let loc = null;
+        const m = t.match(/^TVA1\|L\|([A-Za-z0-9]+)$/);
+        if (m) loc = C.locs.find(l => l.qr_token && l.qr_token.toUpperCase() === m[1].toUpperCase());
+        else {
+            const u = t.toUpperCase().replace(/\s+/g, '');
+            const hits = C.allowed.filter(l => l.full_code === u || l.full_code.endsWith('-' + u));
+            if (hits.length === 1) loc = hits[0];
+        }
+        if (!loc) { TV.beep(false); notify('Código não reconhecido como endereço: ' + t.slice(0, 30), 'err'); return; }
+        if (!C.allowedIds.has(loc.id)) { TV.beep(false); notify(`${loc.full_code} não é um endereço seu (ou não é de contagem).`, 'err'); return; }
+        openByLoc(loc);
+    }
+    // lido pela câmera na tela de itens: código de barras cadastrado, código do item ou código Vale
+    function onScanItem(text) {
+        const t = String(text).trim();
+        let id = C.byBarcode.get(t);
+        if (!id) { const n = norm(t); const it = C.items.find(i => norm(i.code) === n || (i.vale_material_code && norm(i.vale_material_code) === n)); if (it) id = it.id; }
+        if (!id) {
+            TV.beep(false);
+            if (/^TVA1\|/.test(t)) notify('Isso é a etiqueta de um endereço. Leia o código do item.', 'err');
+            else { C.search = t; notify(`Código ${t.slice(0, 24)} não está no catálogo. Digite o nome ou use “Item sem cadastro”.`, 'err'); screenEntry(); }
+            return;
+        }
+        C.sel = { item_id: id, qty: '1', fresh: true, source: 'CAMERA', scanned: t };
+        screenEntry();
+    }
     async function openAddress(locId, round) {
         const loc = C.byId.get(locId);
         if (!loc) return;
@@ -398,7 +486,9 @@
         const body = noItem ? `
             <div style="display:flex;flex-direction:column;gap:10px">
                 <div style="display:flex;gap:8px"><input id="it-in" class="m-input focus" style="flex:1;min-width:0;height:60px;border-color:var(--blue-ring)" placeholder="Código ou descrição do item" value="${esc(C.search)}" autocomplete="off" aria-label="Buscar item">
-                    <button disabled title="Disponível em breve" aria-label="Ler código (em breve)" style="width:60px;height:60px;border:1px dashed var(--border-color);border-radius:12px;background:transparent;color:var(--text-muted);font-size:11px;font-weight:700;line-height:1.1;cursor:not-allowed;flex:none">Ler<br>código</button></div>
+                    ${scanSupported()
+                        ? '<button class="m-scanbtn" data-act="scanitem" aria-label="Ler código pela câmera">Ler<br>código</button>'
+                        : '<button disabled title="Leitura por câmera: Chrome do Android" aria-label="Ler código (indisponível neste aparelho)" style="width:60px;height:60px;border:1px dashed var(--border-color);border-radius:12px;background:transparent;color:var(--text-muted);font-size:11px;font-weight:700;line-height:1.1;cursor:not-allowed;flex:none">Ler<br>código</button>'}</div>
                 ${sug.map(i => `<button class="m-sug" data-act="pickitem" data-id="${i.id}"><b>${esc(i.description)}</b><span class="mt"><span class="id">${esc(i.code)}</span><span>${esc(i.uom)}</span>${i.criticality !== 'NORMAL' ? `<span style="color:var(--red-text);font-weight:700">◆ ${i.criticality === 'CRITICO' ? 'crítico' : 'alto valor'}</span>` : ''}</span></button>`).join('')}
                 ${C.search && !sug.length ? `<div class="m-empty" style="text-align:left;color:var(--text-body-2)">Nada encontrado para “${esc(C.search)}”. Use <b>Item sem cadastro</b> abaixo.</div>` : ''}
             </div>
@@ -420,7 +510,8 @@
             : `<button class="btn btn-primary btn-lg" data-act="finish" ${lines.length ? '' : 'disabled'}>Finalizar endereço${real.length ? ` (${real.length})` : ''}</button>`;
         paint(bar(`${C.round}ª rodada · ${real.length} ${real.length === 1 ? 'item' : 'itens'}`, loc.full_code, 'backaddr', true) + `<div class="m-body">${body}</div>`, {
             backaddr: () => { C.sel = null; screenAddress(); },
-            pickitem: d => { C.sel = { item_id: d.id, qty: '1', fresh: true }; screenEntry(); },
+            scanitem: () => openScanner('Ler código do item', 'Aponte para o código de barras ou QR da etiqueta do material.', onScanItem),
+            pickitem: d => { const q = C.search.trim(), viaCode = !!q && C.byBarcode.get(q) === d.id; C.sel = { item_id: d.id, qty: '1', fresh: true, source: viaCode ? 'LEITOR' : 'MANUAL', scanned: viaCode ? q : null }; screenEntry(); },
             cancelsel: () => { C.sel = null; screenEntry(); },
             dec: () => { C.sel.qty = String(Math.max(0, Math.round((qtyNum() - 1) * 1000) / 1000)); C.sel.fresh = false; refreshQty(); },
             inc: () => { C.sel.qty = String(Math.round((qtyNum() + 1) * 1000) / 1000); C.sel.fresh = false; refreshQty(); },
@@ -435,7 +526,7 @@
                 const q = qtyNum();
                 if (!(q > 0)) { notify('Informe a quantidade (maior que zero).', 'err'); return; }
                 if (q > 100000 && !confirm(`Quantidade ${fmt.num(q)} é muito alta. Confirma?`)) return;
-                addEvent({ item_id: C.sel.item_id, qty: q });
+                addEvent({ item_id: C.sel.item_id, qty: q, source: C.sel.source, scanned_code: C.sel.scanned });
                 C.sel = null; C.search = ''; TV.beep(true); screenEntry();
             },
             undo: () => { const last = real[real.length - 1]; if (!last || last.unidentified_id) return; addEvent({ item_id: last.item_id, qty: 0, supersedes_id: last.id }); screenEntry(); },
@@ -455,9 +546,10 @@
         const b = document.querySelector('[data-act="additem"]'); if (b) b.disabled = !(qtyNum() > 0);
     }
     const basePayload = () => ({ id: uuid(), site_key: C.site, campaign_id: C.camp, location_id: C.cur.id, round: C.round, counted_at: new Date().toISOString(), device_id: C.deviceId, app_version: APP_VERSION });
-    function addEvent({ item_id, qty, unidentified_id, supersedes_id }) {
-        const p = { ...basePayload(), item_id: item_id || null, unidentified_id: unidentified_id || null, qty, source: 'MANUAL' };
+    function addEvent({ item_id, qty, unidentified_id, supersedes_id, source, scanned_code }) {
+        const p = { ...basePayload(), item_id: item_id || null, unidentified_id: unidentified_id || null, qty, source: source || 'MANUAL' };
         if (supersedes_id) p.supersedes_id = supersedes_id;
+        if (scanned_code) p.scanned_code = scanned_code;
         C.raw.set(p.id, p);
         ob.add({ kind: 'event', id: p.id, payload: p });
         return p;
