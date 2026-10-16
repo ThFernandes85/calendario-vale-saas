@@ -737,7 +737,11 @@
         const w = S.ctx.canWrite, camp = campaign();
         const prog = id => { const rows = S.progress.filter(p => p.campaign_id === id && p.round === 1); const t = rows.reduce((s, p) => s + Number(p.total_addresses || 0), 0), d = rows.reduce((s, p) => s + Number(p.counted_addresses || 0), 0); return t ? 100 * d / t : 0; };
         const head = pgHead('Ciclos de inventário', 'Campanhas', `<button class="btn btn-primary" data-act="newcamp" ${ctaRO()}>+ Nova campanha</button>`);
-        if (!camp) { paint(`${head}${statePanel('vazio', 'Campanhas', 'Nenhuma campanha', 'Crie a primeira campanha de inventário e atribua as ruas às equipes.', w ? 'Criar campanha' : '', 'newcamp')}`, { newcamp: openNewCampModal }); return; }
+        if (!camp) {
+            paint(`${head}${statePanel('vazio', 'Campanhas', 'Nenhuma campanha', 'Monte as equipes abaixo e crie a primeira campanha de inventário. Depois atribua as ruas às equipes.', w ? 'Criar campanha' : '', 'newcamp')}
+                <section class="panel"><div class="panel-b">${panelEquipes(w)}</div></section>`, { newcamp: openNewCampModal, ...teamActs() });
+            return;
+        }
         const editable = w && (camp.status === 'RASCUNHO' || camp.status === 'ATIVA');
         const stage = CAMP[camp.status][1];
         const asg = S.assignments.filter(a => a.campaign_id === S.campId && a.round === 1);
@@ -790,11 +794,17 @@
                 const { error } = await sb.from('wh_campaigns').update({ status: 'CANCELADA' }).eq('id', S.campId); if (error) throw error;
                 await loadCampaigns(); toast('Campanha cancelada.'); viewCampanhas();
             },
+            ...teamActs()
+        });
+    }
+    // ações do bloco Equipes (usadas com ou sem campanha criada)
+    function teamActs() {
+        return {
             newteam: openNewTeamModal,
             addmember: async d => { const { error } = await sb.from('wh_team_members').insert({ team_id: d.t, site_key: S.site, profile_id: $('add-' + d.t).value }); if (error) throw error; await loadTeams(); viewCampanhas(); },
             rmmember: async (d, b, ev) => { ev.preventDefault(); const { error } = await sb.from('wh_team_members').delete().eq('team_id', d.t).eq('profile_id', d.p); if (error) throw error; await loadTeams(); viewCampanhas(); },
             delteam: async d => { if (!confirm('Excluir esta equipe?')) return; const { error } = await sb.from('wh_teams').delete().eq('id', d.id); if (error) throw new Error('Não deu para excluir (a equipe está atribuída a uma campanha?): ' + error.message); await loadTeams(); viewCampanhas(); }
-        });
+        };
     }
     function panelEquipes(w) {
         return `<div><div class="sect-title" style="display:flex;justify-content:space-between;align-items:center">Equipes${w ? '<button class="btn btn-sm" data-act="newteam">+ Nova equipe</button>' : ''}</div>
