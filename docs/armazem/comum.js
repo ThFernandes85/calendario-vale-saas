@@ -164,13 +164,33 @@
     }
 
     // Beep curto (WebAudio) + vibração: feedback de leitura/ação confirmada.
+    // O navegador do celular só deixa o som tocar se o contexto de áudio foi criado/
+    // "destravado" por um toque do usuário. A leitura pela câmera acontece sozinha (sem
+    // toque), então usamos UM contexto só, destravado no primeiro toque na tela.
+    let audioCtx = null;
+    function unlockAudio() {
+        try {
+            const AC = window.AudioContext || window.webkitAudioContext;
+            if (!AC) return null;
+            if (!audioCtx) audioCtx = new AC();
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+            return audioCtx;
+        } catch (e) { return null; }
+    }
+    ['pointerdown', 'touchstart', 'click', 'keydown'].forEach(ev => document.addEventListener(ev, unlockAudio, { passive: true }));
+    function tone(ctx, freq, start, dur, vol) {
+        const o = ctx.createOscillator(), g = ctx.createGain();
+        o.type = 'square'; o.frequency.value = freq;
+        g.gain.setValueAtTime(0.0001, start); g.gain.exponentialRampToValueAtTime(vol, start + 0.01); g.gain.exponentialRampToValueAtTime(0.0001, start + dur);
+        o.connect(g); g.connect(ctx.destination); o.start(start); o.stop(start + dur + 0.02);
+    }
     function beep(ok) {
         try {
-            const C = window.AudioContext || window.webkitAudioContext;
-            if (C) {
-                const ctx = new C(); const o = ctx.createOscillator(); const g = ctx.createGain();
-                o.type = 'sine'; o.frequency.value = ok === false ? 220 : 880; g.gain.value = 0.08;
-                o.connect(g); g.connect(ctx.destination); o.start(); setTimeout(() => { o.stop(); ctx.close(); }, ok === false ? 260 : 120);
+            const ctx = unlockAudio();
+            if (ctx) {
+                const t = ctx.currentTime + 0.01;
+                if (ok === false) { tone(ctx, 220, t, 0.18, 0.5); tone(ctx, 180, t + 0.2, 0.25, 0.5); }
+                else { tone(ctx, 1200, t, 0.12, 0.5); tone(ctx, 1800, t + 0.12, 0.14, 0.5); }
             }
         } catch (e) { /* sem áudio */ }
         try { if (navigator.vibrate) navigator.vibrate(ok === false ? [80, 60, 80] : 40); } catch (e) { /* iOS não vibra */ }
