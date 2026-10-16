@@ -436,3 +436,76 @@ test('13. cadeia de hashes: envio em lote, verificação e detecção de adulter
   const gap = (await as(SUP, `select * from wh_verify_chain($1, 'wh_count_events')`, [SITE])).rows[0];
   assert.equal(gap.ok, false);
 });
+
+test('14. site de teste: criar, usar e limpar por completo sem tocar no site real', async () => {
+  const T = 'VGR_TESTE';
+  await db.exec(read('../teste_criar_site.sql'));
+  await db.exec(read('../teste_criar_site.sql'));            // idempotente
+  for (const id of [SUP, OP1]) await su(`insert into public.profile_sites (profile_id, site_key) values ($1, $2) on conflict do nothing`, [id, T]);
+
+  // mini inventário no site de teste
+  const loc = async (kind, code, parent, cnt) => (await as(SUP, `insert into wh_locations (site_key, parent_id, kind, code, is_countable) values ($1,$2,$3,$4,$5) returning id`, [T, parent, kind, code, cnt])).rows[0].id;
+  const arm = await loc('ARMAZEM', 'TST', null, false), rua = await loc('RUA', 'A', arm, false), pr = await loc('PRATELEIRA', '01', rua, false), nv = await loc('NIVEL', '1', pr, true);
+  const it = (await as(SUP, `insert into wh_items (site_key, code, description) values ($1,'T1','Item teste') returning id`, [T])).rows[0].id;
+  await as(SUP, `insert into wh_item_costs (item_id, site_key, unit_cost) values ($1,$2,10)`, [it, T]);
+  const team = (await as(SUP, `insert into wh_teams (site_key, name) values ($1,'Eq teste') returning id`, [T])).rows[0].id;
+  await as(SUP, `insert into wh_team_members (team_id, site_key, profile_id) values ($1,$2,$3)`, [team, T, OP1]);
+  const camp = (await as(SUP, `insert into wh_campaigns (site_key, name, recount_mode) values ($1,'Camp teste','NENHUMA') returning id`, [T])).rows[0].id;
+  await as(SUP, `insert into wh_campaign_assignments (campaign_id, site_key, location_id, team_id, round) values ($1,$2,$3,$4,1)`, [camp, T, rua, team]);
+  await as(SUP, `update wh_campaigns set status = 'ATIVA' where id = $1`, [camp]);
+  await as(OP1, `insert into wh_count_events (id, site_key, campaign_id, location_id, item_id, qty) values ($1,$2,$3,$4,$5,3)`, [u(9001), T, camp, nv, it]);
+  await as(OP1, `insert into wh_count_closures (id, site_key, campaign_id, location_id, round, line_count) values ($1,$2,$3,$4,1,1)`, [u(9002), T, camp, nv]);
+  await as(SUP, `insert into wh_count_decisions (site_key, campaign_id, location_id, item_id, final_qty, decision, decided_by) values ($1,$2,$3,$4,3,'APROVAR_R1',$5)`, [T, camp, nv, it, SUP]);
+
+  // o apagar "normal" é barrado (a contagem é evidência)
+  await assert.rejects(su(`delete from wh_campaigns where id = $1`, [camp]));
+  const antesReal = (await su(`select count(*)::int n from wh_count_events where site_key = $1`, [SITE])).rows[0].n;
+  assert.ok(antesReal > 0);
+
+  // o script de limpeza RECUSA o site real
+  const script = read('../teste_limpar_site.sql');
+  await assert.rejects(db.exec(script.replace("v_site text := 'VGR_TESTE'", "v_site text := 'VGR_ARMAZEM'")), /Recusado/);
+  // e recusa site inexistente
+  await assert.rejects(db.exec(script.replace("v_site text := 'VGR_TESTE'", "v_site text := 'NAO_EXISTE'")), /não existe/);
+
+  // limpa o site de teste
+  await db.exec(script);
+  for (const t of ['wh_count_events', 'wh_count_closures', 'wh_count_decisions', 'wh_campaigns', 'wh_campaign_assignments', 'wh_teams', 'wh_team_members', 'wh_items', 'wh_item_costs', 'wh_item_cost_history', 'wh_locations', 'wh_audit_log']) {
+    assert.equal((await su(`select count(*)::int n from ${t} where site_key = $1`, [T])).rows[0].n, 0, `${t} não ficou vazio`);
+  }
+  // o site real não foi tocado
+  assert.equal((await su(`select count(*)::int n from wh_count_events where site_key = $1`, [SITE])).rows[0].n, antesReal);
+  // triggers voltaram a valer: imutabilidade e auditoria
+  await su(`update wh_site_settings set updated_at = now() where site_key = $1`, [T]);
+  const aud = (await su(`select count(*)::int n from wh_audit_log where site_key = $1`, [T])).rows[0].n;
+  assert.equal(aud, 1, 'auditoria religada');
+  // novo uso do site limpo começa cadeia nova e funciona
+  const camp2 = (await as(SUP, `insert into wh_campaigns (site_key, name) values ($1,'Depois da limpeza') returning id`, [T])).rows[0].id;
+  assert.ok(camp2);
+  const v2 = (await as(SUP, `select * from wh_verify_chain($1, 'wh_audit_log')`, [T])).rows[0];
+  assert.equal(v2.ok, true);
+  await su(`insert into wh_audit_log (site_key, table_name, action) values ($1,'x','INSERT')`, [T]);
+  await assert.rejects(su(`update wh_audit_log set action = 'DELETE' where site_key = $1`, [T]), /imutável/);
+});
+
+test('15. remover o site de teste de vez (v_remover_site) sem afetar usuários nem o site real', async () => {
+  const T = 'VGR_TESTE';
+  await db.exec(read('../teste_criar_site.sql'));
+  await su(`insert into public.profile_sites (profile_id, site_key) values ($1, $2) on conflict do nothing`, [SUP, T]);
+  const rua = (await as(SUP, `insert into wh_locations (site_key, kind, code) values ($1,'ARMAZEM','XYZ') returning id`, [T])).rows[0].id;
+  assert.ok(rua);
+  const script = read('../teste_limpar_site.sql');
+  await db.exec(script.replace('v_remover_site boolean := false;', 'v_remover_site boolean := true;'));
+  assert.equal((await su(`select count(*)::int n from public.sites where key = $1`, [T])).rows[0].n, 0, 'site removido');
+  assert.equal((await su(`select count(*)::int n from public.profile_sites where site_key = $1`, [T])).rows[0].n, 0, 'vínculos removidos');
+  assert.equal((await su(`select count(*)::int n from public.wh_site_settings where site_key = $1`, [T])).rows[0].n, 0);
+  assert.equal((await su(`select count(*)::int n from public.profiles where id = $1`, [SUP])).rows[0].n, 1, 'usuário continua existindo');
+  assert.equal((await su(`select count(*)::int n from public.sites where key = $1`, [SITE])).rows[0].n, 1, 'site real intacto');
+  // o site real continua acessível ao supervisor
+  assert.ok((await as(SUP, `select 1 from wh_locations`)).rows.length > 0);
+  // os triggers voltaram a valer
+  await assert.rejects(su(`update wh_count_events set qty = qty`), /imutável/);
+  // e dá para recriar o site de teste depois
+  await db.exec(read('../teste_criar_site.sql'));
+  assert.equal((await su(`select count(*)::int n from public.sites where key = $1`, [T])).rows[0].n, 1);
+});
