@@ -65,11 +65,11 @@
     function openModal(title, bodyHtml, footHtml, opts) {
         closeModal();
         const bg = document.createElement('div');
-        bg.className = 'modal-bg'; bg.id = 'modal-bg';
-        bg.innerHTML = `<div class="modal" style="${opts && opts.width ? 'width:' + opts.width : ''}">
-            <div class="modal-head"><h3>${esc(title)}</h3><button class="modal-x" type="button" data-close aria-label="Fechar">&times;</button></div>
-            <div class="modal-body">${bodyHtml}</div>
-            ${footHtml ? `<div class="modal-foot">${footHtml}</div>` : ''}
+        bg.className = 'scrim'; bg.id = 'modal-bg';
+        bg.innerHTML = `<div class="dlg" role="dialog" aria-modal="true" aria-label="${esc(title)}" style="${opts && opts.width ? 'max-width:' + opts.width : ''}">
+            <div class="dlg-h"><b>${esc(title)}</b><button class="dlg-x" type="button" data-close aria-label="Fechar">✕</button></div>
+            <div class="dlg-b">${bodyHtml}</div>
+            ${footHtml ? `<div class="dlg-f">${footHtml}</div>` : ''}
         </div>`;
         bg.addEventListener('mousedown', e => { if (e.target === bg) closeModal(); });
         bg.querySelector('[data-close]').addEventListener('click', closeModal);
@@ -77,6 +77,28 @@
         return bg;
     }
     function closeModal() { const m = document.getElementById('modal-bg'); if (m) m.remove(); }
+
+    // ---------- QR Code (biblioteca qrcode-generator carregada pela página) ----------
+    // Conteúdo do QR de endereço: TVA1|L|<token>. O prefixo permite ao app saber, ao
+    // ler, se é um endereço (L) ou outra coisa, e a versão (1) deixa evoluir o formato.
+    const qrPayload = token => 'TVA1|L|' + token;
+    function qrMatrix(text) {
+        if (!window.qrcode) return null;
+        const q = window.qrcode(0, 'M'); q.addData(text); q.make();
+        const n = q.getModuleCount(); const rows = [];
+        for (let r = 0; r < n; r++) { const row = []; for (let c = 0; c < n; c++) row.push(q.isDark(r, c)); rows.push(row); }
+        return { n, rows };
+    }
+    // QR como grade de <span>. O número de colunas depende do tamanho do QR gerado (21, 25, 29...
+    // módulos conforme o texto), então a grade é montada aqui e NUNCA com colunas fixas.
+    function qrGrid(text, cls, style) {
+        const m = qrMatrix(text);
+        if (!m) return `<div class="${cls || ''}" style="${style || ''}"><span style="color:#000;font-size:11px;padding:6px">QR indisponível (biblioteca não carregou)</span></div>`;
+        return `<div class="${cls || ''}" style="${style || ''};grid-template-columns:repeat(${m.n},1fr)">${m.rows.map(r => r.map(d => `<span style="background:${d ? '#0c1017' : '#fff'}"></span>`).join('')).join('')}</div>`;
+    }
+    // paleta das ruas (etiquetas, mapa e progresso usam a mesma cor pra mesma rua)
+    const RUA_COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#a78bfa', '#f472b6', '#22d3ee'];
+    const ruaColor = i => RUA_COLORS[((i % RUA_COLORS.length) + RUA_COLORS.length) % RUA_COLORS.length];
 
     // ---------- paginação (o Supabase devolve no máximo 1.000 linhas por consulta) ----------
     // make(from, to) recebe o intervalo e devolve a consulta já com .range(from, to).
@@ -157,6 +179,6 @@
     // Texto digitado -> sem acento/minúsculo (busca tolerante).
     function norm(s) { return String(s == null ? '' : s).normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim(); }
 
-    window.TV = { sb, isNetErr, esc, uuid, store, fmt, toast, openModal, closeModal, fetchAll, requireAuth, signOut, registerSW, beep, norm,
+    window.TV = { sb, isNetErr, qrPayload, qrMatrix, qrGrid, RUA_COLORS, ruaColor, esc, uuid, store, fmt, toast, openModal, closeModal, fetchAll, requireAuth, signOut, registerSW, beep, norm,
         ROLE_LABEL, GESTAO_ROLES, CAMPO_ROLES, WRITE_ROLES };
 })();

@@ -14,26 +14,26 @@
 <body>
 <div class="login-wrap">
     <div class="login-card">
-        <div class="brand">
-            <img src="../assets/terravia-icon-192.png" alt="TerraVia">
-            <div><h1>Armazém</h1><div class="muted">TerraVia Ops · Inventário e estoque</div></div>
+        <div class="brand" style="flex-direction:column;align-items:flex-start;gap:12px;margin-bottom:24px">
+            <div class="logo" style="width:56px;height:56px;border-radius:14px;font-size:20px">TV</div>
+            <div><h1 style="font-size:28px">TerraVia Ops</h1><div class="muted" style="font-size:16px;margin-top:2px">VGR - Armazém · Inventário</div></div>
         </div>
 
         <div id="msg" class="notice hidden"></div>
 
         <form id="login-form" autocomplete="on">
-            <div class="field"><label class="f" for="email">E-mail</label>
-                <input id="email" type="email" autocomplete="username" required inputmode="email" autocapitalize="none"></div>
-            <div class="field"><label class="f" for="senha">Senha</label>
-                <input id="senha" type="password" autocomplete="current-password" required></div>
-            <button class="btn btn-primary btn-lg" id="btn-entrar" type="submit">Entrar</button>
-            <p class="muted" style="margin-top:12px;font-size:12px;">Use o mesmo e-mail e senha do TerraVia Ops.</p>
+            <div class="field"><label class="f" for="email" style="font-size:15px;font-weight:600;color:var(--text-body-2)">E-mail</label>
+                <input id="email" class="m-input" type="email" autocomplete="username" required inputmode="email" autocapitalize="none" style="height:60px;font-size:20px;border-width:2px;font-weight:600"></div>
+            <div class="field"><label class="f" for="senha" style="font-size:15px;font-weight:600;color:var(--text-body-2)">Senha</label>
+                <input id="senha" class="m-input" type="password" autocomplete="current-password" required style="height:60px;font-size:20px;border-width:2px"></div>
+            <button class="btn btn-primary btn-lg" id="btn-entrar" type="submit" style="margin-top:6px">Entrar</button>
+            <p class="muted" style="margin-top:14px;font-size:14px;text-align:center">Use o mesmo e-mail e senha do TerraVia Ops.<br>Esqueceu a senha? Fale com a supervisão.</p>
         </form>
 
         <div id="sem-acesso" class="hidden">
-            <p style="margin-bottom:12px;">Seu perfil não tem acesso ao módulo Armazém.</p>
-            <a class="btn" href="../index.html">Ir para o TerraVia Ops</a>
-            <button class="btn btn-ghost" id="btn-sair" type="button">Sair</button>
+            <p style="margin-bottom:12px">Seu perfil não tem acesso ao módulo Armazém.</p>
+            <div class="actions"><a class="btn" href="../index.html">Ir para o TerraVia Ops</a>
+            <button class="btn btn-ghost" id="btn-sair" type="button">Sair</button></div>
         </div>
     </div>
 </div>
