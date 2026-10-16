@@ -220,6 +220,9 @@
     // ============================================================
     // CASCA: menu, topo, faixas de aviso, busca global
     // ============================================================
+    // site de teste (rótulo com "TESTE"): a tela inteira avisa, em âmbar
+    const siteLabel = () => ((S.ctx.sites.find(x => x.key === S.site) || {}).label) || '';
+    const isTestSite = () => /teste/i.test(siteLabel());
     function initials(n) { return String(n || '?').split(/\s+/).filter(Boolean).slice(0, 2).map(x => x[0]).join('').toUpperCase(); }
     function renderShell() {
         const c = S.ctx, camp = campaign();
@@ -239,8 +242,8 @@
             </div>
         </aside>
         <div class="main-col">
-            <header class="top">
-                <div class="site-btn"><small>Site</small>${c.sites.length > 1 ? `<select id="site-sel">${c.sites.map(s => `<option value="${esc(s.key)}" ${s.key === S.site ? 'selected' : ''}>${esc(s.label)}</option>`).join('')}</select>` : `<b>${esc((c.sites[0] || {}).label || '')}</b>`}</div>
+            <header class="top ${isTestSite() ? 'is-test' : ''}">
+                <div class="site-btn ${isTestSite() ? 'test' : ''}"><small>Site${isTestSite() ? ' · TESTE' : ''}</small>${c.sites.length > 1 ? `<select id="site-sel">${c.sites.map(s => `<option value="${esc(s.key)}" ${s.key === S.site ? 'selected' : ''}>${esc(s.label)}</option>`).join('')}</select>` : `<b>${esc((c.sites[0] || {}).label || '')}</b>`}</div>
                 ${camp ? `<div class="camp-pill ${camp.status === 'ATIVA' ? '' : 'off'}" data-tab="campanhas" title="Campanhas"><span class="dot" style="${camp.status === 'ATIVA' ? '' : 'background:' + CAMP[camp.status][2]}"></span><b>${esc(camp.name)}</b><small>${CAMP[camp.status][0]}${camp.status === 'ATIVA' ? ' · ' + fmt.pct(Math.round(m.pct)) : ''}</small></div>` : ''}
                 <div class="gsearch"><input id="gs-in" placeholder="Onde está o item? Código, material Vale ou descrição" aria-label="Busca global" autocomplete="off" value="${esc(S.q)}">
                     <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg><div id="gs-res"></div></div>
@@ -264,6 +267,7 @@
     function renderBanners() {
         const b = $('banners'); if (!b) return;
         let h = '';
+        if (isTestSite()) h += `<div class="banner test" role="status"><b>SITE DE TESTE</b><span>Você está em “${esc(siteLabel())}”. Nada daqui vale para o inventário real da Vale.</span></div>`;
         if (S.offline) h += `<div class="banner warn" role="status"><b>⚠ Sem conexão com o servidor.</b><span>Exibindo dados de ${fmt.time(S.offlineAt)}. As contagens dos operadores ficam salvas nos celulares e são enviadas quando o sinal voltar. Reconectando…</span></div>`;
         if (!S.ctx.canWrite) h += '<div class="banner ro"><span class="tag">Somente leitura</span>Perfil Gestor Vale: você acompanha tudo, mas aprovações e edições ficam com a supervisão Sodexo.</div>';
         b.innerHTML = h;

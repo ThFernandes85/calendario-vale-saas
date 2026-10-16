@@ -458,3 +458,16 @@ table.tb .code { font-family: var(--font-code); font-size: 13px; color: var(--bl
 
 /* indicador de carregamento */
 .spinner { width: 28px; height: 28px; border: 3px solid var(--border-color); border-top-color: var(--blue); border-radius: 50%; animation: spin .8s linear infinite; margin: 24px auto; }
+
+/* lista de opções dos seletores (select): o navegador desenha essa lista por conta própria e,
+   sem isto, ela fica branca com texto branco no tema escuro */
+select { color-scheme: dark; }
+select option, select optgroup { background-color: #18202c; color: #ffffff; }
+select option:checked { background-color: #2563eb; color: #ffffff; }
+
+/* SITE DE TESTE: sempre em âmbar, pra ninguém confundir com o inventário real */
+.site-btn.test { border-color: rgba(245, 158, 11, .7); background: rgba(245, 158, 11, .12); }
+.site-btn.test small { color: var(--amber-text); }
+.top.is-test { border-bottom: 2px solid var(--amber); }
+.banner.test { background: rgba(245, 158, 11, .14); border-bottom-color: rgba(245, 158, 11, .5); color: #fde68a; }
+.m-test { padding: 8px 16px; background: rgba(245, 158, 11, .18); border-bottom: 1px solid rgba(245, 158, 11, .5); color: var(--amber-text); font-size: 13px; font-weight: 700; text-align: center; }

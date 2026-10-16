@@ -190,6 +190,7 @@
         return `<div class="m-bar">${back ? `<button class="m-back" data-act="${back}" aria-label="Voltar">‹</button>` : ''}
             <div class="tt"><small>${esc(sub || '')}</small><b ${mono ? 'class="mono"' : ''}>${esc(title)}</b></div>
             <button class="m-sync" id="sync-btn" data-act="sync" role="status"></button></div>
+            ${/teste/i.test(((C.ctx.sites.find(x => x.key === C.site) || {}).label) || '') ? '<div class="m-test">SITE DE TESTE · nada daqui vale para o inventário real</div>' : ''}
             <div class="m-off hidden" id="m-off">Sem sinal — continue contando. Tudo fica salvo no aparelho e é enviado quando o sinal voltar.</div>`;
     }
     function paint(html, map, cta) {
