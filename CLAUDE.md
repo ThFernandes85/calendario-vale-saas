@@ -25,7 +25,9 @@ equipamento pesado, Técnico de Manutenção/Operação da Sala de Controle).
 
 ## Arquitetura
 
-- **Frontend**: um único arquivo `docs/index.html` — HTML + CSS + JS vanilla,
+- **Frontend** (app principal; o módulo Armazém é um app à parte em
+  `docs/armazem/`, ver seção própria abaixo): um único arquivo
+  `docs/index.html` — HTML + CSS + JS vanilla,
   sem framework, sem build. `dashboard.html` na raiz é uma **cópia idêntica**
   (byte a byte) do mesmo arquivo — os dois **sempre têm que ficar iguais**.
 - **Backend**: Supabase (Postgres + Auth + Storage + RLS). O usuário roda o
@@ -123,6 +125,58 @@ equipamento pesado, Técnico de Manutenção/Operação da Sala de Controle).
 - Terminologia (Equipamento/Sub-área/Área, Limpeza/Atividade) muda por tipo
   de site — sempre em `applyEquipTerminology()` e funções irmãs
   (`bookingTypeDisplayLabel`, etc.), nunca hardcoded na tela.
+
+## Módulo Armazém (inventário VGR) — app separado em `docs/armazem/`
+
+Segundo app, **independente** do `docs/index.html` (não herda o "dois arquivos
+idênticos"): inventário/contagem cega de almoxarifado da Vale (site
+`VGR_ARMAZEM`; `VGR_TESTE` = "VGR - Armazém (TESTE)" pra treino). Mesmo
+Supabase e mesma sessão; `loginAs` do app principal redireciona os papéis
+`ARM_*` (`ARM_OPERADOR`, `ARM_SUPERVISOR`, `ARM_GESTOR_VALE`, + `ADMIN`) pra
+`armazem/`.
+
+- **Telas**: `index.html` (login/roteamento por papel), `gestao.html/js`
+  (notebook: endereços, itens, campanhas, equipes, divergências, etiquetas PDF),
+  `campo.html/js` (celular do operador). `comum.js` expõe o namespace `TV`
+  (supabase client, store, fila offline, beep, fotos). Vanilla, sem build.
+- **Service worker próprio** (`docs/armazem/sw.js`, rede-primeiro, escopo
+  `/armazem/`) — não tem o "dois reloads" do app principal. Ao testar no
+  preview o SW antigo pode servir `comum.js` velho: desregistrar SW e limpar
+  `caches` antes de concluir que "a mudança não pegou". O servidor
+  `dashboard-static` serve a **raiz do repo**, então a URL é
+  `/docs/armazem/index.html`.
+- **SQL**: `supabase/armazem.sql` (idempotente, o usuário cola inteiro) é a
+  fonte de verdade; scripts avulsos pra rodar rápido (`armazem_foto_item.sql`,
+  `teste_criar_site.sql`, `teste_limpar_site.sql`) repetem trechos dele —
+  mudou um, atualizar o outro. A lista de papéis também está em
+  `supabase/schema.sql` e tem que bater.
+- **Testes do SQL** (PGlite, Postgres em WASM, sem Supabase real):
+  `cd supabase/testes && npm install && npm test` (um teste só:
+  `node --test --test-name-pattern="16\." armazem.test.mjs`). Rodar sempre que
+  mexer em `armazem.sql`; ele já pegou furo de RLS de verdade. Nada é testado
+  contra o Supabase real — pedir ao usuário a mensagem de erro exata.
+- **Regras que moldam o código**: contagem cega garantida no banco (operador só
+  lê os próprios eventos; sem policy em `wh_expected_stock`/`wh_item_costs`);
+  tabelas de evidência (`wh_count_events`, closures, decisions, audit_log,
+  cost_history) são imutáveis por trigger + cadeia de hash SHA-256 por site —
+  correção é um evento novo com `supersedes_id`, nunca UPDATE/DELETE. Toda
+  policy confere site **e** papel; ADMIN administra mas não registra contagem;
+  Gestor Vale nunca escreve.
+- **Fila offline do campo**: eventos vão pra `localStorage` com UUID gerado no
+  cliente e `upsert(..., {onConflict:'id', ignoreDuplicates:true})` (reenvio é
+  idempotente); o encerramento de um endereço só passa se todas as linhas
+  declaradas já chegaram.
+- **Leitura por câmera** (só Android/Chrome, `BarcodeDetector` nativo; sem
+  biblioteca): etiquetas de endereço têm payload `TVA1|L|<qr_token>`; eventos
+  gravam `source` (`CAMERA`/`LEITOR`/`MANUAL`) e `scanned_code`. iPhone: botão
+  desabilitado, o operador digita.
+- **Fotos do catálogo**: bucket privado `warehouse-photos`, pasta
+  `<site>/catalogo/`, coluna `wh_items.photo_path`; baixadas com a sessão e
+  cacheadas no aparelho (`TV.itemPhotoUrl`, cache `tv-arm-fotos`, que o SW
+  preserva). `loadItems`/`loadPack` tentam sem `photo_path` se o SQL ainda não
+  foi rodado — manter esse fallback.
+- Não commitar arquivos temporários de teste (`_t/`, `_design_ref/`) nem os
+  `.pptx/.zip/.xlsx` soltos na raiz.
 
 ## Rotina semanal: planilhas de importação em massa (Sodexo)
 
