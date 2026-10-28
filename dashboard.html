@@ -3786,7 +3786,12 @@ function validateClosureForm(booking) {
     // Uma OM só pode ser encerrada uma vez -- se esse número já aparece em
     // OUTRO lançamento que já foi Encerrado, é sinal de duplicidade (OM
     // digitada de novo por engano) e não deixa contar duas vezes na nota.
-    const jaEncerrada = booking.om && state.bookings.find(b =>
+    // Exceção: em Contrato de Materiais (ex.: Fábrica) a mesma OM é reaproveitada
+    // de propósito em serviços recorrentes (vários encerramentos por OM é rotina
+    // ali). Além disso, a checagem só enxerga o que está carregado na memória
+    // (janela de histórico), então nesse tipo de site ela barrava ou deixava
+    // passar conforme a data, sem relação com duplicidade de verdade.
+    const jaEncerrada = booking.om && !isMaterialsContractSite() && state.bookings.find(b =>
         b.id !== booking.id && b.om === booking.om && b.closureStatus === 'ENCERRADA'
     );
     if (jaEncerrada) {
