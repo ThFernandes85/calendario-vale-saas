@@ -2196,11 +2196,22 @@ function isOverdueBooking(booking) {
 // diferentes rodando em paralelo), então o conflito não é mais por
 // horário -- é por OM: a mesma OM não pode ficar aberta duas vezes no
 // mesmo equipamento (isso sim é duplicidade/erro de lançamento).
+// Sites onde o MESMO número de OM pode ser programado/encerrado mais de uma
+// vez (inclusive no mesmo equipamento), porque uma OM pode cobrir mais de uma
+// atividade no mesmo local -- ex.: Mutuca. Nesses sites as três travas de OM
+// repetida (criar com OM já aberta, encerrar OM já encerrada e linha repetida
+// na importação) ficam desligadas. Contrato de Materiais tem regra própria
+// (isMaterialsContractSite) e não entra aqui.
+const OM_REPEAT_SITE_KEYS = new Set(['MUTUCA']);
+function siteAllowsRepeatedOm(siteKey) {
+    return OM_REPEAT_SITE_KEYS.has(siteKey || state.currentSite);
+}
 function activeOmConflict(tag, om) {
     // Sem OM (sites como o S11D, que não usa número de OM), não existe
     // conflito de duplicidade -- senão toda OM vazia "colidiria" com
     // qualquer outra, impedindo até duas limpezas na mesma área/dia.
     if (!om) return null;
+    if (siteAllowsRepeatedOm()) return null;
     return state.bookings.find(b => isActiveBooking(b) && b.tag === tag && b.om === om);
 }
 
@@ -3791,7 +3802,7 @@ function validateClosureForm(booking) {
     // ali). Além disso, a checagem só enxerga o que está carregado na memória
     // (janela de histórico), então nesse tipo de site ela barrava ou deixava
     // passar conforme a data, sem relação com duplicidade de verdade.
-    const jaEncerrada = booking.om && !isMaterialsContractSite() && state.bookings.find(b =>
+    const jaEncerrada = booking.om && !isMaterialsContractSite() && !siteAllowsRepeatedOm() && state.bookings.find(b =>
         b.id !== booking.id && b.om === booking.om && b.closureStatus === 'ENCERRADA'
     );
     if (jaEncerrada) {
@@ -8940,7 +8951,9 @@ async function analyzeImportSpreadsheet() {
         // de Materiais pode durar mais de uma semana e ter mais de um
         // lançamento na mesma tag/data dentro da mesma planilha semanal --
         // isso é esperado, não duplicidade de verdade.
-        if (!result.error && !s11dMode && !isMaterialsContractSite()) {
+        // Sites em OM_REPEAT_SITE_KEYS (Mutuca) também ficam de fora: a mesma OM
+        // pode cobrir mais de uma atividade no mesmo local, até no mesmo dia.
+        if (!result.error && !s11dMode && !isMaterialsContractSite() && !siteAllowsRepeatedOm()) {
             const dedupKey = scheduleOnly ? `${result.om}|${result.tag}|${result.date}` : result.om;
             if (seenOms[dedupKey] !== undefined) {
                 result.error = scheduleOnly
